@@ -27,6 +27,20 @@ void engine_set_launch_pad(
     float countdown
 );
 void engine_set_launch_pad_count(CubacadabraEngine *engine, uintptr_t count);
+void engine_set_obstacle(
+    CubacadabraEngine *engine,
+    uintptr_t index,
+    float x,
+    float y,
+    float z,
+    float width,
+    float height,
+    float depth
+);
+void engine_set_obstacle_count(CubacadabraEngine *engine, uintptr_t count);
+uint8_t *engine_script_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_load_script_buffer(CubacadabraEngine *engine);
+uint8_t engine_script_loaded(const CubacadabraEngine *engine);
 const float *engine_snapshot_ptr(const CubacadabraEngine *engine);
 uintptr_t engine_snapshot_len(void);
 uintptr_t engine_snapshot_stride(void);

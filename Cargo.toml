@@ -5,7 +5,10 @@ edition = "2024"
 publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "0.12.1", default-features = false, features = ["luau", "vendored"] }
 
 [profile.release]
 opt-level = "s"

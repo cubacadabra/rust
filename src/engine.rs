@@ -1,4 +1,5 @@
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
+use crate::scripting::GameScript;
 use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player};
 use crate::world::{Aabb, LaunchPad, block_bounds};
 
@@ -40,6 +41,8 @@ pub struct Engine {
     pub(crate) launch_event_id: u32,
     pub(crate) last_launch_pad: usize,
     pub(crate) last_launch_occupants: usize,
+    pub(crate) script: Option<GameScript>,
+    pub(crate) script_buffer: Vec<u8>,
 }
 
 impl Engine {
@@ -73,6 +76,8 @@ impl Engine {
             launch_event_id: 0,
             last_launch_pad: 0,
             last_launch_occupants: 0,
+            script: None,
+            script_buffer: Vec::new(),
         };
         engine.write_snapshot();
         engine
@@ -102,6 +107,19 @@ impl Engine {
         self.launch_pads.resize(count.min(64), LaunchPad::default());
     }
 
+    pub(crate) fn set_obstacle(&mut self, index: usize, position: [f32; 3], size: [f32; 3]) {
+        if index >= self.obstacles.len() {
+            self.obstacles.resize(index + 1, block_bounds([0.0; 3], [0.0; 3]));
+        }
+        if let Some(obstacle) = self.obstacles.get_mut(index) {
+            *obstacle = block_bounds(position, size);
+        }
+    }
+
+    pub(crate) fn set_obstacle_count(&mut self, count: usize) {
+        self.obstacles.resize(count.min(256), block_bounds([0.0; 3], [0.0; 3]));
+    }
+
     pub fn reset_view(&mut self) {
         self.view_yaw = 0.0;
         self.view_pitch = -0.095;
@@ -114,6 +132,7 @@ impl Engine {
     pub fn step(&mut self, delta: f32) {
         let delta = delta.clamp(0.0, 0.05);
         self.elapsed += delta;
+        self.tick_script(delta);
         self.apply_camera_input();
         self.smooth_camera(delta);
         self.update_player(delta);
@@ -186,7 +205,39 @@ impl Engine {
         self.last_launch_occupants
     }
 
+    pub(crate) fn prepare_script_buffer(&mut self, length: usize) -> *mut u8 {
+        self.script_buffer.resize(length, 0);
+        self.script_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn load_script_buffer(&mut self) -> bool {
+        let source = String::from_utf8_lossy(&self.script_buffer).into_owned();
+        match GameScript::load(&source) {
+            Ok(script) => {
+                self.script = Some(script);
+                true
+            }
+            Err(_) => {
+                self.script = None;
+                false
+            }
+        }
+    }
+
+    pub(crate) fn script_loaded(&self) -> bool {
+        self.script.is_some()
+    }
+
+    fn tick_script(&mut self, delta: f32) {
+        if let Some(script) = &self.script
+            && let Err(error) = script.tick(delta)
+        {
+            script.state().borrow_mut().last_error = Some(error);
+        }
+    }
+
     fn update_launch_pads(&mut self) {
+        let mut launched = None;
         for index in 0..self.launch_pads.len() {
             let occupants = self.count_launch_pad_occupants(index);
             let pad = &mut self.launch_pads[index];
@@ -206,12 +257,23 @@ impl Engine {
                     self.launch_event_id = self.launch_event_id.wrapping_add(1);
                     self.last_launch_pad = index;
                     self.last_launch_occupants = occupants;
+                    launched = Some((index, occupants));
                 }
                 LaunchPadPhase::Launched if occupants == 0 => {
                     pad.phase = LaunchPadPhase::Idle;
                     pad.launch_at = 0.0;
                 }
                 _ => {}
+            }
+        }
+
+        if let Some((index, occupants)) = launched {
+            let pad_id = format!("pad-{index}");
+            let player_ids = (0..occupants as u32).collect::<Vec<_>>();
+            if let Some(script) = &self.script
+                && let Err(error) = script.launch(&pad_id, &player_ids)
+            {
+                script.state().borrow_mut().last_error = Some(error);
             }
         }
     }

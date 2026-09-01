@@ -2,6 +2,7 @@
 
 use super::engine::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 use super::types::Input;
+use std::ptr;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn engine_create() -> *mut Engine {
@@ -75,6 +76,63 @@ pub unsafe extern "C" fn engine_set_launch_pad_count(engine: *mut Engine, count:
     if let Some(engine) = unsafe { engine.as_mut() } {
         engine.set_launch_pad_count(count);
     }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_obstacle(
+    engine: *mut Engine,
+    index: usize,
+    x: f32,
+    y: f32,
+    z: f32,
+    width: f32,
+    height: f32,
+    depth: f32,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_obstacle(index, [x, y, z], [width, height, depth]);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_obstacle_count(engine: *mut Engine, count: usize) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_obstacle_count(count);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_script_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_script_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_load_script_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.load_script_buffer()))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_script_loaded(engine: *const Engine) -> u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| u8::from(engine.script_loaded()))
+        .unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]
