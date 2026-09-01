@@ -2,6 +2,10 @@
 
 use super::engine::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 use super::types::Input;
+#[cfg(not(target_arch = "wasm32"))]
+use super::renderer::{RenderAgent, RenderBlock, RenderPad, RenderPalette, Renderer};
+#[cfg(not(target_arch = "wasm32"))]
+use std::ffi::c_void;
 use std::ptr;
 
 #[unsafe(no_mangle)]
@@ -271,5 +275,90 @@ pub unsafe extern "C" fn engine_elapsed(engine: *const Engine) -> f32 {
 pub unsafe extern "C" fn engine_destroy(engine: *mut Engine) {
     if !engine.is_null() {
         unsafe { drop(Box::from_raw(engine)) };
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn engine_renderer_create(
+    layer: *mut c_void,
+    width: f32,
+    height: f32,
+) -> *mut Renderer {
+    Renderer::new(layer, width, height)
+        .map(|renderer| Box::into_raw(Box::new(renderer)))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
+/// `renderer` must be null or a live pointer returned by `engine_renderer_create`.
+pub unsafe extern "C" fn engine_renderer_resize(
+    renderer: *mut Renderer,
+    width: f32,
+    height: f32,
+) {
+    if let Some(renderer) = unsafe { renderer.as_mut() } {
+        renderer.resize(width, height);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
+/// `renderer` must be null or a live renderer pointer. Non-null scene arrays
+/// must contain the number of elements described by their count arguments.
+pub unsafe extern "C" fn engine_renderer_set_scene(
+    renderer: *mut Renderer,
+    blocks: *const RenderBlock,
+    block_count: usize,
+    pads: *const RenderPad,
+    pad_count: usize,
+    agents: *const RenderAgent,
+    agent_count: usize,
+    player: RenderAgent,
+    ground_size: f32,
+    palette: RenderPalette,
+    elapsed: f32,
+) {
+    let Some(renderer) = (unsafe { renderer.as_mut() }) else {
+        return;
+    };
+    let blocks = if blocks.is_null() || block_count == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(blocks, block_count) }
+    };
+    let pads = if pads.is_null() || pad_count == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(pads, pad_count) }
+    };
+    let agents = if agents.is_null() || agent_count == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(agents, agent_count) }
+    };
+    renderer.set_scene(blocks, pads, agents, player, ground_size, palette, elapsed);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
+/// `renderer` must be null or a live pointer returned by `engine_renderer_create`.
+pub unsafe extern "C" fn engine_renderer_draw(renderer: *mut Renderer) {
+    if let Some(renderer) = unsafe { renderer.as_mut() } {
+        renderer.draw();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
+/// `renderer` must be null or a live renderer pointer and must not be used again.
+pub unsafe extern "C" fn engine_renderer_destroy(renderer: *mut Renderer) {
+    if !renderer.is_null() {
+        unsafe { drop(Box::from_raw(renderer)) };
     }
 }

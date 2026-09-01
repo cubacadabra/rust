@@ -4,6 +4,34 @@
 #include <stdint.h>
 
 typedef struct CubacadabraEngine CubacadabraEngine;
+typedef struct CubacadabraRenderer CubacadabraRenderer;
+
+typedef struct {
+    float position[3];
+    float size[3];
+    float color[4];
+} CubacadabraRenderBlock;
+
+typedef struct {
+    float x;
+    float z;
+    float radius;
+    float seconds;
+    float color[4];
+} CubacadabraRenderPad;
+
+typedef struct {
+    float position[3];
+    float color[4];
+} CubacadabraRenderAgent;
+
+typedef struct {
+    float sky[4];
+    float ground[4];
+    float ground_edge[4];
+    float grid[4];
+    float ink[4];
+} CubacadabraRenderPalette;
 
 CubacadabraEngine *engine_create(void);
 void engine_set_input(
@@ -66,5 +94,23 @@ uintptr_t engine_last_launch_pad(const CubacadabraEngine *engine);
 uintptr_t engine_last_launch_occupants(const CubacadabraEngine *engine);
 float engine_elapsed(const CubacadabraEngine *engine);
 void engine_destroy(CubacadabraEngine *engine);
+
+CubacadabraRenderer *engine_renderer_create(void *metal_layer, float width, float height);
+void engine_renderer_resize(CubacadabraRenderer *renderer, float width, float height);
+void engine_renderer_set_scene(
+    CubacadabraRenderer *renderer,
+    const CubacadabraRenderBlock *blocks,
+    uintptr_t block_count,
+    const CubacadabraRenderPad *pads,
+    uintptr_t pad_count,
+    const CubacadabraRenderAgent *agents,
+    uintptr_t agent_count,
+    CubacadabraRenderAgent player,
+    float ground_size,
+    CubacadabraRenderPalette palette,
+    float elapsed
+);
+void engine_renderer_draw(CubacadabraRenderer *renderer);
+void engine_renderer_destroy(CubacadabraRenderer *renderer);
 
 #endif

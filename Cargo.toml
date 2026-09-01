@@ -7,8 +7,16 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib", "staticlib"]
 
+[features]
+default = ["metal"]
+metal = ["wgpu/metal"]
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bytemuck = { version = "1.23", features = ["derive"] }
+glam = "0.30"
 mlua = { version = "0.12.1", default-features = false, features = ["luau", "vendored"] }
+pollster = "0.4"
+wgpu = { version = "29.0.1", default-features = false, features = ["wgsl"] }
 
 [profile.release]
 opt-level = "s"
