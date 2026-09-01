@@ -2,7 +2,7 @@
 
 use super::engine::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 #[cfg(not(target_arch = "wasm32"))]
-use super::renderer::{RenderAgent, RenderBlock, RenderPad, RenderPalette, Renderer};
+use super::renderer::Renderer;
 use super::types::Input;
 #[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
@@ -254,6 +254,24 @@ pub unsafe extern "C" fn engine_load_script_buffer(engine: *mut Engine) -> u8 {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_package_buffer_ptr(engine: *mut Engine, length: usize) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_package_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_load_package_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.load_package_buffer()))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_script_loaded(engine: *const Engine) -> u8 {
     unsafe { engine.as_ref() }
         .map(|engine| u8::from(engine.script_loaded()))
@@ -440,57 +458,14 @@ pub unsafe extern "C" fn engine_renderer_resize(renderer: *mut Renderer, width: 
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 /// # Safety
-/// `renderer` must be null or a live renderer pointer. Non-null scene arrays
-/// must contain the number of elements described by their count arguments.
-pub unsafe extern "C" fn engine_renderer_set_scene(
-    renderer: *mut Renderer,
-    blocks: *const RenderBlock,
-    block_count: usize,
-    pads: *const RenderPad,
-    pad_count: usize,
-    agents: *const RenderAgent,
-    agent_count: usize,
-    player: RenderAgent,
-    ground_size: f32,
-    palette: RenderPalette,
-    camera: *const f32,
-    elapsed: f32,
-) {
-    let Some(renderer) = (unsafe { renderer.as_mut() }) else {
+/// `renderer` and `engine` must be null or live pointers returned by their
+/// corresponding create functions.
+pub unsafe extern "C" fn engine_renderer_sync(renderer: *mut Renderer, engine: *const Engine) {
+    let (Some(renderer), Some(engine)) = (unsafe { renderer.as_mut() }, unsafe { engine.as_ref() })
+    else {
         return;
     };
-    let blocks = if blocks.is_null() || block_count == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(blocks, block_count) }
-    };
-    let pads = if pads.is_null() || pad_count == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(pads, pad_count) }
-    };
-    let agents = if agents.is_null() || agent_count == 0 {
-        &[]
-    } else {
-        unsafe { std::slice::from_raw_parts(agents, agent_count) }
-    };
-    let camera = if camera.is_null() {
-        [0.0, 0.0, 8.0]
-    } else {
-        unsafe { std::slice::from_raw_parts(camera, 3) }
-            .try_into()
-            .unwrap_or([0.0, 0.0, 8.0])
-    };
-    renderer.set_scene(
-        blocks,
-        pads,
-        agents,
-        player,
-        ground_size,
-        palette,
-        camera,
-        elapsed,
-    );
+    renderer.sync_engine(engine);
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -1,5 +1,6 @@
 mod engine;
 mod ffi;
+mod game_package;
 mod math;
 mod npc;
 mod player;

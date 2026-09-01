@@ -6,39 +6,6 @@
 typedef struct CubacadabraEngine CubacadabraEngine;
 typedef struct CubacadabraRenderer CubacadabraRenderer;
 
-typedef struct {
-    float position[3];
-    float size[3];
-    float color[4];
-} CubacadabraRenderBlock;
-
-typedef struct {
-    float x;
-    float z;
-    float radius;
-    float seconds;
-    float color[4];
-} CubacadabraRenderPad;
-
-typedef struct {
-    float position[3];
-    float yaw;
-    float walk_cycle;
-    float assembled;
-    float skin[4];
-    float shirt[4];
-    float pants[4];
-    float shoes[4];
-} CubacadabraRenderAgent;
-
-typedef struct {
-    float sky[4];
-    float ground[4];
-    float ground_edge[4];
-    float grid[4];
-    float ink[4];
-} CubacadabraRenderPalette;
-
 CubacadabraEngine *engine_create(void);
 void engine_set_input(
     CubacadabraEngine *engine,
@@ -126,6 +93,8 @@ uintptr_t engine_enter_session(
 );
 uint8_t *engine_script_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_script_buffer(CubacadabraEngine *engine);
+uint8_t *engine_package_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_load_package_buffer(CubacadabraEngine *engine);
 uint8_t engine_script_loaded(const CubacadabraEngine *engine);
 const float *engine_snapshot_ptr(const CubacadabraEngine *engine);
 uintptr_t engine_snapshot_len(void);
@@ -152,20 +121,7 @@ void engine_destroy(CubacadabraEngine *engine);
 
 CubacadabraRenderer *engine_renderer_create(void *metal_layer, float width, float height);
 void engine_renderer_resize(CubacadabraRenderer *renderer, float width, float height);
-void engine_renderer_set_scene(
-    CubacadabraRenderer *renderer,
-    const CubacadabraRenderBlock *blocks,
-    uintptr_t block_count,
-    const CubacadabraRenderPad *pads,
-    uintptr_t pad_count,
-    const CubacadabraRenderAgent *agents,
-    uintptr_t agent_count,
-    CubacadabraRenderAgent player,
-    float ground_size,
-    CubacadabraRenderPalette palette,
-    const float *camera,
-    float elapsed
-);
+void engine_renderer_sync(CubacadabraRenderer *renderer, const CubacadabraEngine *engine);
 void engine_renderer_draw(CubacadabraRenderer *renderer);
 void engine_renderer_destroy(CubacadabraRenderer *renderer);
 

@@ -5,47 +5,101 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 
+use crate::engine::{Engine, SNAPSHOT_STRIDE};
+use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
+
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-pub struct RenderBlock {
-    pub position: [f32; 3],
-    pub size: [f32; 3],
-    pub color: [f32; 4],
+#[derive(Clone)]
+struct RenderBlock {
+    position: [f32; 3],
+    size: [f32; 3],
+    color: [f32; 4],
+    outline: bool,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-pub struct RenderPad {
-    pub x: f32,
-    pub z: f32,
-    pub radius: f32,
-    pub seconds: f32,
-    pub color: [f32; 4],
+#[derive(Clone)]
+struct RenderPad {
+    x: f32,
+    z: f32,
+    radius: f32,
+    code: String,
+    label: String,
+    color: [f32; 4],
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Default, Pod, Zeroable)]
-pub struct RenderAgent {
-    pub position: [f32; 3],
-    pub yaw: f32,
-    pub walk_cycle: f32,
-    pub assembled: f32,
-    pub skin: [f32; 4],
-    pub shirt: [f32; 4],
-    pub pants: [f32; 4],
-    pub shoes: [f32; 4],
+#[derive(Clone, Copy, Default)]
+struct RenderEntity {
+    position: [f32; 3],
+    yaw: f32,
+    walk_cycle: f32,
+    assembled: f32,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Default, Pod, Zeroable)]
-pub struct RenderPalette {
-    pub sky: [f32; 4],
-    pub ground: [f32; 4],
-    pub ground_edge: [f32; 4],
-    pub grid: [f32; 4],
-    pub ink: [f32; 4],
+#[derive(Clone, Copy)]
+struct AvatarStyle {
+    skin: [f32; 4],
+    shirt: [f32; 4],
+    pants: [f32; 4],
+    shoes: [f32; 4],
+}
+
+#[derive(Clone, Copy)]
+struct RenderPalette {
+    sky: [f32; 4],
+    ground: [f32; 4],
+    ground_edge: [f32; 4],
+    grid: [f32; 4],
+    ink: [f32; 4],
+    paper: [f32; 4],
+}
+
+impl Default for RenderPalette {
+    fn default() -> Self {
+        Self {
+            sky: color(0x9ab9be),
+            ground: color(0xa7bd99),
+            ground_edge: color(0x587276),
+            grid: color(0xc4d5cf),
+            ink: color(0x173f43),
+            paper: color(0xf6f1e7),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct RenderCloud {
+    position: [f32; 3],
+    scale: f32,
+}
+
+#[derive(Clone)]
+struct RenderWorld {
+    blocks: Vec<RenderBlock>,
+    pads: Vec<RenderPad>,
+    clouds: Vec<RenderCloud>,
+    ground_size: f32,
+    grid_size: f32,
+    grid_divisions: usize,
+    spawn: [f32; 3],
+    show_spawn_pad: bool,
+    palette: RenderPalette,
+}
+
+impl Default for RenderWorld {
+    fn default() -> Self {
+        Self {
+            blocks: Vec::new(),
+            pads: Vec::new(),
+            clouds: Vec::new(),
+            ground_size: 120.0,
+            grid_size: 112.0,
+            grid_divisions: 28,
+            spawn: [0.0; 3],
+            show_spawn_pad: true,
+            palette: RenderPalette::default(),
+        }
+    }
 }
 
 #[repr(C)]
@@ -77,16 +131,30 @@ struct Globals {
     fog_color: [f32; 4],
 }
 
-#[derive(Default)]
 struct Scene {
-    blocks: Vec<RenderBlock>,
-    pads: Vec<RenderPad>,
-    agents: Vec<RenderAgent>,
-    player: RenderAgent,
-    ground_size: f32,
-    palette: RenderPalette,
+    world: RenderWorld,
+    agents: Vec<RenderEntity>,
+    player: RenderEntity,
+    pad_seconds: Vec<f32>,
+    player_style: AvatarStyle,
+    npc_styles: Vec<AvatarStyle>,
     camera: [f32; 3],
     elapsed: f32,
+}
+
+impl Default for Scene {
+    fn default() -> Self {
+        Self {
+            world: RenderWorld::default(),
+            agents: Vec::new(),
+            player: RenderEntity::default(),
+            pad_seconds: Vec::new(),
+            player_style: default_player_style(),
+            npc_styles: default_npc_styles(),
+            camera: [0.0, -0.095, 8.0],
+            elapsed: 0.0,
+        }
+    }
 }
 
 pub struct Renderer {
@@ -96,13 +164,19 @@ pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     globals_buffer: wgpu::Buffer,
     globals_bind_group: wgpu::BindGroup,
-    vertex_buffer: wgpu::Buffer,
-    vertex_capacity: usize,
+    static_vertex_buffer: wgpu::Buffer,
+    static_vertex_capacity: usize,
+    static_vertex_count: usize,
+    dynamic_vertex_buffer: wgpu::Buffer,
+    dynamic_vertex_capacity: usize,
     config: wgpu::SurfaceConfiguration,
     depth_view: wgpu::TextureView,
     width: f32,
     height: f32,
     scene: Scene,
+    package_generation: u32,
+    active_world: usize,
+    worlds: Vec<RenderWorld>,
 }
 
 impl Renderer {
@@ -289,8 +363,10 @@ impl Renderer {
             multiview_mask: None,
             cache: None,
         });
-        let vertex_capacity = 16_384;
-        let vertex_buffer = create_vertex_buffer(&device, vertex_capacity);
+        let static_vertex_capacity = 16_384;
+        let dynamic_vertex_capacity = 16_384;
+        let static_vertex_buffer = create_vertex_buffer(&device, static_vertex_capacity);
+        let dynamic_vertex_buffer = create_vertex_buffer(&device, dynamic_vertex_capacity);
         let depth_view = create_depth_view(&device, config.width, config.height);
 
         Self {
@@ -300,13 +376,19 @@ impl Renderer {
             pipeline,
             globals_buffer,
             globals_bind_group,
-            vertex_buffer,
-            vertex_capacity,
+            static_vertex_buffer,
+            static_vertex_capacity,
+            static_vertex_count: 0,
+            dynamic_vertex_buffer,
+            dynamic_vertex_capacity,
             config,
             depth_view,
             width,
             height,
             scene: Scene::default(),
+            package_generation: 0,
+            active_world: usize::MAX,
+            worlds: Vec::new(),
         }
     }
 
@@ -322,29 +404,50 @@ impl Renderer {
         self.depth_view = create_depth_view(&self.device, self.config.width, self.config.height);
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn set_scene(
-        &mut self,
-        blocks: &[RenderBlock],
-        pads: &[RenderPad],
-        agents: &[RenderAgent],
-        player: RenderAgent,
-        ground_size: f32,
-        palette: RenderPalette,
-        camera: [f32; 3],
-        elapsed: f32,
-    ) {
-        self.scene.blocks.clear();
-        self.scene.blocks.extend_from_slice(blocks);
-        self.scene.pads.clear();
-        self.scene.pads.extend_from_slice(pads);
+    pub fn sync_engine(&mut self, engine: &Engine) {
+        if self.package_generation != engine.package_generation {
+            self.worlds = engine
+                .package
+                .as_ref()
+                .map(|package| {
+                    let (player_style, npc_styles) = resolve_avatar_styles(package);
+                    self.scene.player_style = player_style;
+                    self.scene.npc_styles = npc_styles;
+                    package
+                        .world_entries()
+                        .into_iter()
+                        .map(|(_, world)| resolve_world(&world))
+                        .collect()
+                })
+                .unwrap_or_default();
+            self.package_generation = engine.package_generation;
+            self.active_world = usize::MAX;
+        }
+
+        if self.active_world != engine.active_world
+            && let Some(world) = self.worlds.get(engine.active_world).cloned()
+        {
+            self.active_world = engine.active_world;
+            self.scene.world = world;
+            self.rebuild_static_vertices();
+        }
+
+        let snapshot = engine.snapshot();
+        self.scene.player = render_entity(snapshot.get(..SNAPSHOT_STRIDE).unwrap_or(&[]));
         self.scene.agents.clear();
-        self.scene.agents.extend_from_slice(agents);
-        self.scene.player = player;
-        self.scene.ground_size = ground_size.max(10.0);
-        self.scene.palette = palette;
-        self.scene.camera = camera;
-        self.scene.elapsed = elapsed;
+        self.scene.agents.extend(
+            snapshot
+                .chunks_exact(SNAPSHOT_STRIDE)
+                .skip(1)
+                .take(engine.agent_count())
+                .map(render_entity),
+        );
+        self.scene.pad_seconds.clear();
+        self.scene
+            .pad_seconds
+            .extend((0..engine.launch_pad_count()).map(|index| engine.launch_pad_seconds(index)));
+        self.scene.camera = engine.camera();
+        self.scene.elapsed = engine.elapsed();
     }
 
     pub fn draw(&mut self) {
@@ -382,12 +485,17 @@ impl Renderer {
                 .normalize()
                 .extend(0.0)
                 .to_array(),
-            fog_color: self.scene.palette.sky,
+            fog_color: self.scene.world.palette.sky,
         };
-        let vertices = self.build_vertices();
-        self.ensure_vertex_capacity(vertices.len());
-        self.queue
-            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+        let dynamic_vertices = self.build_dynamic_vertices();
+        self.ensure_dynamic_vertex_capacity(dynamic_vertices.len());
+        if !dynamic_vertices.is_empty() {
+            self.queue.write_buffer(
+                &self.dynamic_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&dynamic_vertices),
+            );
+        }
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
 
@@ -419,9 +527,9 @@ impl Renderer {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: self.scene.palette.sky[0] as f64,
-                            g: self.scene.palette.sky[1] as f64,
-                            b: self.scene.palette.sky[2] as f64,
+                            r: self.scene.world.palette.sky[0] as f64,
+                            g: self.scene.world.palette.sky[1] as f64,
+                            b: self.scene.world.palette.sky[2] as f64,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
@@ -441,69 +549,362 @@ impl Renderer {
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
-            pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            pass.draw(0..vertices.len() as u32, 0..1);
+            if self.static_vertex_count > 0 {
+                pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
+                pass.draw(0..self.static_vertex_count as u32, 0..1);
+            }
+            if !dynamic_vertices.is_empty() {
+                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
+                pass.draw(0..dynamic_vertices.len() as u32, 0..1);
+            }
         }
         self.queue.submit(Some(encoder.finish()));
         frame.present();
     }
 
-    fn build_vertices(&self) -> Vec<Vertex> {
+    fn build_static_vertices(&self) -> Vec<Vertex> {
         let mut mesh = Vec::with_capacity(16_384);
-        let half = self.scene.ground_size * 0.5;
+        let world = &self.scene.world;
         add_cuboid(
             &mut mesh,
             Vec3::new(0.0, -0.08, 0.0),
-            Vec3::new(self.scene.ground_size, 0.16, self.scene.ground_size),
-            self.scene.palette.ground,
+            Vec3::new(world.ground_size, 0.16, world.ground_size),
+            world.palette.ground,
         );
-        for block in &self.scene.blocks {
+        add_cuboid_outline(
+            &mut mesh,
+            Vec3::new(0.0, -0.08, 0.0),
+            Vec3::new(world.ground_size, 0.16, world.ground_size),
+            0.035,
+            faded(world.palette.ground_edge, 0.46),
+        );
+        for block in &world.blocks {
             add_cuboid(
                 &mut mesh,
                 Vec3::from_array(block.position),
                 Vec3::from_array(block.size),
                 block.color,
             );
+            if block.outline {
+                add_cuboid_outline(
+                    &mut mesh,
+                    Vec3::from_array(block.position),
+                    Vec3::from_array(block.size),
+                    0.025,
+                    faded(world.palette.paper, 0.22),
+                );
+            }
         }
-        for pad in &self.scene.pads {
-            add_launch_pad(&mut mesh, *pad, self.scene.palette.ink);
-        }
-        for agent in &self.scene.agents {
-            add_avatar(&mut mesh, *agent, self.scene.palette.ink);
-        }
-        if self.scene.camera[2] > 0.75 {
-            add_avatar(&mut mesh, self.scene.player, self.scene.palette.ink);
-        }
-        let grid_step = self.scene.ground_size / 12.0;
-        for index in 0..=12 {
+        let divisions = world.grid_divisions.clamp(1, 128);
+        let half = world.grid_size * 0.5;
+        let grid_step = world.grid_size / divisions as f32;
+        for index in 0..=divisions {
             let offset = -half + index as f32 * grid_step;
             add_cuboid(
                 &mut mesh,
                 Vec3::new(offset, 0.015, 0.0),
-                Vec3::new(0.018, 0.025, self.scene.ground_size),
-                self.scene.palette.grid,
+                Vec3::new(0.018, 0.025, world.grid_size),
+                faded(world.palette.grid, 0.34),
             );
             add_cuboid(
                 &mut mesh,
                 Vec3::new(0.0, 0.016, offset),
-                Vec3::new(self.scene.ground_size, 0.026, 0.018),
-                self.scene.palette.grid,
+                Vec3::new(world.grid_size, 0.026, 0.018),
+                faded(world.palette.grid, 0.34),
             );
         }
         mesh
     }
 
-    fn ensure_vertex_capacity(&mut self, required: usize) {
-        if required <= self.vertex_capacity {
+    fn build_dynamic_vertices(&self) -> Vec<Vertex> {
+        let mut mesh = Vec::with_capacity(16_384);
+        let world = &self.scene.world;
+        if world.show_spawn_pad {
+            add_spawn_pad(
+                &mut mesh,
+                Vec3::from_array(world.spawn),
+                world.palette,
+                self.scene.elapsed,
+            );
+        }
+        for (index, cloud) in world.clouds.iter().enumerate() {
+            add_cloud(
+                &mut mesh,
+                cloud,
+                index,
+                world.palette.paper,
+                self.scene.elapsed,
+            );
+        }
+        for (index, pad) in world.pads.iter().enumerate() {
+            add_launch_pad(
+                &mut mesh,
+                pad,
+                self.scene.pad_seconds.get(index).copied().unwrap_or(0.0),
+                world.palette,
+                self.scene.elapsed,
+                index,
+            );
+        }
+        for (index, agent) in self.scene.agents.iter().enumerate() {
+            let style = self.scene.npc_styles[index % self.scene.npc_styles.len()];
+            add_avatar(&mut mesh, *agent, style, world.palette.ink);
+        }
+        if self.scene.camera[2] > 0.75 {
+            add_avatar(
+                &mut mesh,
+                self.scene.player,
+                self.scene.player_style,
+                world.palette.ink,
+            );
+        }
+        mesh
+    }
+
+    fn rebuild_static_vertices(&mut self) {
+        let vertices = self.build_static_vertices();
+        self.ensure_static_vertex_capacity(vertices.len());
+        self.static_vertex_count = vertices.len();
+        if !vertices.is_empty() {
+            self.queue.write_buffer(
+                &self.static_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&vertices),
+            );
+        }
+    }
+
+    fn ensure_static_vertex_capacity(&mut self, required: usize) {
+        if required <= self.static_vertex_capacity {
             return;
         }
-        self.vertex_capacity = required.next_power_of_two();
-        self.vertex_buffer = create_vertex_buffer(&self.device, self.vertex_capacity);
+        self.static_vertex_capacity = required.next_power_of_two();
+        self.static_vertex_buffer = create_vertex_buffer(&self.device, self.static_vertex_capacity);
     }
+
+    fn ensure_dynamic_vertex_capacity(&mut self, required: usize) {
+        if required <= self.dynamic_vertex_capacity {
+            return;
+        }
+        self.dynamic_vertex_capacity = required.next_power_of_two();
+        self.dynamic_vertex_buffer =
+            create_vertex_buffer(&self.device, self.dynamic_vertex_capacity);
+    }
+}
+
+fn render_entity(values: &[f32]) -> RenderEntity {
+    let value = |index: usize| values.get(index).copied().unwrap_or(0.0);
+    RenderEntity {
+        position: [value(0), value(1), value(2)],
+        yaw: value(3),
+        walk_cycle: value(4),
+        assembled: value(7),
+    }
+}
+
+fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
+    let defaults = RenderPalette::default();
+    let palette = RenderPalette {
+        sky: resolve_color(&definition.palette, "sky", defaults.sky),
+        ground: resolve_color(&definition.palette, "ground", defaults.ground),
+        ground_edge: resolve_color(&definition.palette, "groundEdge", defaults.ground_edge),
+        grid: resolve_color(&definition.palette, "grid", defaults.grid),
+        ink: resolve_color(&definition.palette, "ink", defaults.ink),
+        paper: resolve_color(&definition.palette, "paper", defaults.paper),
+    };
+    RenderWorld {
+        blocks: definition
+            .blocks
+            .iter()
+            .map(|block| RenderBlock {
+                position: block.position(),
+                size: block.size(),
+                color: resolve_color(&definition.palette, &block.color, color(0xffffff)),
+                outline: block.outline,
+            })
+            .collect(),
+        pads: definition
+            .launch_pads
+            .iter()
+            .map(|pad| RenderPad {
+                x: pad.x(),
+                z: pad.z(),
+                radius: pad.radius.max(0.2),
+                code: pad.code.clone(),
+                label: pad.label.clone(),
+                color: resolve_color(&definition.palette, &pad.color, palette.paper),
+            })
+            .collect(),
+        clouds: definition
+            .world
+            .clouds
+            .iter()
+            .map(|cloud| RenderCloud {
+                position: cloud.position(),
+                scale: cloud.scale.max(0.1),
+            })
+            .collect(),
+        ground_size: definition.world.ground_size.max(10.0),
+        grid_size: definition.world.grid_size.max(1.0),
+        grid_divisions: definition.world.grid_divisions,
+        spawn: definition.world.spawn(),
+        show_spawn_pad: definition.world.show_spawn_pad,
+        palette,
+    }
+}
+
+fn resolve_avatar_styles(package: &GamePackageDefinition) -> (AvatarStyle, Vec<AvatarStyle>) {
+    let player = package
+        .avatars
+        .player
+        .as_ref()
+        .map_or_else(default_player_style, |style| {
+            resolve_avatar_style(style, default_player_style())
+        });
+    let npcs = if package.avatars.npcs.is_empty() {
+        default_npc_styles()
+    } else {
+        let defaults = default_npc_styles();
+        package
+            .avatars
+            .npcs
+            .iter()
+            .enumerate()
+            .map(|(index, style)| resolve_avatar_style(style, defaults[index % defaults.len()]))
+            .collect()
+    };
+    (player, npcs)
+}
+
+fn resolve_avatar_style(definition: &AvatarDefinition, fallback: AvatarStyle) -> AvatarStyle {
+    AvatarStyle {
+        skin: definition
+            .skin
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(fallback.skin),
+        shirt: definition
+            .shirt
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(fallback.shirt),
+        pants: definition
+            .pants
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(fallback.pants),
+        shoes: definition
+            .shoes
+            .as_deref()
+            .and_then(parse_hex_color)
+            .unwrap_or(fallback.shoes),
+    }
+}
+
+fn default_player_style() -> AvatarStyle {
+    AvatarStyle {
+        skin: color(0xe8ae86),
+        shirt: color(0x2d6663),
+        pants: color(0x536a90),
+        shoes: color(0x293a43),
+    }
+}
+
+fn default_npc_styles() -> Vec<AvatarStyle> {
+    [
+        (0xf0b18a, 0xe76f51, 0x355070),
+        (0xd99770, 0x5f8f78, 0x3e5974),
+        (0xf4c39f, 0x748bd2, 0x43515e),
+        (0xc98263, 0xf0b54d, 0x385c62),
+        (0xe4a77b, 0xb276a9, 0x4b5e80),
+        (0xf1c29b, 0x3f8884, 0x414b5b),
+    ]
+    .map(|(skin, shirt, pants)| AvatarStyle {
+        skin: color(skin),
+        shirt: color(shirt),
+        pants: color(pants),
+        shoes: color(0x293a43),
+    })
+    .to_vec()
+}
+
+fn resolve_color(
+    palette: &std::collections::BTreeMap<String, String>,
+    token: &str,
+    fallback: [f32; 4],
+) -> [f32; 4] {
+    palette
+        .get(token)
+        .map(String::as_str)
+        .or_else(|| token.starts_with('#').then_some(token))
+        .and_then(parse_hex_color)
+        .unwrap_or(fallback)
+}
+
+fn parse_hex_color(value: &str) -> Option<[f32; 4]> {
+    let value = value.trim().trim_start_matches('#');
+    if value.len() != 6 {
+        return None;
+    }
+    u32::from_str_radix(value, 16).ok().map(color)
+}
+
+fn color(value: u32) -> [f32; 4] {
+    [
+        ((value >> 16) & 0xff) as f32 / 255.0,
+        ((value >> 8) & 0xff) as f32 / 255.0,
+        (value & 0xff) as f32 / 255.0,
+        1.0,
+    ]
+}
+
+fn faded(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
+    color[3] = alpha;
+    color
 }
 
 fn add_cuboid(vertices: &mut Vec<Vertex>, center: Vec3, size: Vec3, color: [f32; 4]) {
     add_transformed_cuboid(vertices, Mat4::from_translation(center), size, color);
+}
+
+fn add_cuboid_outline(
+    vertices: &mut Vec<Vertex>,
+    center: Vec3,
+    size: Vec3,
+    thickness: f32,
+    color: [f32; 4],
+) {
+    let half = size * 0.5;
+    for y in [-half.y, half.y] {
+        for z in [-half.z, half.z] {
+            add_cuboid(
+                vertices,
+                center + Vec3::new(0.0, y, z),
+                Vec3::new(size.x + thickness, thickness, thickness),
+                color,
+            );
+        }
+    }
+    for x in [-half.x, half.x] {
+        for z in [-half.z, half.z] {
+            add_cuboid(
+                vertices,
+                center + Vec3::new(x, 0.0, z),
+                Vec3::new(thickness, size.y + thickness, thickness),
+                color,
+            );
+        }
+    }
+    for x in [-half.x, half.x] {
+        for y in [-half.y, half.y] {
+            add_cuboid(
+                vertices,
+                center + Vec3::new(x, y, 0.0),
+                Vec3::new(thickness, thickness, size.z + thickness),
+                color,
+            );
+        }
+    }
 }
 
 fn add_transformed_cuboid(
@@ -581,7 +982,12 @@ fn add_transformed_cuboid(
     );
 }
 
-fn add_avatar(vertices: &mut Vec<Vertex>, agent: RenderAgent, face_color: [f32; 4]) {
+fn add_avatar(
+    vertices: &mut Vec<Vertex>,
+    agent: RenderEntity,
+    style: AvatarStyle,
+    face_color: [f32; 4],
+) {
     let mut shadow_color = face_color;
     shadow_color[3] = 0.14;
     add_cylinder(
@@ -614,49 +1020,49 @@ fn add_avatar(vertices: &mut Vec<Vertex>, agent: RenderAgent, face_color: [f32; 
         Vec3::new(0.0, 1.82 + bob, 0.0),
         Vec3::new(1.1, 1.25, 0.64),
         0.0,
-        agent.shirt,
+        style.shirt,
     );
     part(
         Vec3::new(0.0, 3.01, 0.0),
         Vec3::splat(0.84),
         0.0,
-        agent.skin,
+        style.skin,
     );
     part(
         Vec3::new(-0.76, 1.84, 0.0),
         Vec3::new(0.36, 1.15, 0.45),
         stride,
-        agent.shirt,
+        style.shirt,
     );
     part(
         Vec3::new(0.76, 1.84, 0.0),
         Vec3::new(0.36, 1.15, 0.45),
         -stride,
-        agent.shirt,
+        style.shirt,
     );
     part(
         Vec3::new(-0.28, 0.62, 0.0),
         Vec3::new(0.47, 1.25, 0.55),
         -stride,
-        agent.pants,
+        style.pants,
     );
     part(
         Vec3::new(0.28, 0.62, 0.0),
         Vec3::new(0.47, 1.25, 0.55),
         stride,
-        agent.pants,
+        style.pants,
     );
     part(
         Vec3::new(-0.28, 0.11, -0.06),
         Vec3::new(0.56, 0.22, 0.7),
         0.0,
-        agent.shoes,
+        style.shoes,
     );
     part(
         Vec3::new(0.28, 0.11, -0.06),
         Vec3::new(0.56, 0.22, 0.7),
         0.0,
-        agent.shoes,
+        style.shoes,
     );
     part(
         Vec3::new(-0.16, 3.04, -0.43),
@@ -672,14 +1078,82 @@ fn add_avatar(vertices: &mut Vec<Vertex>, agent: RenderAgent, face_color: [f32; 
     );
 }
 
-fn add_launch_pad(vertices: &mut Vec<Vertex>, pad: RenderPad, ink: [f32; 4]) {
+fn add_spawn_pad(vertices: &mut Vec<Vertex>, origin: Vec3, palette: RenderPalette, elapsed: f32) {
+    add_cylinder(
+        vertices,
+        origin + Vec3::new(0.0, 0.08, 0.0),
+        2.35,
+        0.16,
+        palette.ink,
+    );
+    add_cylinder(
+        vertices,
+        origin + Vec3::new(0.0, 0.18, 0.0),
+        1.9,
+        0.08,
+        faded(palette.paper, 0.46),
+    );
+    add_ring(
+        vertices,
+        origin + Vec3::new(0.0, 0.24, 0.0),
+        1.55,
+        0.13,
+        palette.ground_edge,
+    );
+    let rotation = Quat::from_rotation_y(elapsed * 0.22);
+    for angle in [0.0_f32, std::f32::consts::FRAC_PI_2] {
+        let transform = Mat4::from_translation(origin + Vec3::new(0.0, 0.30, 0.0))
+            * Mat4::from_quat(rotation * Quat::from_rotation_y(angle));
+        add_transformed_cuboid(
+            vertices,
+            transform,
+            Vec3::new(2.45, 0.045, 0.12),
+            faded(palette.paper, 0.62),
+        );
+    }
+}
+
+fn add_cloud(
+    vertices: &mut Vec<Vertex>,
+    cloud: &RenderCloud,
+    index: usize,
+    paper: [f32; 4],
+    elapsed: f32,
+) {
+    let drift =
+        (elapsed * (0.02 + index as f32 * 0.003) + index as f32).sin() * (1.2 + index as f32 * 0.2);
+    let origin = Vec3::from_array(cloud.position) + Vec3::new(drift, 0.0, 0.0);
+    let cloud_color = faded(paper, 0.52);
+    for (offset, radius) in [
+        (Vec3::new(-1.1, 0.0, 0.0), 1.1),
+        (Vec3::new(0.0, 0.24, 0.0), 1.45),
+        (Vec3::new(1.1, 0.02, 0.0), 0.92),
+        (Vec3::new(0.42, -0.15, 0.08), 1.05),
+    ] {
+        add_sphere(
+            vertices,
+            origin + offset * cloud.scale,
+            radius * cloud.scale,
+            cloud_color,
+        );
+    }
+}
+
+fn add_launch_pad(
+    vertices: &mut Vec<Vertex>,
+    pad: &RenderPad,
+    seconds: f32,
+    palette: RenderPalette,
+    elapsed: f32,
+    index: usize,
+) {
     let origin = Vec3::new(pad.x, 0.0, pad.z);
     add_cylinder(
         vertices,
         origin + Vec3::new(0.0, 0.10, 0.0),
         pad.radius + 0.45,
         0.20,
-        ink,
+        palette.ink,
     );
 
     let mut inner = pad.color;
@@ -691,19 +1165,26 @@ fn add_launch_pad(vertices: &mut Vec<Vertex>, pad: RenderPad, ink: [f32; 4]) {
         0.025,
         inner,
     );
+    let pulse = 1.0 + (elapsed * 2.2 + index as f32 * 1.7).sin() * 0.045;
+    let mut ring_color = pad.color;
+    if seconds > 0.0 {
+        ring_color[3] = 0.82 + (elapsed * 5.0).sin().abs() * 0.18;
+    }
     add_ring(
         vertices,
         origin + Vec3::new(0.0, 0.28, 0.0),
-        (pad.radius - 0.15).max(0.2),
+        (pad.radius - 0.15).max(0.2) * pulse,
         0.11,
-        pad.color,
+        ring_color,
     );
 
-    for x in [-2.35, 2.35] {
-        add_cuboid(
+    for (beacon_index, x) in [-2.35, 2.35].into_iter().enumerate() {
+        let y = 1.35 + (elapsed * 2.6 + index as f32 + beacon_index as f32).sin() * 0.12;
+        add_cylinder(
             vertices,
-            origin + Vec3::new(x, 1.35, -0.35),
-            Vec3::new(0.38, 2.70, 0.46),
+            origin + Vec3::new(x, y, -0.35),
+            0.19,
+            2.70,
             pad.color,
         );
     }
@@ -713,6 +1194,120 @@ fn add_launch_pad(vertices: &mut Vec<Vertex>, pad: RenderPad, ink: [f32; 4]) {
         Vec3::new(5.05, 0.32, 0.38),
         pad.color,
     );
+    add_cuboid(
+        vertices,
+        origin + Vec3::new(0.0, 4.0, -0.35),
+        Vec3::new(5.05, 0.82, 0.22),
+        palette.ink,
+    );
+    add_cuboid(
+        vertices,
+        origin + Vec3::new(-2.42, 4.0, -0.23),
+        Vec3::new(0.12, 0.82, 0.08),
+        pad.color,
+    );
+    let label = format!("{} {}", pad.code, pad.label);
+    add_pixel_text(
+        vertices,
+        label.trim(),
+        origin + Vec3::new(0.08, 4.0, -0.225),
+        0.0,
+        4.55,
+        palette.paper,
+    );
+    add_pixel_text(
+        vertices,
+        label.trim(),
+        origin + Vec3::new(-0.08, 4.0, -0.475),
+        std::f32::consts::PI,
+        4.55,
+        palette.paper,
+    );
+}
+
+fn add_pixel_text(
+    vertices: &mut Vec<Vertex>,
+    text: &str,
+    origin: Vec3,
+    yaw: f32,
+    max_width: f32,
+    color: [f32; 4],
+) {
+    let characters = text
+        .chars()
+        .filter(|character| character.is_ascii())
+        .map(|character| character.to_ascii_uppercase())
+        .take(24)
+        .collect::<Vec<_>>();
+    if characters.is_empty() {
+        return;
+    }
+    let columns = characters.len() * 6 - 1;
+    let pixel = (max_width / columns as f32).min(0.072);
+    let text_width = columns as f32 * pixel;
+    let root = Mat4::from_translation(origin) * Mat4::from_quat(Quat::from_rotation_y(yaw));
+    for (character_index, character) in characters.into_iter().enumerate() {
+        let glyph = glyph(character);
+        for (row, bits) in glyph.into_iter().enumerate() {
+            for column in 0..5 {
+                if bits & (1 << (4 - column)) == 0 {
+                    continue;
+                }
+                let x =
+                    character_index as f32 * pixel * 6.0 + column as f32 * pixel - text_width * 0.5;
+                let y = (3.0 - row as f32) * pixel;
+                add_transformed_cuboid(
+                    vertices,
+                    root * Mat4::from_translation(Vec3::new(x, y, 0.0)),
+                    Vec3::new(pixel * 0.82, pixel * 0.82, 0.035),
+                    color,
+                );
+            }
+        }
+    }
+}
+
+fn glyph(character: char) -> [u8; 7] {
+    match character {
+        'A' => [14, 17, 17, 31, 17, 17, 17],
+        'B' => [30, 17, 17, 30, 17, 17, 30],
+        'C' => [14, 17, 16, 16, 16, 17, 14],
+        'D' => [30, 17, 17, 17, 17, 17, 30],
+        'E' => [31, 16, 16, 30, 16, 16, 31],
+        'F' => [31, 16, 16, 30, 16, 16, 16],
+        'G' => [14, 17, 16, 23, 17, 17, 15],
+        'H' => [17, 17, 17, 31, 17, 17, 17],
+        'I' => [31, 4, 4, 4, 4, 4, 31],
+        'J' => [7, 2, 2, 2, 18, 18, 12],
+        'K' => [17, 18, 20, 24, 20, 18, 17],
+        'L' => [16, 16, 16, 16, 16, 16, 31],
+        'M' => [17, 27, 21, 21, 17, 17, 17],
+        'N' => [17, 25, 21, 19, 17, 17, 17],
+        'O' => [14, 17, 17, 17, 17, 17, 14],
+        'P' => [30, 17, 17, 30, 16, 16, 16],
+        'Q' => [14, 17, 17, 17, 21, 18, 13],
+        'R' => [30, 17, 17, 30, 20, 18, 17],
+        'S' => [15, 16, 16, 14, 1, 1, 30],
+        'T' => [31, 4, 4, 4, 4, 4, 4],
+        'U' => [17, 17, 17, 17, 17, 17, 14],
+        'V' => [17, 17, 17, 17, 17, 10, 4],
+        'W' => [17, 17, 17, 21, 21, 21, 10],
+        'X' => [17, 17, 10, 4, 10, 17, 17],
+        'Y' => [17, 17, 10, 4, 4, 4, 4],
+        'Z' => [31, 1, 2, 4, 8, 16, 31],
+        '0' => [14, 17, 19, 21, 25, 17, 14],
+        '1' => [4, 12, 4, 4, 4, 4, 14],
+        '2' => [14, 17, 1, 2, 4, 8, 31],
+        '3' => [30, 1, 1, 14, 1, 1, 30],
+        '4' => [2, 6, 10, 18, 31, 2, 2],
+        '5' => [31, 16, 16, 30, 1, 1, 30],
+        '6' => [14, 16, 16, 30, 17, 17, 14],
+        '7' => [31, 1, 2, 4, 8, 8, 8],
+        '8' => [14, 17, 17, 14, 17, 17, 14],
+        '9' => [14, 17, 17, 15, 1, 1, 14],
+        '-' => [0, 0, 0, 31, 0, 0, 0],
+        _ => [0; 7],
+    }
 }
 
 fn add_ring(
@@ -769,6 +1364,43 @@ fn add_cylinder(
             Vec3::Y,
             color,
         );
+    }
+}
+
+fn add_sphere(vertices: &mut Vec<Vertex>, center: Vec3, radius: f32, color: [f32; 4]) {
+    let latitude_segments = 6;
+    let longitude_segments = 12;
+    let point = |latitude: usize, longitude: usize| {
+        let vertical = latitude as f32 / latitude_segments as f32;
+        let horizontal = longitude as f32 / longitude_segments as f32;
+        let phi = vertical * std::f32::consts::PI;
+        let theta = horizontal * std::f32::consts::TAU;
+        Vec3::new(theta.cos() * phi.sin(), phi.cos(), theta.sin() * phi.sin())
+    };
+    for latitude in 0..latitude_segments {
+        for longitude in 0..longitude_segments {
+            let next = (longitude + 1) % longitude_segments;
+            let normal_a = point(latitude, longitude);
+            let normal_b = point(latitude + 1, longitude);
+            let normal_c = point(latitude + 1, next);
+            let normal_d = point(latitude, next);
+            add_triangle(
+                vertices,
+                center + normal_a * radius,
+                center + normal_b * radius,
+                center + normal_c * radius,
+                (normal_a + normal_b + normal_c).normalize_or_zero(),
+                color,
+            );
+            add_triangle(
+                vertices,
+                center + normal_a * radius,
+                center + normal_c * radius,
+                center + normal_d * radius,
+                (normal_a + normal_c + normal_d).normalize_or_zero(),
+                color,
+            );
+        }
     }
 }
 

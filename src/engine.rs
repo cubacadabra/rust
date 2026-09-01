@@ -1,3 +1,4 @@
+use crate::game_package::GamePackageDefinition;
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
 use crate::scripting::GameScript;
 use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player};
@@ -48,6 +49,10 @@ pub struct Engine {
     pub(crate) last_world_destination: usize,
     pub(crate) script: Option<GameScript>,
     pub(crate) script_buffer: Vec<u8>,
+    pub(crate) package: Option<GamePackageDefinition>,
+    pub(crate) package_generation: u32,
+    pub(crate) package_buffer: Vec<u8>,
+    pub(crate) world_ids: Vec<String>,
 }
 
 impl Engine {
@@ -88,6 +93,10 @@ impl Engine {
             last_world_destination: 0,
             script: None,
             script_buffer: Vec::new(),
+            package: None,
+            package_generation: 0,
+            package_buffer: Vec::new(),
+            world_ids: Vec::new(),
         };
         engine.write_snapshot();
         engine
@@ -375,6 +384,68 @@ impl Engine {
     pub(crate) fn prepare_script_buffer(&mut self, length: usize) -> *mut u8 {
         self.script_buffer.resize(length, 0);
         self.script_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn prepare_package_buffer(&mut self, length: usize) -> *mut u8 {
+        self.package_buffer.resize(length, 0);
+        self.package_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn load_package_buffer(&mut self) -> bool {
+        let source = String::from_utf8_lossy(&self.package_buffer);
+        let Ok(package) = GamePackageDefinition::parse(&source) else {
+            return false;
+        };
+        let entries = package.world_entries();
+        let world_indices = entries
+            .iter()
+            .enumerate()
+            .map(|(index, (id, _))| (id.as_str(), index))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let worlds = entries
+            .iter()
+            .map(|(id, definition)| {
+                let launch_pads = definition
+                    .launch_pads
+                    .iter()
+                    .map(|pad| LaunchPad::new(pad.x(), pad.z(), pad.radius, pad.countdown))
+                    .collect::<Vec<_>>();
+                let launch_destinations = definition
+                    .launch_pads
+                    .iter()
+                    .map(|pad| {
+                        pad.destination_world
+                            .as_deref()
+                            .or_else(|| {
+                                (id == "lobby")
+                                    .then_some(package.launch.destination_world.as_deref())
+                                    .flatten()
+                            })
+                            .and_then(|destination| world_indices.get(destination).copied())
+                    })
+                    .collect::<Vec<_>>();
+                let obstacles = definition
+                    .blocks
+                    .iter()
+                    .map(|block| block_bounds(block.position(), block.size()))
+                    .collect::<Vec<_>>();
+                RuntimeWorld {
+                    spawn: definition.world.spawn(),
+                    launch_pads,
+                    launch_destinations,
+                    obstacles,
+                }
+            })
+            .collect::<Vec<_>>();
+        let Some(start_world) = world_indices.get(package.start_world.as_str()).copied() else {
+            return false;
+        };
+
+        self.worlds = worlds;
+        self.world_ids = entries.into_iter().map(|(id, _)| id).collect();
+        self.package = Some(package);
+        self.package_generation = self.package_generation.wrapping_add(1).max(1);
+        self.start_world(start_world)
     }
 
     pub(crate) fn load_script_buffer(&mut self) -> bool {
