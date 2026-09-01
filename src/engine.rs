@@ -1,6 +1,6 @@
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
-use crate::types::{Agent, AgentPhase, Input, Player};
-use crate::world::{Aabb, Gate, block_bounds};
+use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player};
+use crate::world::{Aabb, LaunchPad, block_bounds};
 
 pub(crate) const TOTAL_PLAYERS: usize = 18;
 pub(crate) const MAX_AGENTS: usize = TOTAL_PLAYERS - 1;
@@ -15,6 +15,7 @@ pub(crate) const AIR_ACCELERATION: f32 = 9.0;
 pub(crate) const GRAVITY: f32 = 28.0;
 pub(crate) const JUMP_VELOCITY: f32 = 10.5;
 pub(crate) const WORLD_LIMIT: f32 = 57.5;
+pub(crate) const DEFAULT_LAUNCH_COUNTDOWN: f32 = 8.0;
 
 const LOOK_SENSITIVITY: f32 = 0.0062;
 const MAX_PITCH: f32 = 1.1;
@@ -24,7 +25,7 @@ pub struct Engine {
     pub(crate) player: Player,
     pub(crate) agents: Vec<Agent>,
     pub(crate) obstacles: Vec<Aabb>,
-    pub(crate) gates: [Gate; 3],
+    pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) input: Input,
     pub(crate) elapsed: f32,
     pub(crate) next_spawn_at: f32,
@@ -36,6 +37,9 @@ pub struct Engine {
     pub(crate) target_camera_distance: f32,
     pub(crate) random: Random,
     pub(crate) snapshot: Vec<f32>,
+    pub(crate) launch_event_id: u32,
+    pub(crate) last_launch_pad: usize,
+    pub(crate) last_launch_occupants: usize,
 }
 
 impl Engine {
@@ -50,10 +54,10 @@ impl Engine {
             player: Player::default(),
             agents: Vec::with_capacity(MAX_AGENTS),
             obstacles,
-            gates: [
-                Gate { x: -10.0, z: -3.0 },
-                Gate { x: 0.0, z: -7.0 },
-                Gate { x: 10.0, z: -3.0 },
+            launch_pads: vec![
+                LaunchPad::new(-10.0, -3.0, 2.7, DEFAULT_LAUNCH_COUNTDOWN),
+                LaunchPad::new(0.0, -7.0, 2.7, DEFAULT_LAUNCH_COUNTDOWN),
+                LaunchPad::new(10.0, -3.0, 2.7, DEFAULT_LAUNCH_COUNTDOWN),
             ],
             input: Input::default(),
             elapsed: 0.0,
@@ -66,6 +70,9 @@ impl Engine {
             target_camera_distance: 8.0,
             random: Random::new(0xC0BA_CAFE),
             snapshot: vec![0.0; (MAX_AGENTS + 1) * SNAPSHOT_STRIDE],
+            launch_event_id: 0,
+            last_launch_pad: 0,
+            last_launch_occupants: 0,
         };
         engine.write_snapshot();
         engine
@@ -73,6 +80,26 @@ impl Engine {
 
     pub(crate) fn set_input(&mut self, input: Input) {
         self.input = input;
+    }
+
+    pub(crate) fn set_launch_pad(
+        &mut self,
+        index: usize,
+        x: f32,
+        z: f32,
+        radius: f32,
+        countdown: f32,
+    ) {
+        if index >= self.launch_pads.len() {
+            self.launch_pads.resize(index + 1, LaunchPad::default());
+        }
+        if let Some(pad) = self.launch_pads.get_mut(index) {
+            *pad = LaunchPad::new(x, z, radius, countdown);
+        }
+    }
+
+    pub(crate) fn set_launch_pad_count(&mut self, count: usize) {
+        self.launch_pads.resize(count.min(64), LaunchPad::default());
     }
 
     pub fn reset_view(&mut self) {
@@ -92,6 +119,7 @@ impl Engine {
         self.update_player(delta);
         self.spawn_agents();
         self.update_agents(delta);
+        self.update_launch_pads();
         self.write_snapshot();
     }
 
@@ -112,21 +140,107 @@ impl Engine {
     }
 
     pub fn meeting_count(&self, index: usize) -> usize {
-        let Some(gate) = self.gates.get(index) else {
+        self.count_launch_pad_occupants(index)
+    }
+
+    pub(crate) fn launch_pad_occupants(&self, index: usize) -> usize {
+        self.launch_pads.get(index).map_or(0, |pad| pad.occupants)
+    }
+
+    pub(crate) fn launch_pad_count(&self) -> usize {
+        self.launch_pads.len()
+    }
+
+    pub(crate) fn launch_pad_seconds(&self, index: usize) -> f32 {
+        self.launch_pads.get(index).map_or(0.0, |pad| {
+            if pad.phase == LaunchPadPhase::Countdown {
+                (pad.launch_at - self.elapsed).max(0.0)
+            } else {
+                0.0
+            }
+        })
+    }
+
+    pub(crate) fn launch_pad_phase(&self, index: usize) -> u8 {
+        self.launch_pads
+            .get(index)
+            .map_or(0, |pad| pad.phase.code())
+    }
+
+    pub(crate) fn player_launch_pad(&self) -> i32 {
+        self.launch_pads
+            .iter()
+            .position(|pad| self.player_is_on_pad(pad))
+            .map_or(-1, |index| index as i32)
+    }
+
+    pub(crate) fn launch_event_id(&self) -> u32 {
+        self.launch_event_id
+    }
+
+    pub(crate) fn last_launch_pad(&self) -> usize {
+        self.last_launch_pad
+    }
+
+    pub(crate) fn last_launch_occupants(&self) -> usize {
+        self.last_launch_occupants
+    }
+
+    fn update_launch_pads(&mut self) {
+        for index in 0..self.launch_pads.len() {
+            let occupants = self.count_launch_pad_occupants(index);
+            let pad = &mut self.launch_pads[index];
+            pad.occupants = occupants;
+
+            match pad.phase {
+                LaunchPadPhase::Idle if occupants > 0 => {
+                    pad.phase = LaunchPadPhase::Countdown;
+                    pad.launch_at = self.elapsed + pad.countdown;
+                }
+                LaunchPadPhase::Countdown if occupants == 0 => {
+                    pad.phase = LaunchPadPhase::Idle;
+                    pad.launch_at = 0.0;
+                }
+                LaunchPadPhase::Countdown if self.elapsed >= pad.launch_at => {
+                    pad.phase = LaunchPadPhase::Launched;
+                    self.launch_event_id = self.launch_event_id.wrapping_add(1);
+                    self.last_launch_pad = index;
+                    self.last_launch_occupants = occupants;
+                }
+                LaunchPadPhase::Launched if occupants == 0 => {
+                    pad.phase = LaunchPadPhase::Idle;
+                    pad.launch_at = 0.0;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn count_launch_pad_occupants(&self, index: usize) -> usize {
+        let Some(pad) = self.launch_pads.get(index) else {
             return 0;
         };
         let agents = self
             .agents
             .iter()
-            .filter(|agent| agent.meeting_index == index && agent.phase == AgentPhase::Assembled)
+            .filter(|agent| {
+                agent.meeting_index == index
+                    && agent.phase == AgentPhase::Assembled
+                    && horizontal_distance(agent.position[0], agent.position[2], pad.x, pad.z)
+                        <= pad.radius
+            })
             .count();
-        let player_is_here = horizontal_distance(
-            self.player.position[0],
-            self.player.position[2],
-            gate.x,
-            gate.z,
-        ) <= 2.7;
-        agents + usize::from(player_is_here)
+        agents + usize::from(self.player_is_on_pad(pad))
+    }
+
+    fn player_is_on_pad(&self, pad: &LaunchPad) -> bool {
+        self.player.grounded
+            && horizontal_distance(
+                self.player.position[0],
+                self.player.position[2],
+                pad.x,
+                pad.z,
+            ) <= pad.radius
     }
 
     fn apply_camera_input(&mut self) {
@@ -232,5 +346,51 @@ mod tests {
         }
         assert_eq!(engine.agents.len(), 1);
         assert_eq!(engine.snapshot[SNAPSHOT_STRIDE + 5], 0.0);
+    }
+
+    #[test]
+    fn occupied_launch_pad_counts_down_and_emits_event() {
+        let mut engine = Engine::new();
+        engine.player.position = [-10.0, 0.0, -3.0];
+
+        engine.step(1.0 / 60.0);
+        assert_eq!(engine.launch_pad_phase(0), LaunchPadPhase::Countdown.code());
+        assert_eq!(engine.launch_pad_occupants(0), 1);
+        assert!(engine.launch_pad_seconds(0) > 7.9);
+
+        for _ in 0..480 {
+            engine.step(1.0 / 60.0);
+        }
+
+        assert_eq!(engine.launch_event_id, 1);
+        assert_eq!(engine.last_launch_pad, 0);
+        assert_eq!(engine.last_launch_occupants, 1);
+        assert_eq!(engine.launch_pad_phase(0), LaunchPadPhase::Launched.code());
+    }
+
+    #[test]
+    fn empty_launch_pad_cancels_countdown() {
+        let mut engine = Engine::new();
+        engine.player.position = [-10.0, 0.0, -3.0];
+        engine.step(1.0 / 60.0);
+        engine.player.position = [0.0, 0.0, 11.5];
+        engine.step(1.0 / 60.0);
+
+        assert_eq!(engine.launch_pad_phase(0), LaunchPadPhase::Idle.code());
+        assert_eq!(engine.launch_event_id, 0);
+    }
+
+    #[test]
+    fn launch_pad_registry_accepts_world_defined_counts() {
+        let mut engine = Engine::new();
+        engine.set_launch_pad_count(1);
+        engine.set_launch_pad(0, 4.0, -2.0, 2.0, 4.0);
+
+        assert_eq!(engine.launch_pad_count(), 1);
+        engine.player.position = [4.0, 0.0, -2.0];
+        engine.step(1.0 / 60.0);
+
+        assert_eq!(engine.launch_pad_occupants(0), 1);
+        assert_eq!(engine.launch_pad_phase(0), LaunchPadPhase::Countdown.code());
     }
 }

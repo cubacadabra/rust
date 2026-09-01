@@ -9,12 +9,15 @@ use crate::world::{entry_point, slot_offset};
 
 impl Engine {
     pub(crate) fn spawn_agents(&mut self) {
+        if self.launch_pads.is_empty() {
+            return;
+        }
         while self.agents.len() < MAX_AGENTS && self.elapsed >= self.next_spawn_at {
             let index = self.agents.len();
             let entry = entry_point(index);
-            let meeting_index = entry.2;
+            let meeting_index = entry.2 % self.launch_pads.len();
             let slot_index = index / 3;
-            let gate = self.gates[meeting_index];
+            let gate = self.launch_pads[meeting_index];
             let offset = slot_offset(slot_index);
             let position = [
                 entry.0 + self.random.between(-0.7, 0.7),

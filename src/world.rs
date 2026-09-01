@@ -1,3 +1,5 @@
+use crate::types::LaunchPadPhase;
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Aabb {
     pub(crate) min_x: f32,
@@ -9,9 +11,34 @@ pub(crate) struct Aabb {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Gate {
+pub(crate) struct LaunchPad {
     pub(crate) x: f32,
     pub(crate) z: f32,
+    pub(crate) radius: f32,
+    pub(crate) countdown: f32,
+    pub(crate) phase: LaunchPadPhase,
+    pub(crate) launch_at: f32,
+    pub(crate) occupants: usize,
+}
+
+impl LaunchPad {
+    pub(crate) fn new(x: f32, z: f32, radius: f32, countdown: f32) -> Self {
+        Self {
+            x,
+            z,
+            radius: radius.max(0.1),
+            countdown: countdown.max(0.1),
+            phase: LaunchPadPhase::Idle,
+            launch_at: 0.0,
+            occupants: 0,
+        }
+    }
+}
+
+impl Default for LaunchPad {
+    fn default() -> Self {
+        Self::new(0.0, 0.0, 2.7, 8.0)
+    }
 }
 
 pub(crate) fn block_bounds(position: [f32; 3], size: [f32; 3]) -> Aabb {

@@ -42,6 +42,23 @@ pub(crate) enum AgentPhase {
     Assembled,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LaunchPadPhase {
+    Idle,
+    Countdown,
+    Launched,
+}
+
+impl LaunchPadPhase {
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Self::Idle => 0,
+            Self::Countdown => 1,
+            Self::Launched => 2,
+        }
+    }
+}
+
 impl AgentPhase {
     pub(crate) fn code(self) -> f32 {
         match self {
