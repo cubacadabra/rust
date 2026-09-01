@@ -1,7 +1,7 @@
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
 use crate::scripting::GameScript;
 use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player};
-use crate::world::{Aabb, LaunchPad, block_bounds};
+use crate::world::{Aabb, LaunchPad, block_bounds, slot_offset};
 
 pub(crate) const TOTAL_PLAYERS: usize = 18;
 pub(crate) const MAX_AGENTS: usize = TOTAL_PLAYERS - 1;
@@ -109,7 +109,8 @@ impl Engine {
 
     pub(crate) fn set_obstacle(&mut self, index: usize, position: [f32; 3], size: [f32; 3]) {
         if index >= self.obstacles.len() {
-            self.obstacles.resize(index + 1, block_bounds([0.0; 3], [0.0; 3]));
+            self.obstacles
+                .resize(index + 1, block_bounds([0.0; 3], [0.0; 3]));
         }
         if let Some(obstacle) = self.obstacles.get_mut(index) {
             *obstacle = block_bounds(position, size);
@@ -117,7 +118,49 @@ impl Engine {
     }
 
     pub(crate) fn set_obstacle_count(&mut self, count: usize) {
-        self.obstacles.resize(count.min(256), block_bounds([0.0; 3], [0.0; 3]));
+        self.obstacles
+            .resize(count.min(256), block_bounds([0.0; 3], [0.0; 3]));
+    }
+
+    pub(crate) fn enter_session(&mut self, launch_pad_index: usize, spawn: [f32; 3]) -> usize {
+        let Some(launch_pad) = self.launch_pads.get(launch_pad_index).copied() else {
+            return 0;
+        };
+
+        let mut selected_agents = self
+            .agents
+            .iter()
+            .copied()
+            .filter(|agent| {
+                agent.meeting_index == launch_pad_index
+                    && agent.phase == AgentPhase::Assembled
+                    && horizontal_distance(
+                        agent.position[0],
+                        agent.position[2],
+                        launch_pad.x,
+                        launch_pad.z,
+                    ) <= launch_pad.radius
+            })
+            .collect::<Vec<_>>();
+
+        for (index, agent) in selected_agents.iter_mut().enumerate() {
+            let offset = slot_offset(index);
+            agent.position = [spawn[0] + offset.0, spawn[1], spawn[2] + offset.1];
+            agent.meeting_index = 0;
+            agent.meeting_target.x = spawn[0];
+            agent.meeting_target.z = spawn[2];
+            agent.target = agent.meeting_target;
+        }
+        self.agents = selected_agents;
+        self.launch_pads.clear();
+        self.next_spawn_at = f32::MAX;
+        self.player.position = spawn;
+        self.player.velocity = [0.0; 3];
+        self.player.grounded = true;
+        self.player.moving = false;
+        self.player.sprinting = false;
+        self.write_snapshot();
+        self.agents.len() + 1
     }
 
     pub fn reset_view(&mut self) {
@@ -454,5 +497,37 @@ mod tests {
 
         assert_eq!(engine.launch_pad_occupants(0), 1);
         assert_eq!(engine.launch_pad_phase(0), LaunchPadPhase::Countdown.code());
+    }
+
+    #[test]
+    fn entering_session_keeps_only_players_from_launched_pad() {
+        let mut engine = Engine::new();
+        engine.agents.push(Agent {
+            position: [-10.0, 0.0, -3.0],
+            target: crate::math::Vec2 { x: -10.0, z: -3.0 },
+            meeting_target: crate::math::Vec2 { x: -10.0, z: -3.0 },
+            meeting_index: 0,
+            phase: AgentPhase::Assembled,
+            spawned_at: 0.0,
+            next_decision_at: 0.0,
+            gather_at: 0.0,
+            next_jump_at: 0.0,
+            speed: 1.0,
+            walk_cycle: 0.0,
+            vertical_velocity: 0.0,
+            grounded: true,
+        });
+        engine.agents.push(Agent {
+            meeting_index: 1,
+            ..engine.agents[0]
+        });
+        engine.player.position = [-10.0, 0.0, -3.0];
+
+        let player_count = engine.enter_session(0, [0.0, 0.0, 8.0]);
+
+        assert_eq!(player_count, 2);
+        assert_eq!(engine.agents.len(), 1);
+        assert_eq!(engine.launch_pad_count(), 0);
+        assert_eq!(engine.player.position, [0.0, 0.0, 8.0]);
     }
 }

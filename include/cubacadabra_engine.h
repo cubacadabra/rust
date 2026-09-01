@@ -38,6 +38,13 @@ void engine_set_obstacle(
     float depth
 );
 void engine_set_obstacle_count(CubacadabraEngine *engine, uintptr_t count);
+uintptr_t engine_enter_session(
+    CubacadabraEngine *engine,
+    uintptr_t launch_pad_index,
+    float spawn_x,
+    float spawn_y,
+    float spawn_z
+);
 uint8_t *engine_script_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_script_buffer(CubacadabraEngine *engine);
 uint8_t engine_script_loaded(const CubacadabraEngine *engine);

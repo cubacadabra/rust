@@ -108,10 +108,22 @@ pub unsafe extern "C" fn engine_set_obstacle_count(engine: *mut Engine, count: u
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
-pub unsafe extern "C" fn engine_script_buffer_ptr(
+pub unsafe extern "C" fn engine_enter_session(
     engine: *mut Engine,
-    length: usize,
-) -> *mut u8 {
+    launch_pad_index: usize,
+    spawn_x: f32,
+    spawn_y: f32,
+    spawn_z: f32,
+) -> usize {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.enter_session(launch_pad_index, [spawn_x, spawn_y, spawn_z]))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_script_buffer_ptr(engine: *mut Engine, length: usize) -> *mut u8 {
     unsafe { engine.as_mut() }
         .map(|engine| engine.prepare_script_buffer(length))
         .unwrap_or(ptr::null_mut())

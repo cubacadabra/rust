@@ -104,10 +104,12 @@ mod native {
         let session_state = state;
         session.set(
             "start",
-            lua.create_function(move |_, (_session, name, _options): (Table, String, Table)| {
-                session_state.borrow_mut().session_name = Some(name);
-                Ok(())
-            })?,
+            lua.create_function(
+                move |_, (_session, name, _options): (Table, String, Table)| {
+                    session_state.borrow_mut().session_name = Some(name);
+                    Ok(())
+                },
+            )?,
         )?;
         api.set("session", session)?;
 
