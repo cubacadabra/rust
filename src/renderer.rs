@@ -471,7 +471,9 @@ impl Renderer {
         for agent in &self.scene.agents {
             add_avatar(&mut mesh, *agent, self.scene.palette.ink);
         }
-        add_avatar(&mut mesh, self.scene.player, self.scene.palette.ink);
+        if self.scene.camera[2] > 0.75 {
+            add_avatar(&mut mesh, self.scene.player, self.scene.palette.ink);
+        }
         let grid_step = self.scene.ground_size / 12.0;
         for index in 0..=12 {
             let offset = -half + index as f32 * grid_step;
