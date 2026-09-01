@@ -25,3 +25,12 @@ The exported functions use a C-compatible handle and scalar ABI, documented in
 Groupicorn's iOS renderer: create one engine, submit input, advance it, read
 the frame, then destroy it. The core data model is independent of that ABI and
 can later be wrapped by an iOS static library without changing gameplay code.
+
+## Source layout
+
+- `engine.rs` owns the simulation lifecycle, camera state, and frame snapshot
+- `player.rs` owns locomotion, gravity, and collision resolution
+- `npc.rs` owns agent spawning, roaming, separation, and assembly behavior
+- `world.rs` owns starter-world bounds and navigation points
+- `types.rs` and `math.rs` hold shared simulation primitives
+- `ffi.rs` is the only module that exposes the C/WASM entry points
