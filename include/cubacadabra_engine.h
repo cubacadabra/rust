@@ -163,6 +163,7 @@ void engine_renderer_set_scene(
     CubacadabraRenderAgent player,
     float ground_size,
     CubacadabraRenderPalette palette,
+    const float *camera,
     float elapsed
 );
 void engine_renderer_draw(CubacadabraRenderer *renderer);

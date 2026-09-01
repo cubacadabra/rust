@@ -1,10 +1,9 @@
 # Cubacadabra engine
 
-This crate owns the platform-neutral game simulation. The first client is the
-browser, where the crate is compiled to WebAssembly and Three.js consumes a
-compact frame snapshot for rendering. The simulation API deliberately avoids
-browser or renderer types so a future `ios_app` can call the same engine from a
-native Rust bridge.
+This crate owns the platform-neutral game simulation and shared primitive
+renderer. The browser builds the crate to WebAssembly and uses the same `wgpu`
+renderer as iOS, which calls it through the C ABI. The simulation API remains
+independent of browser and native surface types.
 
 Game packages are separate from this runtime. They provide declarative world
 content and Luau rules; this crate provides physics, reusable platform patterns,
@@ -16,12 +15,17 @@ and the host API exposed to those rules. The first package is in the sibling
 From `web/`, run:
 
 ```sh
+cargo install wasm-bindgen-cli
 npm run build:wasm
+
+# Build the shared browser renderer (requires wasm-bindgen-cli)
+npm run build:renderer
 ```
 
-The command writes `web/public/wasm/cubacadabra_engine.wasm`. The generated
-binary is a checked-in runtime asset so a fresh checkout can run the web app;
-the source of truth remains this crate.
+The command writes `web/public/wasm/cubacadabra_engine.wasm`; the production
+build also generates the browser renderer binding under
+`web/public/wasm/renderer`. Generated binaries are local build artifacts; the
+source of truth remains this crate.
 
 ## Native direction
 
@@ -34,6 +38,8 @@ can later be wrapped by an iOS static library without changing gameplay code.
 ## Source layout
 
 - `engine.rs` owns the simulation lifecycle, camera state, and frame snapshot
+- `renderer.rs` owns the shared `wgpu` primitive renderer used by native and
+  browser clients
 - `player.rs` owns locomotion, gravity, and collision resolution
 - `npc.rs` owns agent spawning, roaming, separation, and assembly behavior
 - `scripting.rs` hosts the Luau lifecycle API for native clients and preserves

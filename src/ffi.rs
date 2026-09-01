@@ -453,6 +453,7 @@ pub unsafe extern "C" fn engine_renderer_set_scene(
     player: RenderAgent,
     ground_size: f32,
     palette: RenderPalette,
+    camera: *const f32,
     elapsed: f32,
 ) {
     let Some(renderer) = (unsafe { renderer.as_mut() }) else {
@@ -473,7 +474,23 @@ pub unsafe extern "C" fn engine_renderer_set_scene(
     } else {
         unsafe { std::slice::from_raw_parts(agents, agent_count) }
     };
-    renderer.set_scene(blocks, pads, agents, player, ground_size, palette, elapsed);
+    let camera = if camera.is_null() {
+        [0.0, 0.0, 8.0]
+    } else {
+        unsafe { std::slice::from_raw_parts(camera, 3) }
+            .try_into()
+            .unwrap_or([0.0, 0.0, 8.0])
+    };
+    renderer.set_scene(
+        blocks,
+        pads,
+        agents,
+        player,
+        ground_size,
+        palette,
+        camera,
+        elapsed,
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]

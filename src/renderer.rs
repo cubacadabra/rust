@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
 
 use bytemuck::{Pod, Zeroable};
@@ -84,6 +85,7 @@ struct Scene {
     player: RenderAgent,
     ground_size: f32,
     palette: RenderPalette,
+    camera: [f32; 3],
     elapsed: f32,
 }
 
@@ -104,6 +106,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
         if layer.is_null() || width <= 0.0 || height <= 0.0 {
             return None;
@@ -134,13 +137,72 @@ impl Renderer {
             trace: wgpu::Trace::Off,
         }))
         .ok()?;
+        Some(Self::from_parts(
+            surface, adapter, device, queue, width, height,
+        ))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn new_web(
+        canvas: web_sys::HtmlCanvasElement,
+        width: f32,
+        height: f32,
+    ) -> Result<Self, wasm_bindgen::JsValue> {
+        if width <= 0.0 || height <= 0.0 {
+            return Err(wasm_bindgen::JsValue::from_str(
+                "The renderer size must be positive.",
+            ));
+        }
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let surface = instance
+            .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
+        let limits = wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits());
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("cubacadabra browser device"),
+                required_features: wgpu::Features::empty(),
+                required_limits: limits,
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                memory_hints: wgpu::MemoryHints::Performance,
+                trace: wgpu::Trace::Off,
+            })
+            .await
+            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
+
+        Ok(Self::from_parts(
+            surface, adapter, device, queue, width, height,
+        ))
+    }
+
+    fn from_parts(
+        surface: wgpu::Surface<'static>,
+        adapter: wgpu::Adapter,
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        width: f32,
+        height: f32,
+    ) -> Self {
         let capabilities = surface.get_capabilities(&adapter);
         let format = capabilities
             .formats
             .iter()
             .copied()
             .find(wgpu::TextureFormat::is_srgb)
-            .or_else(|| capabilities.formats.first().copied())?;
+            .or_else(|| capabilities.formats.first().copied())
+            .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -231,7 +293,7 @@ impl Renderer {
         let vertex_buffer = create_vertex_buffer(&device, vertex_capacity);
         let depth_view = create_depth_view(&device, config.width, config.height);
 
-        Some(Self {
+        Self {
             surface,
             device,
             queue,
@@ -245,7 +307,7 @@ impl Renderer {
             width,
             height,
             scene: Scene::default(),
-        })
+        }
     }
 
     pub fn resize(&mut self, width: f32, height: f32) {
@@ -269,6 +331,7 @@ impl Renderer {
         player: RenderAgent,
         ground_size: f32,
         palette: RenderPalette,
+        camera: [f32; 3],
         elapsed: f32,
     ) {
         self.scene.blocks.clear();
@@ -280,13 +343,32 @@ impl Renderer {
         self.scene.player = player;
         self.scene.ground_size = ground_size.max(10.0);
         self.scene.palette = palette;
+        self.scene.camera = camera;
         self.scene.elapsed = elapsed;
     }
 
     pub fn draw(&mut self) {
         let player = Vec3::from_array(self.scene.player.position);
-        let camera_position = player + Vec3::new(0.0, 8.0, 11.0);
-        let target = player + Vec3::new(0.0, 1.0, 0.0);
+        let [yaw, pitch, distance] = self.scene.camera;
+        let (camera_position, target) = if distance <= 0.75 {
+            let camera_position = player + Vec3::new(0.0, 3.4, 0.0);
+            let look_direction = Vec3::new(
+                yaw.sin() * pitch.cos(),
+                pitch.sin(),
+                -yaw.cos() * pitch.cos(),
+            );
+            (camera_position, camera_position + look_direction)
+        } else {
+            let target = player + Vec3::new(0.0, 1.78, 0.0);
+            let horizontal_distance = distance * pitch.cos();
+            let camera_position = target
+                + Vec3::new(
+                    yaw.sin() * horizontal_distance,
+                    (distance * pitch.sin()).clamp(-2.0, 7.0),
+                    yaw.cos() * horizontal_distance,
+                );
+            (camera_position, target)
+        };
         let view_projection = Mat4::perspective_rh(
             62.0_f32.to_radians(),
             (self.width / self.height.max(1.0)).max(0.1),
@@ -384,13 +466,7 @@ impl Renderer {
             );
         }
         for pad in &self.scene.pads {
-            add_cylinder(
-                &mut mesh,
-                Vec3::new(pad.x, 0.10, pad.z),
-                pad.radius,
-                0.12,
-                pad.color,
-            );
+            add_launch_pad(&mut mesh, *pad, self.scene.palette.ink);
         }
         for agent in &self.scene.agents {
             add_avatar(&mut mesh, *agent, self.scene.palette.ink);
@@ -592,6 +668,70 @@ fn add_avatar(vertices: &mut Vec<Vertex>, agent: RenderAgent, face_color: [f32; 
         0.0,
         face_color,
     );
+}
+
+fn add_launch_pad(vertices: &mut Vec<Vertex>, pad: RenderPad, ink: [f32; 4]) {
+    let origin = Vec3::new(pad.x, 0.0, pad.z);
+    add_cylinder(
+        vertices,
+        origin + Vec3::new(0.0, 0.10, 0.0),
+        pad.radius + 0.45,
+        0.20,
+        ink,
+    );
+
+    let mut inner = pad.color;
+    inner[3] = 0.30;
+    add_cylinder(
+        vertices,
+        origin + Vec3::new(0.0, 0.215, 0.0),
+        pad.radius,
+        0.025,
+        inner,
+    );
+    add_ring(
+        vertices,
+        origin + Vec3::new(0.0, 0.28, 0.0),
+        (pad.radius - 0.15).max(0.2),
+        0.11,
+        pad.color,
+    );
+
+    for x in [-2.35, 2.35] {
+        add_cuboid(
+            vertices,
+            origin + Vec3::new(x, 1.35, -0.35),
+            Vec3::new(0.38, 2.70, 0.46),
+            pad.color,
+        );
+    }
+    add_cuboid(
+        vertices,
+        origin + Vec3::new(0.0, 2.62, -0.35),
+        Vec3::new(5.05, 0.32, 0.38),
+        pad.color,
+    );
+}
+
+fn add_ring(
+    vertices: &mut Vec<Vertex>,
+    center: Vec3,
+    radius: f32,
+    thickness: f32,
+    color: [f32; 4],
+) {
+    let inner_radius = (radius - thickness).max(0.05);
+    let segments = 32;
+    for index in 0..segments {
+        let next = (index + 1) % segments;
+        let a = index as f32 / segments as f32 * std::f32::consts::TAU;
+        let b = next as f32 / segments as f32 * std::f32::consts::TAU;
+        let outer_a = center + Vec3::new(a.cos() * radius, 0.0, a.sin() * radius);
+        let outer_b = center + Vec3::new(b.cos() * radius, 0.0, b.sin() * radius);
+        let inner_a = center + Vec3::new(a.cos() * inner_radius, 0.0, a.sin() * inner_radius);
+        let inner_b = center + Vec3::new(b.cos() * inner_radius, 0.0, b.sin() * inner_radius);
+        add_quad(vertices, outer_a, outer_b, inner_b, inner_a, Vec3::Y, color);
+    }
 }
 
 fn add_cylinder(
