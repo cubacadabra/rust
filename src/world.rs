@@ -21,6 +21,14 @@ pub(crate) struct LaunchPad {
     pub(crate) occupants: usize,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct RuntimeWorld {
+    pub(crate) spawn: [f32; 3],
+    pub(crate) launch_pads: Vec<LaunchPad>,
+    pub(crate) launch_destinations: Vec<Option<usize>>,
+    pub(crate) obstacles: Vec<Aabb>,
+}
+
 impl LaunchPad {
     pub(crate) fn new(x: f32, z: f32, radius: f32, countdown: f32) -> Self {
         Self {

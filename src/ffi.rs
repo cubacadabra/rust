@@ -1,9 +1,9 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::engine::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
-use super::types::Input;
 #[cfg(not(target_arch = "wasm32"))]
 use super::renderer::{RenderAgent, RenderBlock, RenderPad, RenderPalette, Renderer};
+use super::types::Input;
 #[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
 use std::ptr;
@@ -107,6 +107,115 @@ pub unsafe extern "C" fn engine_set_obstacle_count(engine: *mut Engine, count: u
     if let Some(engine) = unsafe { engine.as_mut() } {
         engine.set_obstacle_count(count);
     }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_world_count(engine: *mut Engine, count: usize) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_world_count(count);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_world_spawn(
+    engine: *mut Engine,
+    world: usize,
+    x: f32,
+    y: f32,
+    z: f32,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_world_spawn(world, [x, y, z]);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_world_launch_pad_count(
+    engine: *mut Engine,
+    world: usize,
+    count: usize,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_world_launch_pad_count(world, count);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_world_launch_pad(
+    engine: *mut Engine,
+    world: usize,
+    index: usize,
+    x: f32,
+    z: f32,
+    radius: f32,
+    countdown: f32,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_world_launch_pad(world, index, x, z, radius, countdown);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_world_launch_destination(
+    engine: *mut Engine,
+    world: usize,
+    pad: usize,
+    destination: i32,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_world_launch_destination(world, pad, destination);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_world_obstacle_count(
+    engine: *mut Engine,
+    world: usize,
+    count: usize,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_world_obstacle_count(world, count);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_world_obstacle(
+    engine: *mut Engine,
+    world: usize,
+    index: usize,
+    x: f32,
+    y: f32,
+    z: f32,
+    width: f32,
+    height: f32,
+    depth: f32,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_world_obstacle(world, index, [x, y, z], [width, height, depth]);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_start_world(engine: *mut Engine, world: usize) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.start_world(world)))
+        .unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]
@@ -264,6 +373,34 @@ pub unsafe extern "C" fn engine_last_launch_occupants(engine: *const Engine) -> 
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_active_world(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.active_world())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_world_event_id(engine: *const Engine) -> u32 {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.world_event_id())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_last_world_source_pad(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.last_world_source_pad())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_last_world_destination(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.last_world_destination())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_elapsed(engine: *const Engine) -> f32 {
     unsafe { engine.as_ref() }.map_or(0.0, |engine| engine.elapsed())
 }
@@ -294,11 +431,7 @@ pub extern "C" fn engine_renderer_create(
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by `engine_renderer_create`.
-pub unsafe extern "C" fn engine_renderer_resize(
-    renderer: *mut Renderer,
-    width: f32,
-    height: f32,
-) {
+pub unsafe extern "C" fn engine_renderer_resize(renderer: *mut Renderer, width: f32, height: f32) {
     if let Some(renderer) = unsafe { renderer.as_mut() } {
         renderer.resize(width, height);
     }

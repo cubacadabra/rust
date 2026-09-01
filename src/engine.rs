@@ -1,7 +1,7 @@
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
 use crate::scripting::GameScript;
 use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player};
-use crate::world::{Aabb, LaunchPad, block_bounds, slot_offset};
+use crate::world::{Aabb, LaunchPad, RuntimeWorld, block_bounds, slot_offset};
 
 pub(crate) const TOTAL_PLAYERS: usize = 18;
 pub(crate) const MAX_AGENTS: usize = TOTAL_PLAYERS - 1;
@@ -41,6 +41,11 @@ pub struct Engine {
     pub(crate) launch_event_id: u32,
     pub(crate) last_launch_pad: usize,
     pub(crate) last_launch_occupants: usize,
+    pub(crate) worlds: Vec<RuntimeWorld>,
+    pub(crate) active_world: usize,
+    pub(crate) world_event_id: u32,
+    pub(crate) last_world_source_pad: usize,
+    pub(crate) last_world_destination: usize,
     pub(crate) script: Option<GameScript>,
     pub(crate) script_buffer: Vec<u8>,
 }
@@ -76,6 +81,11 @@ impl Engine {
             launch_event_id: 0,
             last_launch_pad: 0,
             last_launch_occupants: 0,
+            worlds: Vec::new(),
+            active_world: 0,
+            world_event_id: 0,
+            last_world_source_pad: 0,
+            last_world_destination: 0,
             script: None,
             script_buffer: Vec::new(),
         };
@@ -120,6 +130,104 @@ impl Engine {
     pub(crate) fn set_obstacle_count(&mut self, count: usize) {
         self.obstacles
             .resize(count.min(256), block_bounds([0.0; 3], [0.0; 3]));
+    }
+
+    pub(crate) fn set_world_count(&mut self, count: usize) {
+        self.worlds.resize(count.min(64), RuntimeWorld::default());
+    }
+
+    pub(crate) fn set_world_spawn(&mut self, world: usize, spawn: [f32; 3]) {
+        if let Some(world) = self.worlds.get_mut(world) {
+            world.spawn = spawn;
+        }
+    }
+
+    pub(crate) fn set_world_launch_pad_count(&mut self, world: usize, count: usize) {
+        if let Some(world) = self.worlds.get_mut(world) {
+            let count = count.min(64);
+            world.launch_pads.resize(count, LaunchPad::default());
+            world.launch_destinations.resize(count, None);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn set_world_launch_pad(
+        &mut self,
+        world: usize,
+        index: usize,
+        x: f32,
+        z: f32,
+        radius: f32,
+        countdown: f32,
+    ) {
+        let Some(world) = self.worlds.get_mut(world) else {
+            return;
+        };
+        if index >= world.launch_pads.len() {
+            world.launch_pads.resize(index + 1, LaunchPad::default());
+            world.launch_destinations.resize(index + 1, None);
+        }
+        world.launch_pads[index] = LaunchPad::new(x, z, radius, countdown);
+    }
+
+    pub(crate) fn set_world_launch_destination(
+        &mut self,
+        world: usize,
+        pad: usize,
+        destination: i32,
+    ) {
+        let world_count = self.worlds.len();
+        let Some(world) = self.worlds.get_mut(world) else {
+            return;
+        };
+        if pad >= world.launch_destinations.len() {
+            world.launch_destinations.resize(pad + 1, None);
+        }
+        world.launch_destinations[pad] = usize::try_from(destination)
+            .ok()
+            .filter(|index| *index < world_count);
+    }
+
+    pub(crate) fn set_world_obstacle_count(&mut self, world: usize, count: usize) {
+        if let Some(world) = self.worlds.get_mut(world) {
+            world
+                .obstacles
+                .resize(count.min(256), block_bounds([0.0; 3], [0.0; 3]));
+        }
+    }
+
+    pub(crate) fn set_world_obstacle(
+        &mut self,
+        world: usize,
+        index: usize,
+        position: [f32; 3],
+        size: [f32; 3],
+    ) {
+        let Some(world) = self.worlds.get_mut(world) else {
+            return;
+        };
+        if index >= world.obstacles.len() {
+            world
+                .obstacles
+                .resize(index + 1, block_bounds([0.0; 3], [0.0; 3]));
+        }
+        world.obstacles[index] = block_bounds(position, size);
+    }
+
+    pub(crate) fn start_world(&mut self, index: usize) -> bool {
+        let Some(world) = self.worlds.get(index).cloned() else {
+            return false;
+        };
+        self.active_world = index;
+        self.launch_pads = world.launch_pads;
+        self.obstacles = world.obstacles;
+        self.player.position = world.spawn;
+        self.player.velocity = [0.0; 3];
+        self.player.grounded = true;
+        self.agents.clear();
+        self.next_spawn_at = self.elapsed + 3.0;
+        self.write_snapshot();
+        true
     }
 
     pub(crate) fn enter_session(&mut self, launch_pad_index: usize, spawn: [f32; 3]) -> usize {
@@ -248,6 +356,22 @@ impl Engine {
         self.last_launch_occupants
     }
 
+    pub(crate) fn active_world(&self) -> usize {
+        self.active_world
+    }
+
+    pub(crate) fn world_event_id(&self) -> u32 {
+        self.world_event_id
+    }
+
+    pub(crate) fn last_world_source_pad(&self) -> usize {
+        self.last_world_source_pad
+    }
+
+    pub(crate) fn last_world_destination(&self) -> usize {
+        self.last_world_destination
+    }
+
     pub(crate) fn prepare_script_buffer(&mut self, length: usize) -> *mut u8 {
         self.script_buffer.resize(length, 0);
         self.script_buffer.as_mut_ptr()
@@ -283,6 +407,10 @@ impl Engine {
         let mut launched = None;
         for index in 0..self.launch_pads.len() {
             let occupants = self.count_launch_pad_occupants(index);
+            let local_player_selected = self
+                .launch_pads
+                .get(index)
+                .is_some_and(|pad| self.player_is_on_pad(pad));
             let pad = &mut self.launch_pads[index];
             pad.occupants = occupants;
 
@@ -300,7 +428,7 @@ impl Engine {
                     self.launch_event_id = self.launch_event_id.wrapping_add(1);
                     self.last_launch_pad = index;
                     self.last_launch_occupants = occupants;
-                    launched = Some((index, occupants));
+                    launched = Some((index, occupants, local_player_selected));
                 }
                 LaunchPadPhase::Launched if occupants == 0 => {
                     pad.phase = LaunchPadPhase::Idle;
@@ -310,7 +438,7 @@ impl Engine {
             }
         }
 
-        if let Some((index, occupants)) = launched {
+        if let Some((index, occupants, local_player_selected)) = launched {
             let pad_id = format!("pad-{index}");
             let player_ids = (0..occupants as u32).collect::<Vec<_>>();
             if let Some(script) = &self.script
@@ -318,7 +446,30 @@ impl Engine {
             {
                 script.state().borrow_mut().last_error = Some(error);
             }
+
+            let destination = self
+                .worlds
+                .get(self.active_world)
+                .and_then(|world| world.launch_destinations.get(index))
+                .copied()
+                .flatten();
+            if local_player_selected && let Some(destination) = destination {
+                self.enter_registered_world(index, destination);
+            }
         }
+    }
+
+    fn enter_registered_world(&mut self, source_pad: usize, destination: usize) {
+        let Some(world) = self.worlds.get(destination).cloned() else {
+            return;
+        };
+        self.enter_session(source_pad, world.spawn);
+        self.launch_pads = world.launch_pads;
+        self.obstacles = world.obstacles;
+        self.active_world = destination;
+        self.world_event_id = self.world_event_id.wrapping_add(1);
+        self.last_world_source_pad = source_pad;
+        self.last_world_destination = destination;
     }
 
     fn count_launch_pad_occupants(&self, index: usize) -> usize {
@@ -529,5 +680,32 @@ mod tests {
         assert_eq!(engine.agents.len(), 1);
         assert_eq!(engine.launch_pad_count(), 0);
         assert_eq!(engine.player.position, [0.0, 0.0, 8.0]);
+    }
+
+    #[test]
+    fn registered_world_route_transitions_selected_player_in_engine() {
+        let mut engine = Engine::new();
+        engine.set_world_count(2);
+        engine.set_world_spawn(0, [0.0, 0.0, 6.0]);
+        engine.set_world_launch_pad_count(0, 1);
+        engine.set_world_launch_pad(0, 0, 4.0, -2.0, 2.0, 0.1);
+        engine.set_world_launch_destination(0, 0, 1);
+        engine.set_world_spawn(1, [0.0, 0.0, 8.0]);
+        engine.set_world_obstacle_count(1, 1);
+        engine.set_world_obstacle(1, 0, [0.0, 1.0, -7.0], [4.0, 2.0, 4.0]);
+        assert!(engine.start_world(0));
+
+        engine.player.position = [4.0, 0.0, -2.0];
+        for _ in 0..8 {
+            engine.step(1.0 / 60.0);
+        }
+
+        assert_eq!(engine.active_world(), 1);
+        assert_eq!(engine.world_event_id(), 1);
+        assert_eq!(engine.last_world_source_pad(), 0);
+        assert_eq!(engine.last_world_destination(), 1);
+        assert_eq!(engine.player.position, [0.0, 0.0, 8.0]);
+        assert_eq!(engine.launch_pad_count(), 0);
+        assert_eq!(engine.obstacles.len(), 1);
     }
 }

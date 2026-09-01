@@ -22,7 +22,13 @@ typedef struct {
 
 typedef struct {
     float position[3];
-    float color[4];
+    float yaw;
+    float walk_cycle;
+    float assembled;
+    float skin[4];
+    float shirt[4];
+    float pants[4];
+    float shoes[4];
 } CubacadabraRenderAgent;
 
 typedef struct {
@@ -66,6 +72,51 @@ void engine_set_obstacle(
     float depth
 );
 void engine_set_obstacle_count(CubacadabraEngine *engine, uintptr_t count);
+void engine_set_world_count(CubacadabraEngine *engine, uintptr_t count);
+void engine_set_world_spawn(
+    CubacadabraEngine *engine,
+    uintptr_t world,
+    float x,
+    float y,
+    float z
+);
+void engine_set_world_launch_pad_count(
+    CubacadabraEngine *engine,
+    uintptr_t world,
+    uintptr_t count
+);
+void engine_set_world_launch_pad(
+    CubacadabraEngine *engine,
+    uintptr_t world,
+    uintptr_t index,
+    float x,
+    float z,
+    float radius,
+    float countdown
+);
+void engine_set_world_launch_destination(
+    CubacadabraEngine *engine,
+    uintptr_t world,
+    uintptr_t pad,
+    int32_t destination
+);
+void engine_set_world_obstacle_count(
+    CubacadabraEngine *engine,
+    uintptr_t world,
+    uintptr_t count
+);
+void engine_set_world_obstacle(
+    CubacadabraEngine *engine,
+    uintptr_t world,
+    uintptr_t index,
+    float x,
+    float y,
+    float z,
+    float width,
+    float height,
+    float depth
+);
+uint8_t engine_start_world(CubacadabraEngine *engine, uintptr_t world);
 uintptr_t engine_enter_session(
     CubacadabraEngine *engine,
     uintptr_t launch_pad_index,
@@ -92,6 +143,10 @@ int32_t engine_player_launch_pad(const CubacadabraEngine *engine);
 uint32_t engine_launch_event_id(const CubacadabraEngine *engine);
 uintptr_t engine_last_launch_pad(const CubacadabraEngine *engine);
 uintptr_t engine_last_launch_occupants(const CubacadabraEngine *engine);
+uintptr_t engine_active_world(const CubacadabraEngine *engine);
+uint32_t engine_world_event_id(const CubacadabraEngine *engine);
+uintptr_t engine_last_world_source_pad(const CubacadabraEngine *engine);
+uintptr_t engine_last_world_destination(const CubacadabraEngine *engine);
 float engine_elapsed(const CubacadabraEngine *engine);
 void engine_destroy(CubacadabraEngine *engine);
 

@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -28,7 +28,13 @@ pub struct RenderPad {
 #[derive(Clone, Copy, Default, Pod, Zeroable)]
 pub struct RenderAgent {
     pub position: [f32; 3],
-    pub color: [f32; 4],
+    pub yaw: f32,
+    pub walk_cycle: f32,
+    pub assembled: f32,
+    pub skin: [f32; 4],
+    pub shirt: [f32; 4],
+    pub pants: [f32; 4],
+    pub shoes: [f32; 4],
 }
 
 #[repr(C)]
@@ -290,13 +296,18 @@ impl Renderer {
         let globals = Globals {
             view_projection: view_projection.to_cols_array_2d(),
             camera_position: camera_position.extend(1.0).to_array(),
-            sun_direction: Vec3::new(-0.45, -0.82, 0.32).normalize().extend(0.0).to_array(),
+            sun_direction: Vec3::new(-0.45, -0.82, 0.32)
+                .normalize()
+                .extend(0.0)
+                .to_array(),
             fog_color: self.scene.palette.sky,
         };
         let vertices = self.build_vertices();
         self.ensure_vertex_capacity(vertices.len());
-        self.queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
-        self.queue.write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
+        self.queue
+            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&vertices));
+        self.queue
+            .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
 
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
@@ -309,10 +320,14 @@ impl Renderer {
             | wgpu::CurrentSurfaceTexture::Occluded
             | wgpu::CurrentSurfaceTexture::Validation => return,
         };
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("cubacadabra frame encoder"),
-        });
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("cubacadabra frame encoder"),
+            });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra world pass"),
@@ -378,19 +393,9 @@ impl Renderer {
             );
         }
         for agent in &self.scene.agents {
-            add_cuboid(
-                &mut mesh,
-                Vec3::from_array(agent.position) + Vec3::new(0.0, 0.9, 0.0),
-                Vec3::new(0.8, 1.8, 0.8),
-                agent.color,
-            );
+            add_avatar(&mut mesh, *agent, self.scene.palette.ink);
         }
-        add_cuboid(
-            &mut mesh,
-            Vec3::from_array(self.scene.player.position) + Vec3::new(0.0, 0.95, 0.0),
-            Vec3::new(1.05, 1.9, 1.05),
-            self.scene.palette.ink,
-        );
+        add_avatar(&mut mesh, self.scene.player, self.scene.palette.ink);
         let grid_step = self.scene.ground_size / 12.0;
         for index in 0..=12 {
             let offset = -half + index as f32 * grid_step;
@@ -420,26 +425,182 @@ impl Renderer {
 }
 
 fn add_cuboid(vertices: &mut Vec<Vertex>, center: Vec3, size: Vec3, color: [f32; 4]) {
-    let half = size * 0.5;
-    let corners = [
-        center + Vec3::new(-half.x, -half.y, -half.z),
-        center + Vec3::new(half.x, -half.y, -half.z),
-        center + Vec3::new(half.x, half.y, -half.z),
-        center + Vec3::new(-half.x, half.y, -half.z),
-        center + Vec3::new(-half.x, -half.y, half.z),
-        center + Vec3::new(half.x, -half.y, half.z),
-        center + Vec3::new(half.x, half.y, half.z),
-        center + Vec3::new(-half.x, half.y, half.z),
-    ];
-    add_quad(vertices, corners[0], corners[1], corners[2], corners[3], Vec3::NEG_Z, color);
-    add_quad(vertices, corners[5], corners[4], corners[7], corners[6], Vec3::Z, color);
-    add_quad(vertices, corners[1], corners[5], corners[6], corners[2], Vec3::X, color);
-    add_quad(vertices, corners[4], corners[0], corners[3], corners[7], Vec3::NEG_X, color);
-    add_quad(vertices, corners[3], corners[2], corners[6], corners[7], Vec3::Y, color);
-    add_quad(vertices, corners[4], corners[5], corners[1], corners[0], Vec3::NEG_Y, color);
+    add_transformed_cuboid(vertices, Mat4::from_translation(center), size, color);
 }
 
-fn add_cylinder(vertices: &mut Vec<Vertex>, center: Vec3, radius: f32, height: f32, color: [f32; 4]) {
+fn add_transformed_cuboid(
+    vertices: &mut Vec<Vertex>,
+    transform: Mat4,
+    size: Vec3,
+    color: [f32; 4],
+) {
+    let half = size * 0.5;
+    let corners = [
+        Vec3::new(-half.x, -half.y, -half.z),
+        Vec3::new(half.x, -half.y, -half.z),
+        Vec3::new(half.x, half.y, -half.z),
+        Vec3::new(-half.x, half.y, -half.z),
+        Vec3::new(-half.x, -half.y, half.z),
+        Vec3::new(half.x, -half.y, half.z),
+        Vec3::new(half.x, half.y, half.z),
+        Vec3::new(-half.x, half.y, half.z),
+    ]
+    .map(|corner| transform.transform_point3(corner));
+    let normal = |direction: Vec3| transform.transform_vector3(direction).normalize_or_zero();
+    add_quad(
+        vertices,
+        corners[0],
+        corners[1],
+        corners[2],
+        corners[3],
+        normal(Vec3::NEG_Z),
+        color,
+    );
+    add_quad(
+        vertices,
+        corners[5],
+        corners[4],
+        corners[7],
+        corners[6],
+        normal(Vec3::Z),
+        color,
+    );
+    add_quad(
+        vertices,
+        corners[1],
+        corners[5],
+        corners[6],
+        corners[2],
+        normal(Vec3::X),
+        color,
+    );
+    add_quad(
+        vertices,
+        corners[4],
+        corners[0],
+        corners[3],
+        corners[7],
+        normal(Vec3::NEG_X),
+        color,
+    );
+    add_quad(
+        vertices,
+        corners[3],
+        corners[2],
+        corners[6],
+        corners[7],
+        normal(Vec3::Y),
+        color,
+    );
+    add_quad(
+        vertices,
+        corners[4],
+        corners[5],
+        corners[1],
+        corners[0],
+        normal(Vec3::NEG_Y),
+        color,
+    );
+}
+
+fn add_avatar(vertices: &mut Vec<Vertex>, agent: RenderAgent, face_color: [f32; 4]) {
+    let mut shadow_color = face_color;
+    shadow_color[3] = 0.14;
+    add_cylinder(
+        vertices,
+        Vec3::new(agent.position[0], 0.018, agent.position[2]),
+        0.72,
+        0.025,
+        shadow_color,
+    );
+    let root = Mat4::from_translation(Vec3::from_array(agent.position))
+        * Mat4::from_quat(Quat::from_rotation_y(agent.yaw));
+    let stride = if agent.assembled > 0.5 {
+        0.03
+    } else {
+        agent.walk_cycle.sin() * 0.5
+    };
+    let bob = if agent.position[1] <= 0.01 {
+        agent.walk_cycle.sin().abs() * 0.025
+    } else {
+        0.0
+    };
+
+    let mut part = |position: Vec3, size: Vec3, pitch: f32, color: [f32; 4]| {
+        let transform =
+            root * Mat4::from_translation(position) * Mat4::from_quat(Quat::from_rotation_x(pitch));
+        add_transformed_cuboid(vertices, transform, size, color);
+    };
+
+    part(
+        Vec3::new(0.0, 1.82 + bob, 0.0),
+        Vec3::new(1.1, 1.25, 0.64),
+        0.0,
+        agent.shirt,
+    );
+    part(
+        Vec3::new(0.0, 3.01, 0.0),
+        Vec3::splat(0.84),
+        0.0,
+        agent.skin,
+    );
+    part(
+        Vec3::new(-0.76, 1.84, 0.0),
+        Vec3::new(0.36, 1.15, 0.45),
+        stride,
+        agent.shirt,
+    );
+    part(
+        Vec3::new(0.76, 1.84, 0.0),
+        Vec3::new(0.36, 1.15, 0.45),
+        -stride,
+        agent.shirt,
+    );
+    part(
+        Vec3::new(-0.28, 0.62, 0.0),
+        Vec3::new(0.47, 1.25, 0.55),
+        -stride,
+        agent.pants,
+    );
+    part(
+        Vec3::new(0.28, 0.62, 0.0),
+        Vec3::new(0.47, 1.25, 0.55),
+        stride,
+        agent.pants,
+    );
+    part(
+        Vec3::new(-0.28, 0.11, -0.06),
+        Vec3::new(0.56, 0.22, 0.7),
+        0.0,
+        agent.shoes,
+    );
+    part(
+        Vec3::new(0.28, 0.11, -0.06),
+        Vec3::new(0.56, 0.22, 0.7),
+        0.0,
+        agent.shoes,
+    );
+    part(
+        Vec3::new(-0.16, 3.04, -0.43),
+        Vec3::new(0.1, 0.12, 0.03),
+        0.0,
+        face_color,
+    );
+    part(
+        Vec3::new(0.16, 3.04, -0.43),
+        Vec3::new(0.1, 0.12, 0.03),
+        0.0,
+        face_color,
+    );
+}
+
+fn add_cylinder(
+    vertices: &mut Vec<Vertex>,
+    center: Vec3,
+    radius: f32,
+    height: f32,
+    color: [f32; 4],
+) {
     let segments = 24;
     for index in 0..segments {
         let next = (index + 1) % segments;
@@ -449,22 +610,64 @@ fn add_cylinder(vertices: &mut Vec<Vertex>, center: Vec3, radius: f32, height: f
         let bottom_b = center + Vec3::new(b.cos() * radius, -height / 2.0, b.sin() * radius);
         let top_a = center + Vec3::new(a.cos() * radius, height / 2.0, a.sin() * radius);
         let top_b = center + Vec3::new(b.cos() * radius, height / 2.0, b.sin() * radius);
-        add_quad(vertices, bottom_a, bottom_b, top_b, top_a, Vec3::new(a.cos(), 0.0, a.sin()), color);
-        add_triangle(vertices, center + Vec3::new(0.0, height / 2.0, 0.0), top_a, top_b, Vec3::Y, color);
+        add_quad(
+            vertices,
+            bottom_a,
+            bottom_b,
+            top_b,
+            top_a,
+            Vec3::new(a.cos(), 0.0, a.sin()),
+            color,
+        );
+        add_triangle(
+            vertices,
+            center + Vec3::new(0.0, height / 2.0, 0.0),
+            top_a,
+            top_b,
+            Vec3::Y,
+            color,
+        );
     }
 }
 
-fn add_quad(vertices: &mut Vec<Vertex>, a: Vec3, b: Vec3, c: Vec3, d: Vec3, normal: Vec3, color: [f32; 4]) {
+fn add_quad(
+    vertices: &mut Vec<Vertex>,
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    d: Vec3,
+    normal: Vec3,
+    color: [f32; 4],
+) {
     add_triangle(vertices, a, b, c, normal, color);
     add_triangle(vertices, a, c, d, normal, color);
 }
 
-fn add_triangle(vertices: &mut Vec<Vertex>, a: Vec3, b: Vec3, c: Vec3, normal: Vec3, color: [f32; 4]) {
+fn add_triangle(
+    vertices: &mut Vec<Vertex>,
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    normal: Vec3,
+    color: [f32; 4],
+) {
     let normal = normal.to_array();
     vertices.extend([
-        Vertex { position: a.to_array(), normal, color },
-        Vertex { position: b.to_array(), normal, color },
-        Vertex { position: c.to_array(), normal, color },
+        Vertex {
+            position: a.to_array(),
+            normal,
+            color,
+        },
+        Vertex {
+            position: b.to_array(),
+            normal,
+            color,
+        },
+        Vertex {
+            position: c.to_array(),
+            normal,
+            color,
+        },
     ]);
 }
 
@@ -481,7 +684,11 @@ fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::Te
     device
         .create_texture(&wgpu::TextureDescriptor {
             label: Some("cubacadabra depth"),
-            size: wgpu::Extent3d { width: width.max(1), height: height.max(1), depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: width.max(1),
+                height: height.max(1),
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
