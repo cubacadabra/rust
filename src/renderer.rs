@@ -34,6 +34,15 @@ struct RenderPad {
     color: [f32; 4],
 }
 
+#[derive(Clone)]
+struct RenderSign {
+    text: String,
+    position: [f32; 3],
+    yaw: f32,
+    max_width: f32,
+    color: [f32; 4],
+}
+
 #[derive(Clone, Copy, Default)]
 struct RenderEntity {
     position: [f32; 3],
@@ -90,6 +99,7 @@ struct RenderWorld {
     spawn: [f32; 3],
     show_spawn_pad: bool,
     palette: RenderPalette,
+    signs: Vec<RenderSign>,
 }
 
 impl Default for RenderWorld {
@@ -104,6 +114,7 @@ impl Default for RenderWorld {
             spawn: [0.0; 3],
             show_spawn_pad: true,
             palette: RenderPalette::default(),
+            signs: Vec::new(),
         }
     }
 }
@@ -147,6 +158,7 @@ struct Scene {
     npc_styles: Vec<AvatarStyle>,
     camera: [f32; 3],
     elapsed: f32,
+    username: String,
 }
 
 impl Default for Scene {
@@ -161,6 +173,7 @@ impl Default for Scene {
             npc_styles: default_npc_styles(),
             camera: [0.0, -0.095, 8.0],
             elapsed: 0.0,
+            username: "PLAYER".to_owned(),
         }
     }
 }
@@ -501,6 +514,7 @@ impl Renderer {
             .extend((0..engine.launch_pad_count()).map(|index| engine.launch_pad_seconds(index)));
         self.scene.camera = engine.camera();
         self.scene.elapsed = engine.elapsed();
+        self.scene.username.clone_from(&engine.username);
     }
 
     pub fn draw(&mut self) {
@@ -699,6 +713,21 @@ impl Renderer {
                 index,
             );
         }
+        for sign in &world.signs {
+            let text = if sign.text == "{{username}}" {
+                &self.scene.username
+            } else {
+                &sign.text
+            };
+            add_pixel_text(
+                &mut mesh,
+                text,
+                Vec3::from_array(sign.position),
+                sign.yaw,
+                sign.max_width,
+                sign.color,
+            );
+        }
         for player in &self.scene.remote_players {
             add_avatar(
                 &mut mesh,
@@ -807,6 +836,17 @@ fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
         spawn: definition.world.spawn(),
         show_spawn_pad: definition.world.show_spawn_pad,
         palette,
+        signs: definition
+            .signs
+            .iter()
+            .map(|sign| RenderSign {
+                text: sign.text.clone(),
+                position: sign.position(),
+                yaw: sign.yaw,
+                max_width: sign.max_width.max(0.2),
+                color: resolve_color(&definition.palette, &sign.color, palette.paper),
+            })
+            .collect(),
     }
 }
 
@@ -1363,6 +1403,7 @@ fn glyph(character: char) -> [u8; 7] {
         '8' => [14, 17, 17, 14, 17, 17, 14],
         '9' => [14, 17, 17, 15, 1, 1, 14],
         '-' => [0, 0, 0, 31, 0, 0, 0],
+        '_' => [0, 0, 0, 0, 0, 0, 31],
         _ => [0; 7],
     }
 }

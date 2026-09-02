@@ -21,12 +21,23 @@ pub(crate) struct LaunchPad {
     pub(crate) occupants: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Portal {
+    pub(crate) x: f32,
+    pub(crate) z: f32,
+    pub(crate) radius: f32,
+    pub(crate) destination: usize,
+    pub(crate) destination_spawn: [f32; 3],
+    pub(crate) destination_yaw: f32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RuntimeWorld {
     pub(crate) spawn: [f32; 3],
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) launch_destinations: Vec<Option<usize>>,
     pub(crate) obstacles: Vec<Aabb>,
+    pub(crate) portals: Vec<Portal>,
 }
 
 impl LaunchPad {

@@ -2,7 +2,7 @@ use crate::game_package::GamePackageDefinition;
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
 use crate::scripting::GameScript;
 use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player, RemotePlayer};
-use crate::world::{Aabb, LaunchPad, RuntimeWorld, block_bounds, slot_offset};
+use crate::world::{Aabb, LaunchPad, Portal, RuntimeWorld, block_bounds, slot_offset};
 
 pub(crate) const TOTAL_PLAYERS: usize = 18;
 pub(crate) const MAX_AGENTS: usize = TOTAL_PLAYERS - 1;
@@ -59,6 +59,9 @@ pub struct Engine {
     pub(crate) package_generation: u32,
     pub(crate) package_buffer: Vec<u8>,
     pub(crate) world_ids: Vec<String>,
+    pub(crate) username: String,
+    pub(crate) username_buffer: Vec<u8>,
+    pub(crate) portal_cooldown_until: f32,
 }
 
 impl Engine {
@@ -104,6 +107,9 @@ impl Engine {
             package_generation: 0,
             package_buffer: Vec::new(),
             world_ids: Vec::new(),
+            username: "PLAYER".to_owned(),
+            username_buffer: Vec::new(),
+            portal_cooldown_until: 0.0,
         };
         engine.write_snapshot();
         engine
@@ -303,6 +309,7 @@ impl Engine {
         self.apply_camera_input();
         self.smooth_camera(delta);
         self.update_player(delta);
+        self.update_portals();
         if ENABLE_LOCAL_NPCS {
             self.spawn_agents();
             self.update_agents(delta);
@@ -427,14 +434,13 @@ impl Engine {
             return 0;
         }
 
-        let x = self.player.position[0];
-        let z = self.player.position[2];
-        if room.contains(x, z) {
-            return 2;
+        let distance = (self.player.position[0] - room.username_station_x())
+            .hypot(self.player.position[2] - room.username_station_z());
+        if distance <= room.interaction_radius.max(0.0) {
+            2
+        } else {
+            1
         }
-
-        let distance = (x - room.door_x()).hypot(z - room.door_z());
-        u8::from(distance <= room.proximity_radius.max(0.0))
     }
 
     pub(crate) fn world_event_id(&self) -> u32 {
@@ -457,6 +463,28 @@ impl Engine {
     pub(crate) fn prepare_package_buffer(&mut self, length: usize) -> *mut u8 {
         self.package_buffer.resize(length, 0);
         self.package_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn prepare_username_buffer(&mut self, length: usize) -> *mut u8 {
+        self.username_buffer.resize(length, 0);
+        self.username_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn load_username_buffer(&mut self) -> bool {
+        let Ok(source) = std::str::from_utf8(&self.username_buffer) else {
+            return false;
+        };
+        let username = source
+            .trim()
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric() || matches!(character, ' ' | '_' | '-'))
+            .take(24)
+            .collect::<String>();
+        if username.len() < 2 {
+            return false;
+        }
+        self.username = username;
+        true
     }
 
     pub(crate) fn load_package_buffer(&mut self) -> bool {
@@ -497,11 +525,30 @@ impl Engine {
                     .iter()
                     .map(|block| block_bounds(block.position(), block.size()))
                     .collect::<Vec<_>>();
+                let portals = definition
+                    .portals
+                    .iter()
+                    .filter_map(|portal| {
+                        let destination = world_indices
+                            .get(portal.destination_world.as_str())
+                            .copied()?;
+                        let fallback_spawn = entries.get(destination)?.1.world.spawn();
+                        Some(Portal {
+                            x: portal.x(),
+                            z: portal.z(),
+                            radius: portal.radius.max(0.2),
+                            destination,
+                            destination_spawn: portal.destination_spawn(fallback_spawn),
+                            destination_yaw: portal.destination_yaw,
+                        })
+                    })
+                    .collect::<Vec<_>>();
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
                     launch_pads,
                     launch_destinations,
                     obstacles,
+                    portals,
                 }
             })
             .collect::<Vec<_>>();
@@ -596,6 +643,53 @@ impl Engine {
                 self.enter_registered_world(index, destination);
             }
         }
+    }
+
+    fn update_portals(&mut self) {
+        if self.elapsed < self.portal_cooldown_until {
+            return;
+        }
+        let portal = self
+            .worlds
+            .get(self.active_world)
+            .and_then(|world| {
+                world.portals.iter().find(|portal| {
+                    horizontal_distance(
+                        self.player.position[0],
+                        self.player.position[2],
+                        portal.x,
+                        portal.z,
+                    ) <= portal.radius
+                })
+            })
+            .copied();
+        if let Some(portal) = portal {
+            self.enter_portal(portal);
+        }
+    }
+
+    fn enter_portal(&mut self, portal: Portal) {
+        let Some(world) = self.worlds.get(portal.destination).cloned() else {
+            return;
+        };
+        self.active_world = portal.destination;
+        self.launch_pads = world.launch_pads;
+        self.obstacles = world.obstacles;
+        self.player.position = portal.destination_spawn;
+        self.player.velocity = [0.0; 3];
+        self.player.grounded = true;
+        self.player.moving = false;
+        self.player.sprinting = false;
+        self.view_yaw = portal.destination_yaw;
+        self.target_yaw = portal.destination_yaw;
+        self.view_pitch = -0.095;
+        self.target_pitch = -0.095;
+        self.agents.clear();
+        self.remote_players.clear();
+        self.next_spawn_at = f32::MAX;
+        self.portal_cooldown_until = self.elapsed + 0.6;
+        self.world_event_id = self.world_event_id.wrapping_add(1);
+        self.last_world_destination = portal.destination;
     }
 
     fn enter_registered_world(&mut self, source_pad: usize, destination: usize) {
@@ -883,5 +977,54 @@ mod tests {
         assert_eq!(engine.player.position, [0.0, 0.0, 8.0]);
         assert_eq!(engine.launch_pad_count(), 0);
         assert_eq!(engine.obstacles.len(), 1);
+    }
+
+    #[test]
+    fn portals_enter_and_exit_the_immersive_settings_world() {
+        let manifest = r#"{
+            "startWorld":"lobby",
+            "settingsRoom":{
+                "worldId":"settings",
+                "usernameStationPosition":[0,0,-5],
+                "interactionRadius":3
+            },
+            "world":{"spawn":[0,0,0]},
+            "portals":[{
+                "position":[4,0,0],
+                "radius":1,
+                "destinationWorld":"settings",
+                "destinationSpawn":[0,0,6]
+            }],
+            "worlds":{
+                "settings":{
+                    "world":{"spawn":[0,0,6]},
+                    "portals":[{
+                        "position":[0,0,9],
+                        "radius":1,
+                        "destinationWorld":"lobby",
+                        "destinationSpawn":[3,0,0]
+                    }]
+                }
+            }
+        }"#;
+        let mut engine = Engine::new();
+        engine.package_buffer = manifest.as_bytes().to_vec();
+        assert!(engine.load_package_buffer());
+
+        engine.player.position = [4.0, 0.0, 0.0];
+        engine.step(1.0 / 60.0);
+        assert_eq!(engine.world_ids[engine.active_world()], "settings");
+        assert_eq!(engine.player.position, [0.0, 0.0, 6.0]);
+        assert_eq!(engine.settings_room_state(), 1);
+
+        engine.player.position = [0.0, 0.0, -5.0];
+        assert_eq!(engine.settings_room_state(), 2);
+
+        engine.portal_cooldown_until = 0.0;
+        engine.player.position = [0.0, 0.0, 9.0];
+        engine.step(1.0 / 60.0);
+        assert_eq!(engine.world_ids[engine.active_world()], "lobby");
+        assert_eq!(engine.player.position, [3.0, 0.0, 0.0]);
+        assert_eq!(engine.settings_room_state(), 0);
     }
 }

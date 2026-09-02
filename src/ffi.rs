@@ -272,6 +272,25 @@ pub unsafe extern "C" fn engine_load_package_buffer(engine: *mut Engine) -> u8 {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_username_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }.map_or(ptr::null_mut(), |engine| {
+        engine.prepare_username_buffer(length)
+    })
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_load_username_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }.map_or(0, |engine| u8::from(engine.load_username_buffer()))
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_script_loaded(engine: *const Engine) -> u8 {
     unsafe { engine.as_ref() }
         .map(|engine| u8::from(engine.script_loaded()))

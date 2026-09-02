@@ -95,6 +95,8 @@ uint8_t *engine_script_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_script_buffer(CubacadabraEngine *engine);
 uint8_t *engine_package_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_package_buffer(CubacadabraEngine *engine);
+uint8_t *engine_username_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_load_username_buffer(CubacadabraEngine *engine);
 uint8_t engine_script_loaded(const CubacadabraEngine *engine);
 const float *engine_snapshot_ptr(const CubacadabraEngine *engine);
 uintptr_t engine_snapshot_len(void);
