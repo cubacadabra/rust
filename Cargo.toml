@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 [features]
 default = ["metal"]
 metal = ["wgpu/metal"]
+android-backends = ["wgpu/vulkan", "wgpu/gles"]
 web-renderer = []
 
 [dependencies]
@@ -22,7 +23,7 @@ glam = "0.30"
 mlua = { version = "0.12.1", default-features = false, features = ["luau", "vendored"] }
 pollster = "0.4"
 raw-window-handle = "0.6"
-wgpu = { version = "29.0.1", default-features = false, features = ["wgsl", "metal", "vulkan", "gles"] }
+wgpu = { version = "29.0.1", default-features = false, features = ["wgsl", "metal"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 bytemuck = { version = "1.23", features = ["derive"] }
