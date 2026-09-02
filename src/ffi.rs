@@ -328,6 +328,50 @@ pub unsafe extern "C" fn engine_agent_count(engine: *const Engine) -> usize {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_local_agent_count(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.local_agent_count())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_remote_player_count(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.remote_player_count())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_remote_player_count(
+    engine: *mut Engine,
+    count: usize,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_remote_player_count(count);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_remote_player(
+    engine: *mut Engine,
+    index: usize,
+    x: f32,
+    y: f32,
+    z: f32,
+    yaw: f32,
+    moving: u8,
+    sprinting: u8,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_remote_player(index, [x, y, z], yaw, moving != 0, sprinting != 0);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_meeting_count(engine: *const Engine, index: usize) -> usize {
     unsafe { engine.as_ref() }.map_or(0, |engine| engine.meeting_count(index))
 }

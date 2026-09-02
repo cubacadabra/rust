@@ -1,12 +1,17 @@
 use crate::game_package::GamePackageDefinition;
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
 use crate::scripting::GameScript;
-use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player};
+use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player, RemotePlayer};
 use crate::world::{Aabb, LaunchPad, RuntimeWorld, block_bounds, slot_offset};
 
 pub(crate) const TOTAL_PLAYERS: usize = 18;
 pub(crate) const MAX_AGENTS: usize = TOTAL_PLAYERS - 1;
 pub(crate) const SNAPSHOT_STRIDE: usize = 8;
+
+// Local NPCs are paused until the World Durable Object becomes authoritative.
+// Keeping this switch here preserves the existing simulation for that later
+// integration without showing divergent agents on different clients.
+const ENABLE_LOCAL_NPCS: bool = false;
 
 pub(crate) const BODY_HEIGHT: f32 = 3.15;
 pub(crate) const PLAYER_RADIUS: f32 = 0.52;
@@ -26,6 +31,7 @@ const MAX_CAMERA_DISTANCE: f32 = 16.0;
 pub struct Engine {
     pub(crate) player: Player,
     pub(crate) agents: Vec<Agent>,
+    pub(crate) remote_players: Vec<RemotePlayer>,
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) input: Input,
@@ -66,6 +72,7 @@ impl Engine {
         let mut engine = Self {
             player: Player::default(),
             agents: Vec::with_capacity(MAX_AGENTS),
+            remote_players: Vec::with_capacity(MAX_AGENTS),
             obstacles,
             launch_pads: vec![
                 LaunchPad::new(-10.0, -3.0, 2.7, DEFAULT_LAUNCH_COUNTDOWN),
@@ -296,8 +303,18 @@ impl Engine {
         self.apply_camera_input();
         self.smooth_camera(delta);
         self.update_player(delta);
-        self.spawn_agents();
-        self.update_agents(delta);
+        if ENABLE_LOCAL_NPCS {
+            self.spawn_agents();
+            self.update_agents(delta);
+        }
+        for player in &mut self.remote_players {
+            if player.moving {
+                let speed = if player.sprinting { 13.0 } else { 9.0 };
+                player.walk_cycle += delta * speed;
+            } else {
+                player.walk_cycle = 0.0;
+            }
+        }
         self.update_launch_pads();
         self.write_snapshot();
     }
@@ -307,7 +324,39 @@ impl Engine {
     }
 
     pub(crate) fn agent_count(&self) -> usize {
-        self.agents.len()
+        self.local_agent_count() + self.remote_player_count()
+    }
+
+    pub(crate) fn local_agent_count(&self) -> usize {
+        self.agents
+            .len()
+            .min(MAX_AGENTS.saturating_sub(self.remote_player_count()))
+    }
+
+    pub(crate) fn remote_player_count(&self) -> usize {
+        self.remote_players.len().min(MAX_AGENTS)
+    }
+
+    pub(crate) fn set_remote_player_count(&mut self, count: usize) {
+        self.remote_players
+            .resize(count.min(MAX_AGENTS), RemotePlayer::default());
+        self.write_snapshot();
+    }
+
+    pub(crate) fn set_remote_player(
+        &mut self,
+        index: usize,
+        position: [f32; 3],
+        yaw: f32,
+        moving: bool,
+        sprinting: bool,
+    ) {
+        if let Some(player) = self.remote_players.get_mut(index) {
+            player.position = position;
+            player.yaw = yaw;
+            player.moving = moving;
+            player.sprinting = sprinting;
+        }
     }
 
     pub(crate) fn elapsed(&self) -> f32 {
@@ -601,7 +650,8 @@ impl Engine {
             bool_as_float(self.player.moving),
             bool_as_float(self.player.sprinting),
         ]);
-        for (index, agent) in self.agents.iter().enumerate() {
+        let local_agent_count = self.local_agent_count();
+        for (index, agent) in self.agents.iter().take(local_agent_count).enumerate() {
             let offset = (index + 1) * SNAPSHOT_STRIDE;
             let yaw =
                 (agent.target.x - agent.position[0]).atan2(agent.target.z - agent.position[2]);
@@ -614,6 +664,24 @@ impl Engine {
                 agent.phase.code(),
                 agent.meeting_index as f32,
                 bool_as_float(agent.phase == AgentPhase::Assembled),
+            ]);
+        }
+        for (index, player) in self
+            .remote_players
+            .iter()
+            .take(self.remote_player_count())
+            .enumerate()
+        {
+            let offset = (local_agent_count + index + 1) * SNAPSHOT_STRIDE;
+            self.snapshot[offset..offset + SNAPSHOT_STRIDE].copy_from_slice(&[
+                player.position[0],
+                player.position[1],
+                player.position[2],
+                player.yaw,
+                player.walk_cycle,
+                1.0,
+                -1.0,
+                0.0,
             ]);
         }
     }
@@ -666,13 +734,31 @@ mod tests {
     }
 
     #[test]
-    fn agents_spawn_deterministically() {
+    fn local_npcs_are_disabled_until_authoritative() {
         let mut engine = Engine::new();
         for _ in 0..181 {
             engine.step(1.0 / 60.0);
         }
-        assert_eq!(engine.agents.len(), 1);
-        assert_eq!(engine.snapshot[SNAPSHOT_STRIDE + 5], 0.0);
+        assert!(engine.agents.is_empty());
+        assert_eq!(engine.agent_count(), 0);
+    }
+
+    #[test]
+    fn remote_players_are_written_to_the_snapshot() {
+        let mut engine = Engine::new();
+        engine.set_remote_player_count(1);
+        engine.set_remote_player(0, [4.0, 0.0, -6.0], 0.75, true, false);
+        engine.step(1.0 / 60.0);
+
+        assert_eq!(engine.remote_player_count(), 1);
+        assert_eq!(engine.agent_count(), 1);
+        assert_eq!(
+            &engine.snapshot[SNAPSHOT_STRIDE..SNAPSHOT_STRIDE + 3],
+            &[4.0, 0.0, -6.0]
+        );
+        assert_eq!(engine.snapshot[SNAPSHOT_STRIDE + 3], 0.75);
+        assert!(engine.snapshot[SNAPSHOT_STRIDE + 4] > 0.0);
+        assert_eq!(engine.snapshot[SNAPSHOT_STRIDE + 6], -1.0);
     }
 
     #[test]

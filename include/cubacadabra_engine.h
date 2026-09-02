@@ -103,6 +103,19 @@ float engine_camera_yaw(const CubacadabraEngine *engine);
 float engine_camera_pitch(const CubacadabraEngine *engine);
 float engine_camera_distance(const CubacadabraEngine *engine);
 uintptr_t engine_agent_count(const CubacadabraEngine *engine);
+uintptr_t engine_local_agent_count(const CubacadabraEngine *engine);
+uintptr_t engine_remote_player_count(const CubacadabraEngine *engine);
+void engine_set_remote_player_count(CubacadabraEngine *engine, uintptr_t count);
+void engine_set_remote_player(
+    CubacadabraEngine *engine,
+    uintptr_t index,
+    float x,
+    float y,
+    float z,
+    float yaw,
+    uint8_t moving,
+    uint8_t sprinting
+);
 uintptr_t engine_meeting_count(const CubacadabraEngine *engine, uintptr_t index);
 uintptr_t engine_launch_pad_count(const CubacadabraEngine *engine);
 uintptr_t engine_launch_pad_occupants(const CubacadabraEngine *engine, uintptr_t index);

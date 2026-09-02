@@ -134,6 +134,7 @@ struct Globals {
 struct Scene {
     world: RenderWorld,
     agents: Vec<RenderEntity>,
+    remote_players: Vec<RenderEntity>,
     player: RenderEntity,
     pad_seconds: Vec<f32>,
     player_style: AvatarStyle,
@@ -147,6 +148,7 @@ impl Default for Scene {
         Self {
             world: RenderWorld::default(),
             agents: Vec::new(),
+            remote_players: Vec::new(),
             player: RenderEntity::default(),
             pad_seconds: Vec::new(),
             player_style: default_player_style(),
@@ -445,13 +447,24 @@ impl Renderer {
         let snapshot = engine.snapshot();
         self.scene.player = render_entity(snapshot.get(..SNAPSHOT_STRIDE).unwrap_or(&[]));
         self.scene.agents.clear();
+        self.scene.remote_players.clear();
+        let local_agent_count = engine.local_agent_count();
         self.scene.agents.extend(
             snapshot
                 .as_chunks::<SNAPSHOT_STRIDE>()
                 .0
                 .iter()
                 .skip(1)
-                .take(engine.agent_count())
+                .take(local_agent_count)
+                .map(|values| render_entity(values)),
+        );
+        self.scene.remote_players.extend(
+            snapshot
+                .as_chunks::<SNAPSHOT_STRIDE>()
+                .0
+                .iter()
+                .skip(local_agent_count + 1)
+                .take(engine.remote_player_count())
                 .map(|values| render_entity(values)),
         );
         self.scene.pad_seconds.clear();
@@ -658,9 +671,8 @@ impl Renderer {
                 index,
             );
         }
-        for (index, agent) in self.scene.agents.iter().enumerate() {
-            let style = self.scene.npc_styles[index % self.scene.npc_styles.len()];
-            add_avatar(&mut mesh, *agent, style, world.palette.ink);
+        for player in &self.scene.remote_players {
+            add_avatar(&mut mesh, *player, self.scene.player_style, world.palette.ink);
         }
         if self.scene.camera[2] > 0.75 {
             add_avatar(

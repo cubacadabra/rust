@@ -21,6 +21,15 @@ pub(crate) struct Player {
     pub(crate) walk_cycle: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct RemotePlayer {
+    pub(crate) position: [f32; 3],
+    pub(crate) yaw: f32,
+    pub(crate) moving: bool,
+    pub(crate) sprinting: bool,
+    pub(crate) walk_cycle: f32,
+}
+
 impl Default for Player {
     fn default() -> Self {
         Self {
