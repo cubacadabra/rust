@@ -437,10 +437,12 @@ impl Renderer {
         self.scene.agents.clear();
         self.scene.agents.extend(
             snapshot
-                .chunks_exact(SNAPSHOT_STRIDE)
+                .as_chunks::<SNAPSHOT_STRIDE>()
+                .0
+                .iter()
                 .skip(1)
                 .take(engine.agent_count())
-                .map(render_entity),
+                .map(|values| render_entity(values)),
         );
         self.scene.pad_seconds.clear();
         self.scene
