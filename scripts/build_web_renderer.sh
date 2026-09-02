@@ -33,6 +33,7 @@ $cargo_command build \
 "$wasm_bindgen_command" \
   "$target_dir/wasm32-unknown-unknown/release/cubacadabra_engine.wasm" \
   --target web \
+  --no-typescript \
   --out-dir "$output_dir" \
   --out-name cubacadabra_renderer
 echo "Built $output_dir/cubacadabra_renderer.js"
