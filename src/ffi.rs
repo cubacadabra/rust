@@ -439,6 +439,13 @@ pub unsafe extern "C" fn engine_active_world(engine: *const Engine) -> usize {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_settings_room_state(engine: *const Engine) -> u8 {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.settings_room_state())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_world_event_id(engine: *const Engine) -> u32 {
     unsafe { engine.as_ref() }.map_or(0, |engine| engine.world_event_id())
 }

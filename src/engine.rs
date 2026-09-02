@@ -418,6 +418,25 @@ impl Engine {
         self.active_world
     }
 
+    pub(crate) fn settings_room_state(&self) -> u8 {
+        let Some(room) = self.package.as_ref().and_then(|package| package.settings_room.as_ref())
+        else {
+            return 0;
+        };
+        if self.world_ids.get(self.active_world).map(String::as_str) != Some(room.world_id.as_str()) {
+            return 0;
+        }
+
+        let x = self.player.position[0];
+        let z = self.player.position[2];
+        if room.contains(x, z) {
+            return 2;
+        }
+
+        let distance = (x - room.door_x()).hypot(z - room.door_z());
+        u8::from(distance <= room.proximity_radius.max(0.0))
+    }
+
     pub(crate) fn world_event_id(&self) -> u32 {
         self.world_event_id
     }

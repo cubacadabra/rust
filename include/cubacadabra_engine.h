@@ -126,6 +126,7 @@ uint32_t engine_launch_event_id(const CubacadabraEngine *engine);
 uintptr_t engine_last_launch_pad(const CubacadabraEngine *engine);
 uintptr_t engine_last_launch_occupants(const CubacadabraEngine *engine);
 uintptr_t engine_active_world(const CubacadabraEngine *engine);
+uint8_t engine_settings_room_state(const CubacadabraEngine *engine);
 uint32_t engine_world_event_id(const CubacadabraEngine *engine);
 uintptr_t engine_last_world_source_pad(const CubacadabraEngine *engine);
 uintptr_t engine_last_world_destination(const CubacadabraEngine *engine);
