@@ -212,7 +212,7 @@ impl Renderer {
         }))
         .ok()?;
         Some(Self::from_parts(
-            surface, adapter, device, queue, width, height,
+            surface, adapter, device, queue, width, height, false,
         ))
     }
 
@@ -257,7 +257,7 @@ impl Renderer {
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
 
         Ok(Self::from_parts(
-            surface, adapter, device, queue, width, height,
+            surface, adapter, device, queue, width, height, true,
         ))
     }
 
@@ -268,15 +268,25 @@ impl Renderer {
         queue: wgpu::Queue,
         width: f32,
         height: f32,
+        prefer_srgb: bool,
     ) -> Self {
         let capabilities = surface.get_capabilities(&adapter);
-        let format = capabilities
-            .formats
-            .iter()
-            .copied()
-            .find(wgpu::TextureFormat::is_srgb)
-            .or_else(|| capabilities.formats.first().copied())
-            .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
+        let format = if prefer_srgb {
+            capabilities
+                .formats
+                .iter()
+                .copied()
+                .find(wgpu::TextureFormat::is_srgb)
+                .or_else(|| capabilities.formats.first().copied())
+        } else {
+            capabilities
+                .formats
+                .iter()
+                .copied()
+                .find(|format| !format.is_srgb())
+                .or_else(|| capabilities.formats.first().copied())
+        }
+        .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
