@@ -1,8 +1,14 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
+#[cfg(target_os = "android")]
+use std::ptr::NonNull;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
+#[cfg(target_os = "android")]
+use raw_window_handle::{
+    AndroidDisplayHandle, AndroidNdkWindowHandle, RawDisplayHandle, RawWindowHandle,
+};
 use wgpu::util::DeviceExt;
 
 use crate::engine::{Engine, SNAPSHOT_STRIDE};
@@ -188,10 +194,32 @@ impl Renderer {
             return None;
         }
 
+        #[cfg(target_os = "android")]
+        let (instance, surface) = {
+            let window = NonNull::new(layer)?;
+            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+                backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
+                ..wgpu::InstanceDescriptor::new_without_display_handle()
+            });
+            let window_handle = AndroidNdkWindowHandle::new(window);
+            let display_handle = AndroidDisplayHandle::new();
+            let surface = unsafe {
+                instance
+                    .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                        raw_display_handle: Some(RawDisplayHandle::Android(display_handle)),
+                        raw_window_handle: RawWindowHandle::AndroidNdk(window_handle),
+                    })
+                    .ok()?
+            };
+            (instance, surface)
+        };
+
+        #[cfg(not(target_os = "android"))]
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::METAL,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
+        #[cfg(not(target_os = "android"))]
         let surface = unsafe {
             instance
                 .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer))
@@ -672,7 +700,12 @@ impl Renderer {
             );
         }
         for player in &self.scene.remote_players {
-            add_avatar(&mut mesh, *player, self.scene.player_style, world.palette.ink);
+            add_avatar(
+                &mut mesh,
+                *player,
+                self.scene.player_style,
+                world.palette.ink,
+            );
         }
         if self.scene.camera[2] > 0.75 {
             add_avatar(

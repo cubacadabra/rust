@@ -342,10 +342,7 @@ pub unsafe extern "C" fn engine_remote_player_count(engine: *const Engine) -> us
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
-pub unsafe extern "C" fn engine_set_remote_player_count(
-    engine: *mut Engine,
-    count: usize,
-) {
+pub unsafe extern "C" fn engine_set_remote_player_count(engine: *mut Engine, count: usize) {
     if let Some(engine) = unsafe { engine.as_mut() } {
         engine.set_remote_player_count(count);
     }

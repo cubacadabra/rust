@@ -132,7 +132,7 @@ uintptr_t engine_last_world_destination(const CubacadabraEngine *engine);
 float engine_elapsed(const CubacadabraEngine *engine);
 void engine_destroy(CubacadabraEngine *engine);
 
-CubacadabraRenderer *engine_renderer_create(void *metal_layer, float width, float height);
+CubacadabraRenderer *engine_renderer_create(void *native_surface, float width, float height);
 void engine_renderer_resize(CubacadabraRenderer *renderer, float width, float height);
 void engine_renderer_sync(CubacadabraRenderer *renderer, const CubacadabraEngine *engine);
 void engine_renderer_draw(CubacadabraRenderer *renderer);
