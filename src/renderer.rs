@@ -13,6 +13,7 @@ use wgpu::util::DeviceExt;
 
 use crate::engine::{Engine, SNAPSHOT_STRIDE};
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
+use crate::types::BuildBlock;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -32,6 +33,8 @@ struct RenderPad {
     code: String,
     label: String,
     color: [f32; 4],
+    enabled: bool,
+    availability_label: String,
 }
 
 #[derive(Clone)]
@@ -159,6 +162,7 @@ struct Scene {
     camera: [f32; 3],
     elapsed: f32,
     username: String,
+    build_blocks: Vec<BuildBlock>,
 }
 
 impl Default for Scene {
@@ -174,6 +178,7 @@ impl Default for Scene {
             camera: [0.0, -0.095, 8.0],
             elapsed: 0.0,
             username: "PLAYER".to_owned(),
+            build_blocks: Vec::new(),
         }
     }
 }
@@ -515,6 +520,10 @@ impl Renderer {
         self.scene.camera = engine.camera();
         self.scene.elapsed = engine.elapsed();
         self.scene.username.clone_from(&engine.username);
+        self.scene.build_blocks.clear();
+        self.scene
+            .build_blocks
+            .extend_from_slice(engine.build_blocks());
     }
 
     pub fn draw(&mut self) {
@@ -728,6 +737,27 @@ impl Renderer {
                 sign.color,
             );
         }
+        for block in &self.scene.build_blocks {
+            let size = if block.rotation % 2 == 0 {
+                block.size
+            } else {
+                [block.size[2], block.size[1], block.size[0]]
+            };
+            let color = color(block.color);
+            add_cuboid(
+                &mut mesh,
+                Vec3::from_array(block.position),
+                Vec3::from_array(size),
+                color,
+            );
+            add_cuboid_outline(
+                &mut mesh,
+                Vec3::from_array(block.position),
+                Vec3::from_array(size),
+                0.025,
+                faded(world.palette.paper, 0.3),
+            );
+        }
         for player in &self.scene.remote_players {
             add_avatar(
                 &mut mesh,
@@ -819,6 +849,12 @@ fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
                 code: pad.code.clone(),
                 label: pad.label.clone(),
                 color: resolve_color(&definition.palette, &pad.color, palette.paper),
+                enabled: pad.enabled,
+                availability_label: if pad.availability_label.is_empty() {
+                    "COMING SOON".to_owned()
+                } else {
+                    pad.availability_label.clone()
+                },
             })
             .collect(),
         clouds: definition
@@ -1253,7 +1289,10 @@ fn add_launch_pad(
         palette.ink,
     );
 
-    let mut inner = pad.color;
+    let enabled = pad.enabled;
+    let disabled_color = faded(palette.ink, 0.32);
+    let pad_color = if enabled { pad.color } else { disabled_color };
+    let mut inner = pad_color;
     inner[3] = 0.30;
     add_cylinder(
         vertices,
@@ -1263,7 +1302,7 @@ fn add_launch_pad(
         inner,
     );
     let pulse = 1.0 + (elapsed * 2.2 + index as f32 * 1.7).sin() * 0.045;
-    let mut ring_color = pad.color;
+    let mut ring_color = pad_color;
     if seconds > 0.0 {
         ring_color[3] = 0.82 + (elapsed * 5.0).sin().abs() * 0.18;
     }
@@ -1282,14 +1321,14 @@ fn add_launch_pad(
             origin + Vec3::new(x, y, -0.35),
             0.19,
             2.70,
-            pad.color,
+            pad_color,
         );
     }
     add_cuboid(
         vertices,
         origin + Vec3::new(0.0, 2.62, -0.35),
         Vec3::new(5.05, 0.32, 0.38),
-        pad.color,
+        pad_color,
     );
     add_cuboid(
         vertices,
@@ -1301,9 +1340,13 @@ fn add_launch_pad(
         vertices,
         origin + Vec3::new(-2.42, 4.0, -0.23),
         Vec3::new(0.12, 0.82, 0.08),
-        pad.color,
+        pad_color,
     );
-    let label = format!("{} {}", pad.code, pad.label);
+    let label = if enabled {
+        format!("{} {}", pad.code, pad.label)
+    } else {
+        pad.availability_label.clone()
+    };
     add_pixel_text(
         vertices,
         label.trim(),

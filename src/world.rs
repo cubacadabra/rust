@@ -19,6 +19,7 @@ pub(crate) struct LaunchPad {
     pub(crate) phase: LaunchPadPhase,
     pub(crate) launch_at: f32,
     pub(crate) occupants: usize,
+    pub(crate) enabled: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -50,6 +51,7 @@ impl LaunchPad {
             phase: LaunchPadPhase::Idle,
             launch_at: 0.0,
             occupants: 0,
+            enabled: true,
         }
     }
 }

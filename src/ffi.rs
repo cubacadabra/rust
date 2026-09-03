@@ -60,6 +60,35 @@ pub unsafe extern "C" fn engine_reset_view(engine: *mut Engine) {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_build_block_count(engine: *mut Engine, count: usize) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_build_block_count(count);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_build_block(
+    engine: *mut Engine,
+    index: usize,
+    x: f32,
+    y: f32,
+    z: f32,
+    width: f32,
+    height: f32,
+    depth: f32,
+    color: u32,
+    rotation: u8,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_build_block(index, [x, y, z], [width, height, depth], color, rotation);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_set_launch_pad(
     engine: *mut Engine,
     index: usize,
@@ -272,10 +301,7 @@ pub unsafe extern "C" fn engine_load_package_buffer(engine: *mut Engine) -> u8 {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
-pub unsafe extern "C" fn engine_username_buffer_ptr(
-    engine: *mut Engine,
-    length: usize,
-) -> *mut u8 {
+pub unsafe extern "C" fn engine_username_buffer_ptr(engine: *mut Engine, length: usize) -> *mut u8 {
     unsafe { engine.as_mut() }.map_or(ptr::null_mut(), |engine| {
         engine.prepare_username_buffer(length)
     })

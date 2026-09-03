@@ -1,7 +1,7 @@
 use crate::game_package::GamePackageDefinition;
 use crate::math::{Random, bool_as_float, damp, horizontal_distance};
 use crate::scripting::GameScript;
-use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase, Player, RemotePlayer};
+use crate::types::{Agent, AgentPhase, BuildBlock, Input, LaunchPadPhase, Player, RemotePlayer};
 use crate::world::{Aabb, LaunchPad, Portal, RuntimeWorld, block_bounds, slot_offset};
 
 pub(crate) const TOTAL_PLAYERS: usize = 18;
@@ -33,6 +33,8 @@ pub struct Engine {
     pub(crate) agents: Vec<Agent>,
     pub(crate) remote_players: Vec<RemotePlayer>,
     pub(crate) obstacles: Vec<Aabb>,
+    pub(crate) base_obstacles: Vec<Aabb>,
+    pub(crate) build_blocks: Vec<BuildBlock>,
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) input: Input,
     pub(crate) elapsed: f32,
@@ -58,6 +60,7 @@ pub struct Engine {
     pub(crate) package: Option<GamePackageDefinition>,
     pub(crate) package_generation: u32,
     pub(crate) package_buffer: Vec<u8>,
+    pub(crate) authoritative_launch: bool,
     pub(crate) world_ids: Vec<String>,
     pub(crate) username: String,
     pub(crate) username_buffer: Vec<u8>,
@@ -76,7 +79,9 @@ impl Engine {
             player: Player::default(),
             agents: Vec::with_capacity(MAX_AGENTS),
             remote_players: Vec::with_capacity(MAX_AGENTS),
-            obstacles,
+            obstacles: obstacles.clone(),
+            base_obstacles: obstacles.clone(),
+            build_blocks: Vec::new(),
             launch_pads: vec![
                 LaunchPad::new(-10.0, -3.0, 2.7, DEFAULT_LAUNCH_COUNTDOWN),
                 LaunchPad::new(0.0, -7.0, 2.7, DEFAULT_LAUNCH_COUNTDOWN),
@@ -106,6 +111,7 @@ impl Engine {
             package: None,
             package_generation: 0,
             package_buffer: Vec::new(),
+            authoritative_launch: false,
             world_ids: Vec::new(),
             username: "PLAYER".to_owned(),
             username_buffer: Vec::new(),
@@ -243,6 +249,8 @@ impl Engine {
         self.active_world = index;
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
+        self.base_obstacles = self.obstacles.clone();
+        self.build_blocks.clear();
         self.player.position = world.spawn;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
@@ -250,6 +258,47 @@ impl Engine {
         self.next_spawn_at = self.elapsed + 3.0;
         self.write_snapshot();
         true
+    }
+
+    pub(crate) fn set_build_block_count(&mut self, count: usize) {
+        self.build_blocks
+            .resize(count.min(256), BuildBlock::default());
+        self.rebuild_build_obstacles();
+    }
+
+    pub(crate) fn set_build_block(
+        &mut self,
+        index: usize,
+        position: [f32; 3],
+        size: [f32; 3],
+        color: u32,
+        rotation: u8,
+    ) {
+        if let Some(block) = self.build_blocks.get_mut(index) {
+            *block = BuildBlock {
+                position,
+                size,
+                color,
+                rotation: rotation % 4,
+            };
+            self.rebuild_build_obstacles();
+        }
+    }
+
+    pub(crate) fn build_blocks(&self) -> &[BuildBlock] {
+        &self.build_blocks
+    }
+
+    fn rebuild_build_obstacles(&mut self) {
+        self.obstacles = self.base_obstacles.clone();
+        self.obstacles.extend(self.build_blocks.iter().map(|block| {
+            let size = if block.rotation % 2 == 0 {
+                block.size
+            } else {
+                [block.size[2], block.size[1], block.size[0]]
+            };
+            block_bounds(block.position, size)
+        }));
     }
 
     pub(crate) fn enter_session(&mut self, launch_pad_index: usize, spawn: [f32; 3]) -> usize {
@@ -426,11 +475,15 @@ impl Engine {
     }
 
     pub(crate) fn settings_room_state(&self) -> u8 {
-        let Some(room) = self.package.as_ref().and_then(|package| package.settings_room.as_ref())
+        let Some(room) = self
+            .package
+            .as_ref()
+            .and_then(|package| package.settings_room.as_ref())
         else {
             return 0;
         };
-        if self.world_ids.get(self.active_world).map(String::as_str) != Some(room.world_id.as_str()) {
+        if self.world_ids.get(self.active_world).map(String::as_str) != Some(room.world_id.as_str())
+        {
             return 0;
         }
 
@@ -477,7 +530,9 @@ impl Engine {
         let username = source
             .trim()
             .chars()
-            .filter(|character| character.is_ascii_alphanumeric() || matches!(character, ' ' | '_' | '-'))
+            .filter(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, ' ' | '_' | '-')
+            })
             .take(24)
             .collect::<String>();
         if username.len() < 2 {
@@ -504,7 +559,12 @@ impl Engine {
                 let launch_pads = definition
                     .launch_pads
                     .iter()
-                    .map(|pad| LaunchPad::new(pad.x(), pad.z(), pad.radius, pad.countdown))
+                    .map(|pad| {
+                        let mut launch_pad =
+                            LaunchPad::new(pad.x(), pad.z(), pad.radius, pad.countdown);
+                        launch_pad.enabled = pad.enabled;
+                        launch_pad
+                    })
                     .collect::<Vec<_>>();
                 let launch_destinations = definition
                     .launch_pads
@@ -559,6 +619,10 @@ impl Engine {
         self.worlds = worlds;
         self.world_ids = entries.into_iter().map(|(id, _)| id).collect();
         self.package = Some(package);
+        self.authoritative_launch = self
+            .package
+            .as_ref()
+            .is_some_and(|package| package.launch.authoritative);
         self.package_generation = self.package_generation.wrapping_add(1).max(1);
         self.start_world(start_world)
     }
@@ -598,7 +662,17 @@ impl Engine {
                 .get(index)
                 .is_some_and(|pad| self.player_is_on_pad(pad));
             let pad = &mut self.launch_pads[index];
+            if !pad.enabled {
+                pad.occupants = 0;
+                pad.phase = LaunchPadPhase::Idle;
+                pad.launch_at = 0.0;
+                continue;
+            }
             pad.occupants = occupants;
+
+            if self.authoritative_launch {
+                continue;
+            }
 
             match pad.phase {
                 LaunchPadPhase::Idle if occupants > 0 => {
@@ -675,6 +749,8 @@ impl Engine {
         self.active_world = portal.destination;
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
+        self.base_obstacles = self.obstacles.clone();
+        self.build_blocks.clear();
         self.player.position = portal.destination_spawn;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
@@ -699,6 +775,8 @@ impl Engine {
         self.enter_session(source_pad, world.spawn);
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
+        self.base_obstacles = self.obstacles.clone();
+        self.build_blocks.clear();
         self.active_world = destination;
         self.world_event_id = self.world_event_id.wrapping_add(1);
         self.last_world_source_pad = source_pad;
@@ -723,7 +801,8 @@ impl Engine {
     }
 
     fn player_is_on_pad(&self, pad: &LaunchPad) -> bool {
-        self.player.grounded
+        pad.enabled
+            && self.player.grounded
             && horizontal_distance(
                 self.player.position[0],
                 self.player.position[2],

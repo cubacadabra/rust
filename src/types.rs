@@ -30,6 +30,14 @@ pub(crate) struct RemotePlayer {
     pub(crate) walk_cycle: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct BuildBlock {
+    pub(crate) position: [f32; 3],
+    pub(crate) size: [f32; 3],
+    pub(crate) color: u32,
+    pub(crate) rotation: u8,
+}
+
 impl Default for Player {
     fn default() -> Self {
         Self {

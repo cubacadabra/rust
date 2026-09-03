@@ -120,6 +120,8 @@ impl GamePackageDefinition {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LaunchRouteDefinition {
     pub(crate) destination_world: Option<String>,
+    #[serde(default)]
+    pub(crate) authoritative: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -202,6 +204,9 @@ impl CloudDefinition {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LaunchPadDefinition {
     #[serde(default)]
+    #[allow(dead_code)]
+    pub(crate) id: String,
+    #[serde(default)]
     pub(crate) code: String,
     #[serde(default)]
     pub(crate) label: String,
@@ -213,6 +218,10 @@ pub(crate) struct LaunchPadDefinition {
     pub(crate) radius: f32,
     #[serde(default = "default_countdown")]
     pub(crate) countdown: f32,
+    #[serde(default = "default_true")]
+    pub(crate) enabled: bool,
+    #[serde(default)]
+    pub(crate) availability_label: String,
     pub(crate) destination_world: Option<String>,
 }
 
@@ -293,9 +302,18 @@ impl PortalDefinition {
             return fallback;
         }
         [
-            self.destination_spawn.first().copied().unwrap_or(fallback[0]),
-            self.destination_spawn.get(1).copied().unwrap_or(fallback[1]),
-            self.destination_spawn.get(2).copied().unwrap_or(fallback[2]),
+            self.destination_spawn
+                .first()
+                .copied()
+                .unwrap_or(fallback[0]),
+            self.destination_spawn
+                .get(1)
+                .copied()
+                .unwrap_or(fallback[1]),
+            self.destination_spawn
+                .get(2)
+                .copied()
+                .unwrap_or(fallback[2]),
         ]
     }
 }
