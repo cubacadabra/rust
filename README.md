@@ -71,11 +71,11 @@ Worker.
 
 ## Scripting status
 
-Native builds execute `game.luau` through the Luau host in `scripting.rs`. The
-current `wasm32-unknown-unknown` build preserves the engine/script boundary but
-does not yet provide the dedicated Luau-WASM runtime needed to safely enable
-arbitrary game scripts in the browser. The browser still parses and forwards
-the package manifest and script through its existing seam.
+All targets execute `game.luau` through the host in `scripting.rs`. Native
+builds use `mlua` with vendored Luau; the `wasm32-unknown-unknown` build uses
+the pure-Rust `luaur-rt` Luau runtime so the browser can run the same lifecycle
+callbacks without a separate JavaScript scripting implementation. Both hosts
+expose the same sandboxed `lobby`, `session`, and lifecycle API.
 
 ## Source layout
 
