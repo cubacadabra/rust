@@ -84,6 +84,13 @@ void engine_set_world_obstacle(
     float depth
 );
 uint8_t engine_start_world(CubacadabraEngine *engine, uintptr_t world);
+void engine_reconcile_player(
+    CubacadabraEngine *engine,
+    float x,
+    float y,
+    float z,
+    float yaw
+);
 void engine_set_build_block_count(CubacadabraEngine *engine, uintptr_t count);
 void engine_set_build_block(
     CubacadabraEngine *engine,

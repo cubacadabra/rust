@@ -60,6 +60,21 @@ pub unsafe extern "C" fn engine_reset_view(engine: *mut Engine) {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_reconcile_player(
+    engine: *mut Engine,
+    x: f32,
+    y: f32,
+    z: f32,
+    yaw: f32,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.reconcile_player([x, y, z], yaw);
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_set_build_block_count(engine: *mut Engine, count: usize) {
     if let Some(engine) = unsafe { engine.as_mut() } {
         engine.set_build_block_count(count);

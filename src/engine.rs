@@ -351,6 +351,17 @@ impl Engine {
         self.target_camera_distance = 0.0;
     }
 
+    /// Apply a server correction to the locally predicted player. The server
+    /// validates travel distance rather than simulating rigid-body collisions.
+    pub fn reconcile_player(&mut self, position: [f32; 3], yaw: f32) {
+        self.player.position = position;
+        self.player.velocity = [0.0; 3];
+        self.player.grounded = position[1] <= 0.05;
+        self.view_yaw = yaw;
+        self.target_yaw = yaw;
+        self.write_snapshot();
+    }
+
     pub fn step(&mut self, delta: f32) {
         let delta = delta.clamp(0.0, 0.05);
         self.elapsed += delta;
