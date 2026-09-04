@@ -1475,7 +1475,7 @@ fn shared_modal_nodes(
             Some([0.58, 0.80, 0.88, 0.68]),
             if compact { 14.0 } else { 16.0 },
         );
-        link_node.text = "About cubacadabra".to_owned();
+        link_node.text = "https://cubacadabra.com/about/".to_owned();
         link_node.font_size = if compact { 13.0 } else { 15.0 };
         link_node.text_align = UiAlignment::Center;
         nodes.push(link_node);
