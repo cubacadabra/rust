@@ -115,6 +115,18 @@ pub unsafe extern "C" fn engine_ui_pointer(
     u8::from(engine.ui_pointer(pointer_id, phase, x, y))
 }
 
+/// Returns whether the UI at the supplied logical viewport coordinates is
+/// interactive. This is used by browser clients for hover affordances.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_ui_hit_test(engine: *mut Engine, x: f32, y: f32) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.ui_hit_test(x, y)))
+        .unwrap_or(0)
+}
+
 #[unsafe(no_mangle)]
 /// Advances the host-facing UI event queue. The event is exposed as UTF-8 JSON
 /// through `engine_ui_event_ptr` and `engine_ui_event_len` until the next poll.

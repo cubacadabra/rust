@@ -485,6 +485,21 @@ impl UiRuntime {
         &self.frame
     }
 
+    pub(crate) fn is_interactive_at(&mut self, x: f32, y: f32) -> bool {
+        self.rebuild_if_needed();
+        self.hit_regions.iter().rev().any(|region| {
+            !region.disabled
+                && region.rect.contains(x, y)
+                && (matches!(
+                    region.kind,
+                    UiNodeKind::Button
+                        | UiNodeKind::Toggle
+                        | UiNodeKind::Slider
+                        | UiNodeKind::Joystick
+                ) || !region.action.is_empty())
+        })
+    }
+
     pub(crate) fn advance(&mut self, delta: f32) {
         if (self.shared_modal_progress - self.shared_modal_target).abs() <= f32::EPSILON {
             return;
