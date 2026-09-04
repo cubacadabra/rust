@@ -488,27 +488,42 @@ fn add_rounded_rect(
         add_rect(vertices, frame, rect, color);
         return;
     }
-    let centers = [
-        (rect.x + rect.width - radius, rect.y + radius, -FRAC_PI_2),
-        (
-            rect.x + rect.width - radius,
-            rect.y + rect.height - radius,
-            0.0,
-        ),
-        (rect.x + radius, rect.y + rect.height - radius, FRAC_PI_2),
-        (rect.x + radius, rect.y + radius, PI),
-    ];
-    let mut perimeter = Vec::with_capacity(20);
-    const CORNER_SEGMENTS: usize = 5;
-    for (center_x, center_y, start_angle) in centers {
-        for segment in 0..CORNER_SEGMENTS {
-            let angle = start_angle + segment as f32 / (CORNER_SEGMENTS - 1) as f32 * FRAC_PI_2;
-            perimeter.push((
-                center_x + angle.cos() * radius,
-                center_y + angle.sin() * radius,
-            ));
-        }
+    // Fine tessellation plus a transparent fringe keeps rounded surfaces
+    // smooth at iPad pixel densities even though the UI pass has no MSAA.
+    const CORNER_SEGMENTS: usize = 16;
+    const EDGE_ANTIALIAS: f32 = 1.0;
+    let perimeter = rounded_perimeter(rect, radius, CORNER_SEGMENTS);
+    let fringe = rounded_perimeter(
+        UiRect {
+            x: rect.x - EDGE_ANTIALIAS,
+            y: rect.y - EDGE_ANTIALIAS,
+            width: rect.width + EDGE_ANTIALIAS * 2.0,
+            height: rect.height + EDGE_ANTIALIAS * 2.0,
+        },
+        radius + EDGE_ANTIALIAS,
+        CORNER_SEGMENTS,
+    );
+
+    for index in 0..perimeter.len() {
+        let next = (index + 1) % perimeter.len();
+        add_ui_gradient_triangle(
+            vertices,
+            frame,
+            [fringe[index], fringe[next], perimeter[next]],
+            [
+                [color[0], color[1], color[2], 0.0],
+                [color[0], color[1], color[2], 0.0],
+                color,
+            ],
+        );
+        add_ui_gradient_triangle(
+            vertices,
+            frame,
+            [fringe[index], perimeter[next], perimeter[index]],
+            [[color[0], color[1], color[2], 0.0], color, color],
+        );
     }
+
     let center = (rect.x + rect.width * 0.5, rect.y + rect.height * 0.5);
     for index in 0..perimeter.len() {
         let next = (index + 1) % perimeter.len();
@@ -521,6 +536,31 @@ fn add_rounded_rect(
             color,
         );
     }
+}
+
+fn rounded_perimeter(rect: UiRect, radius: f32, corner_segments: usize) -> Vec<(f32, f32)> {
+    let radius = radius.clamp(0.0, rect.width.min(rect.height) * 0.5);
+    let centers = [
+        (rect.x + rect.width - radius, rect.y + radius, -FRAC_PI_2),
+        (
+            rect.x + rect.width - radius,
+            rect.y + rect.height - radius,
+            0.0,
+        ),
+        (rect.x + radius, rect.y + rect.height - radius, FRAC_PI_2),
+        (rect.x + radius, rect.y + radius, PI),
+    ];
+    let mut perimeter = Vec::with_capacity(corner_segments * centers.len());
+    for (center_x, center_y, start_angle) in centers {
+        for segment in 0..corner_segments {
+            let angle = start_angle + segment as f32 / (corner_segments - 1) as f32 * FRAC_PI_2;
+            perimeter.push((
+                center_x + angle.cos() * radius,
+                center_y + angle.sin() * radius,
+            ));
+        }
+    }
+    perimeter
 }
 
 fn add_rect(vertices: &mut Vec<Vertex>, frame: &UiFrame, rect: UiRect, color: [f32; 4]) {
@@ -618,6 +658,25 @@ fn add_ui_triangle(
     color: [f32; 4],
 ) {
     for (x, y) in [a, b, c] {
+        let x = x / frame.viewport.width.max(1.0) * 2.0 - 1.0;
+        let y = 1.0 - y / frame.viewport.height.max(1.0) * 2.0;
+        vertices.push(Vertex {
+            position: [x, y, 0.0],
+            normal: Vec3::ZERO.to_array(),
+            color,
+            tex_coords: [-1.0, -1.0],
+            image_invert: 0.0,
+        });
+    }
+}
+
+fn add_ui_gradient_triangle(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    points: [(f32, f32); 3],
+    colors: [[f32; 4]; 3],
+) {
+    for ((x, y), color) in points.into_iter().zip(colors) {
         let x = x / frame.viewport.width.max(1.0) * 2.0 - 1.0;
         let y = 1.0 - y / frame.viewport.height.max(1.0) * 2.0;
         vertices.push(Vertex {
