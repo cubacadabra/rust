@@ -22,7 +22,38 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
     if node.pressed {
         opacity *= 0.78;
     }
-    if let Some(border) = node.border_color {
+
+    let has_surface = node.background.is_some() || node.border_color.is_some();
+    let is_control = matches!(
+        node.kind,
+        UiNodeKind::Button | UiNodeKind::Toggle | UiNodeKind::Slider
+    );
+    let automatic_border = is_control && node.border_color.is_none() && node.background.is_some();
+    let border_width = if node.border_color.is_some() || automatic_border {
+        node.border_width.max(1.0)
+    } else {
+        node.border_width
+    };
+
+    // A quiet, close shadow keeps translucent controls legible against the 3D
+    // world. It is deliberately tight so the HUD still feels light on mobile.
+    if has_surface {
+        add_rounded_rect(
+            vertices,
+            frame,
+            UiRect {
+                y: node.rect.y + 3.0,
+                ..node.rect
+            },
+            node.corner_radius,
+            faded([0.01, 0.04, 0.05, 0.25], opacity),
+        );
+    }
+
+    if let Some(border) = node
+        .border_color
+        .or_else(|| automatic_border.then_some([0.82, 0.94, 0.94, 0.12]))
+    {
         add_rounded_rect(
             vertices,
             frame,
@@ -32,15 +63,23 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
         );
     }
     if let Some(background) = node.background {
-        let inset = node
-            .border_width
-            .min(node.rect.width.min(node.rect.height) * 0.5);
+        let inset = border_width.min(node.rect.width.min(node.rect.height) * 0.5);
         add_rounded_rect(
             vertices,
             frame,
             inset_rect(node.rect, inset),
             (node.corner_radius - inset).max(0.0),
             faded(background, opacity),
+        );
+    }
+
+    if node.pressed && has_surface {
+        add_rounded_rect(
+            vertices,
+            frame,
+            inset_rect(node.rect, border_width),
+            (node.corner_radius - border_width).max(0.0),
+            faded([0.01, 0.03, 0.04, 0.10], opacity),
         );
     }
 
@@ -53,7 +92,7 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
     if !node.text.is_empty() {
         let text_rect = match node.kind {
             UiNodeKind::Toggle => UiRect {
-                width: (node.rect.width - 60.0).max(0.0),
+                width: (node.rect.width - 68.0).max(0.0),
                 ..node.rect
             },
             _ => node.rect,
@@ -87,16 +126,34 @@ fn add_joystick(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode
         frame,
         center_x,
         center_y,
-        (radius - 1.5).max(0.0),
-        faded([0.08, 0.14, 0.15, 0.68], opacity),
+        (radius - 2.0).max(0.0),
+        faded([0.08, 0.14, 0.15, 0.76], opacity),
     );
-    let travel = radius * 0.46;
     add_circle(
         vertices,
         frame,
-        center_x + node.value_x.clamp(-1.0, 1.0) * travel,
-        center_y + node.value_y.clamp(-1.0, 1.0) * travel,
-        radius * 0.23,
+        center_x,
+        center_y,
+        (radius - 7.0).max(0.0),
+        faded([0.11, 0.19, 0.20, 0.28], opacity),
+    );
+    let travel = radius * 0.46;
+    let knob_x = center_x + node.value_x.clamp(-1.0, 1.0) * travel;
+    let knob_y = center_y + node.value_y.clamp(-1.0, 1.0) * travel;
+    add_circle(
+        vertices,
+        frame,
+        knob_x,
+        knob_y + 2.0,
+        radius * 0.235,
+        faded([0.01, 0.04, 0.05, 0.32], opacity),
+    );
+    add_circle(
+        vertices,
+        frame,
+        knob_x,
+        knob_y,
+        radius * 0.21,
         faded(node.foreground, opacity),
     );
 }
@@ -121,6 +178,14 @@ fn add_toggle(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode, 
     } else {
         track.x + 14.0
     };
+    add_circle(
+        vertices,
+        frame,
+        thumb_x,
+        track.y + track.height * 0.5 + 1.0,
+        10.5,
+        faded([0.01, 0.04, 0.05, 0.30], opacity),
+    );
     add_circle(
         vertices,
         frame,
@@ -154,6 +219,14 @@ fn add_slider(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode, 
         vertices,
         frame,
         track.x + track.width * node.value.clamp(0.0, 1.0),
+        track.y + track.height * 0.5 + 1.0,
+        10.5,
+        faded([0.01, 0.04, 0.05, 0.30], opacity),
+    );
+    add_circle(
+        vertices,
+        frame,
+        track.x + track.width * node.value.clamp(0.0, 1.0),
         track.y + track.height * 0.5,
         10.0,
         faded([1.0, 1.0, 1.0, 1.0], opacity),
@@ -161,6 +234,33 @@ fn add_slider(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode, 
 }
 
 fn add_text(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    text: &str,
+    rect: UiRect,
+    font_size: f32,
+    alignment: UiAlignment,
+    color: [f32; 4],
+) {
+    // The small offset ink pass gives the bitmap face a confident edge at
+    // both 1x web scale and 2x Retina scale without needing a texture atlas.
+    add_text_glyphs(
+        vertices,
+        frame,
+        text,
+        UiRect {
+            x: rect.x + 0.9,
+            y: rect.y + 1.0,
+            ..rect
+        },
+        font_size,
+        alignment,
+        faded([0.01, 0.04, 0.05, 0.38], color[3]),
+    );
+    add_text_glyphs(vertices, frame, text, rect, font_size, alignment, color);
+}
+
+fn add_text_glyphs(
     vertices: &mut Vec<Vertex>,
     frame: &UiFrame,
     text: &str,
@@ -198,8 +298,8 @@ fn add_text(
                     let pixel_rect = UiRect {
                         x: start_x + (character_index * 6 + column) as f32 * pixel,
                         y: first_y + line_index as f32 * line_height + row as f32 * pixel,
-                        width: pixel * 0.84,
-                        height: pixel * 0.84,
+                        width: pixel * 0.94,
+                        height: pixel * 0.94,
                     };
                     add_rect(vertices, frame, pixel_rect, color);
                 }
