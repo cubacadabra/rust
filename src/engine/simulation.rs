@@ -106,6 +106,9 @@ impl Engine {
             return;
         };
         self.active_world = portal.destination;
+        if let Some(world_id) = self.world_ids.get(portal.destination).cloned() {
+            self.ui.borrow_mut().set_world_id(&world_id);
+        }
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
@@ -137,6 +140,9 @@ impl Engine {
         self.base_obstacles = self.obstacles.clone();
         self.build_blocks.clear();
         self.active_world = destination;
+        if let Some(world_id) = self.world_ids.get(destination).cloned() {
+            self.ui.borrow_mut().set_world_id(&world_id);
+        }
         self.world_event_id = self.world_event_id.wrapping_add(1);
         self.last_world_source_pad = source_pad;
         self.last_world_destination = destination;

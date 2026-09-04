@@ -1,5 +1,6 @@
 use super::{Engine, SNAPSHOT_STRIDE};
 use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase};
+use crate::ui::{UiInsets, UiViewport};
 
 #[test]
 fn starts_at_the_spawn_pad() {
@@ -168,6 +169,47 @@ fn registered_world_route_transitions_selected_player_in_engine() {
     assert_eq!(engine.player.position, [0.0, 0.0, 8.0]);
     assert_eq!(engine.launch_pad_count(), 0);
     assert_eq!(engine.obstacles.len(), 1);
+}
+
+#[test]
+fn world_transitions_update_ui_visibility_context() {
+    let manifest = r#"{
+        "startWorld":"lobby",
+        "world":{"spawn":[0,0,0]},
+        "worlds":{"real-game":{"world":{"spawn":[0,0,0]}}}
+    }"#;
+    let mut engine = Engine::new();
+    engine.package_buffer = manifest.as_bytes().to_vec();
+    assert!(engine.load_package_buffer());
+    engine.set_ui_viewport(UiViewport {
+        width: 390.0,
+        height: 844.0,
+        scale: 1.0,
+        safe_area: UiInsets::default(),
+    });
+    assert!(engine.set_ui_document(
+        r#"{"nodes":[{"id":"build","kind":"button","visibleIn":["real-game"]}]}"#
+    ));
+    assert!(
+        !engine
+            .ui
+            .borrow_mut()
+            .frame()
+            .nodes
+            .iter()
+            .any(|node| node.id == "build")
+    );
+
+    assert!(engine.start_world(1));
+    assert!(
+        engine
+            .ui
+            .borrow_mut()
+            .frame()
+            .nodes
+            .iter()
+            .any(|node| node.id == "build")
+    );
 }
 
 #[test]

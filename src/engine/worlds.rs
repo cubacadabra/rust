@@ -127,6 +127,9 @@ impl Engine {
             return false;
         };
         self.active_world = index;
+        if let Some(world_id) = self.world_ids.get(index).cloned() {
+            self.ui.borrow_mut().set_world_id(&world_id);
+        }
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();

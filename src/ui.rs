@@ -270,6 +270,8 @@ pub(crate) struct UiNode {
     #[serde(default = "default_visible")]
     pub(crate) visible: bool,
     #[serde(default)]
+    pub(crate) visible_in: Option<Vec<String>>,
+    #[serde(default)]
     pub(crate) disabled: bool,
     #[serde(default)]
     pub(crate) blocks_input: bool,
@@ -354,9 +356,9 @@ struct UiCapture {
     region: UiHitRegion,
 }
 
-#[derive(Default)]
 pub(crate) struct UiRuntime {
     document: UiDocument,
+    world_id: String,
     viewport: UiViewport,
     frame: UiFrame,
     hit_regions: Vec<UiHitRegion>,
@@ -365,6 +367,23 @@ pub(crate) struct UiRuntime {
     script_events: VecDeque<UiEvent>,
     event_buffer: Vec<u8>,
     dirty: bool,
+}
+
+impl Default for UiRuntime {
+    fn default() -> Self {
+        Self {
+            document: UiDocument::default(),
+            world_id: "lobby".to_owned(),
+            viewport: UiViewport::default(),
+            frame: UiFrame::default(),
+            hit_regions: Vec::new(),
+            captures: HashMap::new(),
+            host_events: VecDeque::new(),
+            script_events: VecDeque::new(),
+            event_buffer: Vec::new(),
+            dirty: false,
+        }
+    }
 }
 
 impl UiRuntime {
@@ -390,6 +409,14 @@ impl UiRuntime {
         };
         if self.viewport != viewport {
             self.viewport = viewport;
+            self.dirty = true;
+        }
+    }
+
+    pub(crate) fn set_world_id(&mut self, world_id: &str) {
+        if self.world_id != world_id {
+            self.world_id = world_id.to_owned();
+            self.captures.clear();
             self.dirty = true;
         }
     }
@@ -552,7 +579,7 @@ impl UiRuntime {
         let mut hit_regions = Vec::new();
         let mut overlay_roots = Vec::new();
         for node in &self.document.nodes {
-            if !node.visible {
+            if !node_is_visible(node, &self.world_id) {
                 continue;
             }
             if node.layout.region != UiRegion::Canvas {
@@ -572,7 +599,7 @@ impl UiRuntime {
             } else {
                 safe
             };
-            let intrinsic = measure_node(node, available.width, available.height);
+            let intrinsic = measure_node(node, available.width, available.height, &self.world_id);
             let width = clamp_length(
                 node.layout.width.resolve(available.width, intrinsic.0),
                 node.layout.max_width,
@@ -590,7 +617,14 @@ impl UiRuntime {
                 node.layout.anchor,
                 node.layout.offset,
             );
-            layout_node(node, rect, &pressed, &mut nodes, &mut hit_regions);
+            layout_node(
+                node,
+                rect,
+                &self.world_id,
+                &pressed,
+                &mut nodes,
+                &mut hit_regions,
+            );
         }
         // Draw the platform-owned controls last so game UI cannot cover them.
         // Their surfaces consume taps without emitting events until platform
@@ -615,7 +649,9 @@ impl UiRuntime {
             .document
             .nodes
             .iter()
-            .filter(|node| node.visible && node.layout.region == UiRegion::Header)
+            .filter(|node| {
+                node_is_visible(node, &self.world_id) && node.layout.region == UiRegion::Header
+            })
             .collect::<Vec<_>>();
         layout_region_roots(
             &header_nodes,
@@ -627,6 +663,7 @@ impl UiRuntime {
                 height: shared_header.size,
             },
             false,
+            &self.world_id,
             &pressed,
             &mut nodes,
             &mut hit_regions,
@@ -636,7 +673,10 @@ impl UiRuntime {
             .document
             .nodes
             .iter()
-            .filter(|node| node.visible && node.layout.region == UiRegion::BottomCenter)
+            .filter(|node| {
+                node_is_visible(node, &self.world_id)
+                    && node.layout.region == UiRegion::BottomCenter
+            })
             .collect::<Vec<_>>();
         layout_region_roots(
             &bottom_nodes,
@@ -647,6 +687,7 @@ impl UiRuntime {
                 height: REGION_CONTROL_HEIGHT,
             },
             true,
+            &self.world_id,
             &pressed,
             &mut nodes,
             &mut hit_regions,
@@ -666,7 +707,7 @@ impl UiRuntime {
             } else {
                 safe
             };
-            let intrinsic = measure_node(node, available.width, available.height);
+            let intrinsic = measure_node(node, available.width, available.height, &self.world_id);
             let width = clamp_length(
                 node.layout.width.resolve(available.width, intrinsic.0),
                 node.layout.max_width,
@@ -684,7 +725,14 @@ impl UiRuntime {
                 node.layout.anchor,
                 node.layout.offset,
             );
-            layout_node(node, rect, &pressed, &mut nodes, &mut hit_regions);
+            layout_node(
+                node,
+                rect,
+                &self.world_id,
+                &pressed,
+                &mut nodes,
+                &mut hit_regions,
+            );
         }
         self.frame = UiFrame {
             viewport: self.viewport,
@@ -883,7 +931,20 @@ fn find_node_mut<'a>(nodes: &'a mut [UiNode], id: &str) -> Option<&'a mut UiNode
     None
 }
 
-fn measure_node(node: &UiNode, available_width: f32, available_height: f32) -> (f32, f32) {
+fn node_is_visible(node: &UiNode, world_id: &str) -> bool {
+    node.visible
+        && node
+            .visible_in
+            .as_ref()
+            .is_none_or(|worlds| worlds.iter().any(|world| world == world_id))
+}
+
+fn measure_node(
+    node: &UiNode,
+    available_width: f32,
+    available_height: f32,
+    world_id: &str,
+) -> (f32, f32) {
     let padding = node.layout.padding.max(0.0) * 2.0;
     let font_size = node.style.font_size.max(7.0);
     let text_width = node
@@ -895,8 +956,8 @@ fn measure_node(node: &UiNode, available_width: f32, available_height: f32) -> (
     let child_sizes = node
         .children
         .iter()
-        .filter(|child| child.visible)
-        .map(|child| measure_node(child, available_width, available_height))
+        .filter(|child| node_is_visible(child, world_id))
+        .map(|child| measure_node(child, available_width, available_height, world_id))
         .collect::<Vec<_>>();
     let gap = node.layout.gap.max(0.0) * child_sizes.len().saturating_sub(1) as f32;
     let (children_width, children_height) = match node.layout.direction {
@@ -1172,6 +1233,7 @@ fn layout_region_roots(
     roots: &[&UiNode],
     parent: UiRect,
     centered: bool,
+    world_id: &str,
     pressed: &HashSet<&str>,
     nodes: &mut Vec<UiRenderNode>,
     hit_regions: &mut Vec<UiHitRegion>,
@@ -1183,7 +1245,7 @@ fn layout_region_roots(
     let mut sizes = roots
         .iter()
         .map(|node| {
-            let intrinsic = measure_node(node, parent.width, parent.height);
+            let intrinsic = measure_node(node, parent.width, parent.height, world_id);
             (
                 clamp_length(
                     node.layout.width.resolve(parent.width, intrinsic.0),
@@ -1223,7 +1285,7 @@ fn layout_region_roots(
             width,
             height,
         };
-        layout_node(node, rect, pressed, nodes, hit_regions);
+        layout_node(node, rect, world_id, pressed, nodes, hit_regions);
         cursor += width + gap;
     }
 }
@@ -1231,11 +1293,12 @@ fn layout_region_roots(
 fn layout_node(
     node: &UiNode,
     rect: UiRect,
+    world_id: &str,
     pressed: &HashSet<&str>,
     nodes: &mut Vec<UiRenderNode>,
     hit_regions: &mut Vec<UiHitRegion>,
 ) {
-    if !node.visible {
+    if !node_is_visible(node, world_id) {
         return;
     }
     let value = match node.kind {
@@ -1298,7 +1361,7 @@ fn layout_node(
     let visible_children = node
         .children
         .iter()
-        .filter(|child| child.visible)
+        .filter(|child| node_is_visible(child, world_id))
         .collect::<Vec<_>>();
     if visible_children.is_empty() {
         return;
@@ -1314,7 +1377,7 @@ fn layout_node(
     };
     let intrinsic = visible_children
         .iter()
-        .map(|child| measure_node(child, content.width, content.height))
+        .map(|child| measure_node(child, content.width, content.height, world_id))
         .collect::<Vec<_>>();
     let fill_count = visible_children
         .iter()
@@ -1418,7 +1481,7 @@ fn layout_node(
                 height: main,
             },
         };
-        layout_node(child, child_rect, pressed, nodes, hit_regions);
+        layout_node(child, child_rect, world_id, pressed, nodes, hit_regions);
         cursor += main + actual_gap;
     }
 }
@@ -1535,6 +1598,41 @@ mod tests {
         assert_eq!(context.rect.width, 164.0);
         assert!(context.rect.x > 100.0 && context.rect.x + context.rect.width < 290.0);
         assert!(context.rect.y + context.rect.height <= 844.0 - 34.0);
+    }
+
+    #[test]
+    fn visible_in_scopes_rendering_and_hit_testing_to_worlds() {
+        let mut runtime = runtime(
+            r##"{
+                "nodes":[
+                    {"id":"game-only","kind":"button","text":"BUILD","action":"build.place","visibleIn":["real-game"],"layout":{"width":120,"height":48,"offset":[0,140]}},
+                    {"id":"game-panel","kind":"panel","visibleIn":["real-game"],"layout":{"width":160,"height":64,"offset":[140,140]},"children":[
+                        {"id":"game-child","kind":"text","text":"GAME"}
+                    ]}
+                ]
+            }"##,
+            390.0,
+            844.0,
+        );
+
+        assert!(
+            runtime
+                .frame()
+                .nodes
+                .iter()
+                .all(|node| !matches!(node.id.as_str(), "game-only" | "game-panel" | "game-child"))
+        );
+        assert!(!runtime.pointer(1, UiPointerPhase::Down, 40.0, 210.0));
+
+        runtime.set_world_id("real-game");
+        let frame = runtime.frame().clone();
+        assert!(frame.nodes.iter().any(|node| node.id == "game-only"));
+        assert!(frame.nodes.iter().any(|node| node.id == "game-child"));
+        assert!(runtime.pointer(1, UiPointerPhase::Down, 40.0, 210.0));
+        assert!(runtime.pointer(1, UiPointerPhase::Up, 40.0, 210.0));
+        assert!(runtime.poll_event());
+        let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
+        assert_eq!(event["action"], "build.place");
     }
 
     #[test]

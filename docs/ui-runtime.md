@@ -30,6 +30,7 @@ function game.on_start(api)
                 kind = "button",
                 icon = "build",
                 action = "build.menu",
+                visibleIn = { "real-game" },
                 layout = { region = "header", width = 56, height = 56 },
                 style = { background = "#0A86E6EE", cornerRadius = 16 },
             },
@@ -123,6 +124,13 @@ modal scrim should set `blocksInput = true` and use an action such as
 and `y` values and emit a zero vector on release or cancellation, allowing the
 shared UI to own mobile movement controls safely with multiple simultaneous
 pointers.
+
+Nodes are visible in every world by default. Set `visibleIn` to a list of
+manifest world IDs when a node (including an entire container subtree) should
+only render and receive input in those worlds, for example
+`visibleIn = { "real-game" }`. The runtime updates this automatically when the
+active world changes, so scripts do not need to manually hide gameplay UI when
+the player returns to the lobby.
 
 Root nodes are positioned inside the safe viewport using `layout.anchor`:
 `topLeft`, `top`, `topRight`, `left`, `center`, `right`, `bottomLeft`, `bottom`,
