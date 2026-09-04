@@ -201,7 +201,7 @@ fn shared_modal_nodes(
         height: if compact { 46.0 } else { 50.0 },
     };
     let tab_width = ((tab_row.width - tab_gap * 4.0) / 5.0).max(0.0);
-    for (index, label) in ["About", "Settings", "People", "Report", "Help"]
+    for (index, label) in ["Home", "Settings", "People", "Report", "Help"]
         .into_iter()
         .enumerate()
     {

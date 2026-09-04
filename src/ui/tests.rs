@@ -70,7 +70,7 @@
         assert!(runtime.shared_modal_visible());
         runtime.advance(1.0);
         let frame = runtime.frame().clone();
-        for label in ["About", "Settings", "People", "Report", "Help"] {
+        for label in ["Home", "Settings", "People", "Report", "Help"] {
             assert!(frame.nodes.iter().any(|node| node.text == label));
         }
         assert!(frame.nodes.iter().any(|node| node.id == "__shared_modal_scrim"));
@@ -79,7 +79,7 @@
             .nodes
             .iter()
             .find(|node| node.id == "__shared_modal_about_link")
-            .expect("About tab should expose its first link option")
+            .expect("Home tab should expose its first link option")
             .rect;
         let about_x = about_link.x + about_link.width * 0.5;
         let about_y = about_link.y + about_link.height * 0.5;
