@@ -20,6 +20,10 @@ impl Engine {
         self.ui.borrow_mut().is_interactive_at(x, y)
     }
 
+    pub(crate) fn ui_external_link_hit_test(&mut self, x: f32, y: f32) -> bool {
+        self.ui.borrow_mut().is_external_link_at(x, y)
+    }
+
     pub(crate) fn set_ui_document(&mut self, source: &str) -> bool {
         self.ui.borrow_mut().set_document_json(source).is_ok()
     }

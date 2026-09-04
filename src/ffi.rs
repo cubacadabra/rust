@@ -127,6 +127,23 @@ pub unsafe extern "C" fn engine_ui_hit_test(engine: *mut Engine, x: f32, y: f32)
         .unwrap_or(0)
 }
 
+/// Returns whether the supplied logical viewport coordinates are over the
+/// shared About link. Browser clients use this during pointer-up so opening a
+/// new tab remains within the browser's user-activation window.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_ui_external_link_hit_test(
+    engine: *mut Engine,
+    x: f32,
+    y: f32,
+) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.ui_external_link_hit_test(x, y)))
+        .unwrap_or(0)
+}
+
 #[unsafe(no_mangle)]
 /// Advances the host-facing UI event queue. The event is exposed as UTF-8 JSON
 /// through `engine_ui_event_ptr` and `engine_ui_event_len` until the next poll.

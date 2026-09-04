@@ -500,6 +500,15 @@ impl UiRuntime {
         })
     }
 
+    pub(crate) fn is_external_link_at(&mut self, x: f32, y: f32) -> bool {
+        self.rebuild_if_needed();
+        self.hit_regions.iter().rev().any(|region| {
+            !region.disabled
+                && region.rect.contains(x, y)
+                && region.action == "shared.about.open"
+        })
+    }
+
     pub(crate) fn advance(&mut self, delta: f32) {
         if (self.shared_modal_progress - self.shared_modal_target).abs() <= f32::EPSILON {
             return;
@@ -1447,6 +1456,34 @@ fn shared_modal_nodes(
         disabled: false,
     });
 
+    if selected_tab == 0 {
+        let link = UiRect {
+            x: body.x + tab_padding,
+            y: body.y + tab_padding,
+            width: body.width.min(if compact { 280.0 } else { 320.0 }),
+            height: if compact { 50.0 } else { 56.0 },
+        };
+        let mut link_node = modal_node(
+            "__shared_modal_about_link",
+            UiNodeKind::Button,
+            link,
+            Some([0.20, 0.42, 0.55, 0.94]),
+            Some([0.58, 0.80, 0.88, 0.68]),
+            if compact { 14.0 } else { 16.0 },
+        );
+        link_node.text = "About cubacadabra".to_owned();
+        link_node.font_size = if compact { 13.0 } else { 15.0 };
+        link_node.text_align = UiAlignment::Center;
+        nodes.push(link_node);
+        hit_regions.push(UiHitRegion {
+            id: "__shared_modal_about_link".to_owned(),
+            action: "shared.about.open".to_owned(),
+            kind: UiNodeKind::Button,
+            rect: link,
+            disabled: false,
+        });
+    }
+
     SharedModalGeometry { nodes, hit_regions }
 }
 
@@ -1898,12 +1935,25 @@ mod tests {
         }
         assert!(frame.nodes.iter().any(|node| node.id == "__shared_modal_scrim"));
         assert!(frame.nodes.iter().any(|node| node.id == "__shared_modal_body"));
-        assert!(!runtime.poll_event(), "shared modal is engine-owned");
+        let about_link = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_modal_about_link")
+            .expect("About tab should expose its first link option")
+            .rect;
+        let about_x = about_link.x + about_link.width * 0.5;
+        let about_y = about_link.y + about_link.height * 0.5;
+        assert!(runtime.is_external_link_at(about_x, about_y));
+        assert!(runtime.pointer(2, UiPointerPhase::Down, about_x, about_y));
+        assert!(runtime.pointer(2, UiPointerPhase::Up, about_x, about_y));
+        assert!(runtime.poll_event());
+        let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
+        assert_eq!(event["action"], "shared.about.open");
 
         // The scrim is above the header, so tapping the logo while open is
         // the same dismiss gesture as tapping anywhere outside the panel.
-        assert!(runtime.pointer(2, UiPointerPhase::Down, logo_x, logo_y));
-        assert!(runtime.pointer(2, UiPointerPhase::Up, logo_x, logo_y));
+        assert!(runtime.pointer(3, UiPointerPhase::Down, logo_x, logo_y));
+        assert!(runtime.pointer(3, UiPointerPhase::Up, logo_x, logo_y));
         runtime.advance(1.0);
         assert!(runtime
             .frame()
