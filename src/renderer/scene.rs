@@ -69,6 +69,7 @@ impl Renderer {
         self.scene
             .build_blocks
             .extend_from_slice(engine.build_blocks());
+        self.ui_frame = engine.ui.borrow_mut().frame().clone();
     }
 }
 

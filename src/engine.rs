@@ -12,7 +12,10 @@ use crate::game_package::GamePackageDefinition;
 use crate::math::Random;
 use crate::scripting::GameScript;
 use crate::types::{Agent, BuildBlock, Input, Player, RemotePlayer};
+use crate::ui::UiRuntime;
 use crate::world::{Aabb, LaunchPad, RuntimeWorld};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub(crate) const TOTAL_PLAYERS: usize = 18;
 pub(crate) const MAX_AGENTS: usize = TOTAL_PLAYERS - 1;
@@ -75,6 +78,8 @@ pub struct Engine {
     pub(crate) username: String,
     pub(crate) username_buffer: Vec<u8>,
     pub(crate) portal_cooldown_until: f32,
+    pub(crate) ui: Rc<RefCell<UiRuntime>>,
+    pub(crate) ui_document_buffer: Vec<u8>,
 }
 
 impl Default for Engine {

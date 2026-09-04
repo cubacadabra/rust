@@ -8,6 +8,7 @@ mod player;
 mod renderer;
 mod scripting;
 mod types;
+mod ui;
 #[cfg(all(target_arch = "wasm32", feature = "web-renderer"))]
 mod web_renderer;
 mod world;

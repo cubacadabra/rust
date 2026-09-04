@@ -228,10 +228,46 @@ impl Renderer {
             multiview_mask: None,
             cache: None,
         });
+        let ui_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("cubacadabra UI pipeline layout"),
+            bind_group_layouts: &[],
+            immediate_size: 0,
+        });
+        let ui_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("cubacadabra UI pipeline"),
+            layout: Some(&ui_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_ui"),
+                compilation_options: Default::default(),
+                buffers: &[Vertex::LAYOUT],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                cull_mode: None,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_ui"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
         let static_vertex_capacity = 16_384;
         let dynamic_vertex_capacity = 16_384;
+        let ui_vertex_capacity = 8_192;
         let static_vertex_buffer = create_vertex_buffer(&device, static_vertex_capacity);
         let dynamic_vertex_buffer = create_vertex_buffer(&device, dynamic_vertex_capacity);
+        let ui_vertex_buffer = create_vertex_buffer(&device, ui_vertex_capacity);
         let depth_view = create_depth_view(&device, config.width, config.height);
 
         Self {
@@ -246,6 +282,9 @@ impl Renderer {
             static_vertex_count: 0,
             dynamic_vertex_buffer,
             dynamic_vertex_capacity,
+            ui_pipeline,
+            ui_vertex_buffer,
+            ui_vertex_capacity,
             config,
             depth_view,
             width,
@@ -254,6 +293,7 @@ impl Renderer {
             package_generation: 0,
             active_world: usize::MAX,
             worlds: Vec::new(),
+            ui_frame: Default::default(),
         }
     }
 

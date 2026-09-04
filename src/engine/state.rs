@@ -1,10 +1,39 @@
 use crate::engine::{ENABLE_LOCAL_NPCS, Engine, MAX_AGENTS};
 use crate::scripting::GameScript;
 use crate::types::{Input, LaunchPadPhase, RemotePlayer};
+use crate::ui::{UiPointerPhase, UiViewport};
 
 impl Engine {
     pub(crate) fn set_input(&mut self, input: Input) {
         self.input = input;
+    }
+
+    pub(crate) fn set_ui_viewport(&mut self, viewport: UiViewport) {
+        self.ui.borrow_mut().set_viewport(viewport);
+    }
+
+    pub(crate) fn set_ui_document(&mut self, source: &str) -> bool {
+        self.ui.borrow_mut().set_document_json(source).is_ok()
+    }
+
+    pub(crate) fn prepare_ui_document_buffer(&mut self, length: usize) -> *mut u8 {
+        self.ui_document_buffer.resize(length, 0);
+        self.ui_document_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn load_ui_document_buffer(&mut self) -> bool {
+        let source = String::from_utf8_lossy(&self.ui_document_buffer).into_owned();
+        self.set_ui_document(&source)
+    }
+
+    pub(crate) fn ui_pointer(
+        &mut self,
+        pointer_id: u64,
+        phase: UiPointerPhase,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        self.ui.borrow_mut().pointer(pointer_id, phase, x, y)
     }
 
     pub fn step(&mut self, delta: f32) {
@@ -196,7 +225,7 @@ impl Engine {
 
     pub(crate) fn load_script_buffer(&mut self) -> bool {
         let source = String::from_utf8_lossy(&self.script_buffer).into_owned();
-        match GameScript::load(&source) {
+        match GameScript::load(&source, std::rc::Rc::clone(&self.ui)) {
             Ok(script) => {
                 self.script = Some(script);
                 true

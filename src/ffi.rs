@@ -4,6 +4,7 @@ use super::engine::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 #[cfg(not(target_arch = "wasm32"))]
 use super::renderer::Renderer;
 use super::types::Input;
+use super::ui::{UiInsets, UiPointerPhase, UiViewport};
 #[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
 use std::ptr;
@@ -37,6 +38,109 @@ pub unsafe extern "C" fn engine_set_input(
             zoom_delta,
         });
     }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_ui_viewport(
+    engine: *mut Engine,
+    width: f32,
+    height: f32,
+    scale: f32,
+    safe_top: f32,
+    safe_right: f32,
+    safe_bottom: f32,
+    safe_left: f32,
+) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_ui_viewport(UiViewport {
+            width,
+            height,
+            scale,
+            safe_area: UiInsets {
+                top: safe_top,
+                right: safe_right,
+                bottom: safe_bottom,
+                left: safe_left,
+            },
+        });
+    }
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_ui_document_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_ui_document_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_load_ui_document_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.load_ui_document_buffer()))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// Sends pointer coordinates in logical viewport units. Phase values are
+/// 0=down, 1=move, 2=up, and 3=cancel.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_ui_pointer(
+    engine: *mut Engine,
+    pointer_id: u64,
+    phase: u8,
+    x: f32,
+    y: f32,
+) -> u8 {
+    let Some(engine) = (unsafe { engine.as_mut() }) else {
+        return 0;
+    };
+    let phase = match phase {
+        0 => UiPointerPhase::Down,
+        1 => UiPointerPhase::Move,
+        2 => UiPointerPhase::Up,
+        3 => UiPointerPhase::Cancel,
+        _ => return 0,
+    };
+    u8::from(engine.ui_pointer(pointer_id, phase, x, y))
+}
+
+#[unsafe(no_mangle)]
+/// Advances the host-facing UI event queue. The event is exposed as UTF-8 JSON
+/// through `engine_ui_event_ptr` and `engine_ui_event_len` until the next poll.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_ui_poll_event(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.ui.borrow_mut().poll_event()))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_ui_event_ptr(engine: *const Engine) -> *const u8 {
+    unsafe { engine.as_ref() }.map_or(ptr::null(), |engine| {
+        engine.ui.borrow().event_buffer().as_ptr()
+    })
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_ui_event_len(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.ui.borrow().event_buffer().len())
 }
 
 #[unsafe(no_mangle)]

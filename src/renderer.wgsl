@@ -44,3 +44,21 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let fog = smoothstep(52.0, 115.0, distance_to_camera);
     return vec4<f32>(mix(lit_color, globals.fog_color.rgb, fog), input.color.a);
 }
+
+struct UiVertexOutput {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+};
+
+@vertex
+fn vs_ui(input: VertexInput) -> UiVertexOutput {
+    var output: UiVertexOutput;
+    output.position = vec4<f32>(input.position.xy, 0.0, 1.0);
+    output.color = input.color;
+    return output;
+}
+
+@fragment
+fn fs_ui(input: UiVertexOutput) -> @location(0) vec4<f32> {
+    return input.color;
+}

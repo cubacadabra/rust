@@ -44,12 +44,21 @@ impl Renderer {
             fog_color: self.scene.world.palette.sky,
         };
         let dynamic_vertices = self.build_dynamic_vertices();
+        let ui_vertices = super::ui::build_ui_vertices(&self.ui_frame);
         self.ensure_dynamic_vertex_capacity(dynamic_vertices.len());
+        self.ensure_ui_vertex_capacity(ui_vertices.len());
         if !dynamic_vertices.is_empty() {
             self.queue.write_buffer(
                 &self.dynamic_vertex_buffer,
                 0,
                 bytemuck::cast_slice(&dynamic_vertices),
+            );
+        }
+        if !ui_vertices.is_empty() {
+            self.queue.write_buffer(
+                &self.ui_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&ui_vertices),
             );
         }
         self.queue
@@ -113,6 +122,27 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
                 pass.draw(0..dynamic_vertices.len() as u32, 0..1);
             }
+        }
+        if !ui_vertices.is_empty() {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("cubacadabra UI pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.ui_pipeline);
+            pass.set_vertex_buffer(0, self.ui_vertex_buffer.slice(..));
+            pass.draw(0..ui_vertices.len() as u32, 0..1);
         }
         self.queue.submit(Some(encoder.finish()));
         frame.present();
@@ -286,5 +316,14 @@ impl Renderer {
         self.dynamic_vertex_capacity = required.next_power_of_two();
         self.dynamic_vertex_buffer =
             super::device::create_vertex_buffer(&self.device, self.dynamic_vertex_capacity);
+    }
+
+    fn ensure_ui_vertex_capacity(&mut self, required: usize) {
+        if required <= self.ui_vertex_capacity {
+            return;
+        }
+        self.ui_vertex_capacity = required.next_power_of_two();
+        self.ui_vertex_buffer =
+            super::device::create_vertex_buffer(&self.device, self.ui_vertex_capacity);
     }
 }

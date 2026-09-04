@@ -1,0 +1,1211 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+
+use serde::{Deserialize, Serialize};
+
+const MAX_UI_NODES: usize = 512;
+const MAX_UI_DEPTH: usize = 32;
+const MIN_TOUCH_TARGET: f32 = 44.0;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UiInsets {
+    #[serde(default)]
+    pub(crate) top: f32,
+    #[serde(default)]
+    pub(crate) right: f32,
+    #[serde(default)]
+    pub(crate) bottom: f32,
+    #[serde(default)]
+    pub(crate) left: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct UiViewport {
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+    pub(crate) scale: f32,
+    pub(crate) safe_area: UiInsets,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct UiRect {
+    pub(crate) x: f32,
+    pub(crate) y: f32,
+    pub(crate) width: f32,
+    pub(crate) height: f32,
+}
+
+impl UiRect {
+    fn inset(self, amount: f32) -> Self {
+        let amount = amount.max(0.0);
+        Self {
+            x: self.x + amount,
+            y: self.y + amount,
+            width: (self.width - amount * 2.0).max(0.0),
+            height: (self.height - amount * 2.0).max(0.0),
+        }
+    }
+
+    fn contains(self, x: f32, y: f32) -> bool {
+        x >= self.x && y >= self.y && x <= self.x + self.width && y <= self.y + self.height
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UiDocument {
+    #[serde(default)]
+    pub(crate) nodes: Vec<UiNode>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum UiNodeKind {
+    #[default]
+    Panel,
+    Stack,
+    Text,
+    Button,
+    Toggle,
+    Slider,
+    Joystick,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum UiAnchor {
+    #[default]
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Center,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum UiDirection {
+    #[default]
+    Column,
+    Row,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum UiAlignment {
+    #[default]
+    Start,
+    Center,
+    End,
+    Stretch,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum UiJustification {
+    #[default]
+    Start,
+    Center,
+    End,
+    SpaceBetween,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub(crate) enum UiLength {
+    Points(f32),
+    Named(String),
+}
+
+impl Default for UiLength {
+    fn default() -> Self {
+        Self::Named("auto".to_owned())
+    }
+}
+
+impl UiLength {
+    fn is_fill(&self) -> bool {
+        matches!(self, Self::Named(value) if value.eq_ignore_ascii_case("fill"))
+    }
+
+    fn resolve(&self, available: f32, intrinsic: f32) -> f32 {
+        match self {
+            Self::Points(value) => value.max(0.0),
+            Self::Named(value) if value.eq_ignore_ascii_case("fill") => available.max(0.0),
+            Self::Named(value) if value.ends_with('%') => value
+                .trim_end_matches('%')
+                .parse::<f32>()
+                .map_or(intrinsic, |percent| {
+                    available * (percent / 100.0).clamp(0.0, 1.0)
+                }),
+            Self::Named(_) => intrinsic,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UiLayout {
+    #[serde(default)]
+    pub(crate) width: UiLength,
+    #[serde(default)]
+    pub(crate) height: UiLength,
+    #[serde(default)]
+    pub(crate) max_width: Option<f32>,
+    #[serde(default)]
+    pub(crate) max_height: Option<f32>,
+    #[serde(default)]
+    pub(crate) anchor: UiAnchor,
+    #[serde(default)]
+    pub(crate) direction: UiDirection,
+    #[serde(default)]
+    pub(crate) align: UiAlignment,
+    #[serde(default)]
+    pub(crate) justify: UiJustification,
+    #[serde(default)]
+    pub(crate) padding: f32,
+    #[serde(default)]
+    pub(crate) gap: f32,
+    #[serde(default)]
+    pub(crate) offset: [f32; 2],
+    #[serde(default)]
+    pub(crate) ignore_safe_area: bool,
+}
+
+fn default_foreground() -> String {
+    "#ffffff".to_owned()
+}
+
+fn default_font_size() -> f32 {
+    14.0
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UiStyle {
+    #[serde(default)]
+    pub(crate) background: Option<String>,
+    #[serde(default = "default_foreground")]
+    pub(crate) foreground: String,
+    #[serde(default)]
+    pub(crate) border_color: Option<String>,
+    #[serde(default)]
+    pub(crate) border_width: f32,
+    #[serde(default)]
+    pub(crate) corner_radius: f32,
+    #[serde(default = "default_font_size")]
+    pub(crate) font_size: f32,
+    #[serde(default)]
+    pub(crate) text_align: UiAlignment,
+    #[serde(default)]
+    pub(crate) accent: Option<String>,
+}
+
+impl Default for UiStyle {
+    fn default() -> Self {
+        Self {
+            background: None,
+            foreground: default_foreground(),
+            border_color: None,
+            border_width: 0.0,
+            corner_radius: 0.0,
+            font_size: default_font_size(),
+            text_align: UiAlignment::Start,
+            accent: None,
+        }
+    }
+}
+
+fn default_visible() -> bool {
+    true
+}
+
+fn default_maximum() -> f32 {
+    1.0
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UiNode {
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) kind: UiNodeKind,
+    #[serde(default)]
+    pub(crate) text: String,
+    #[serde(default)]
+    pub(crate) action: String,
+    #[serde(default)]
+    pub(crate) layout: UiLayout,
+    #[serde(default)]
+    pub(crate) style: UiStyle,
+    #[serde(default)]
+    pub(crate) children: Vec<UiNode>,
+    #[serde(default = "default_visible")]
+    pub(crate) visible: bool,
+    #[serde(default)]
+    pub(crate) disabled: bool,
+    #[serde(default)]
+    pub(crate) blocks_input: bool,
+    #[serde(default)]
+    pub(crate) checked: bool,
+    #[serde(default)]
+    pub(crate) value: f32,
+    #[serde(default)]
+    pub(crate) minimum: f32,
+    #[serde(default = "default_maximum")]
+    pub(crate) maximum: f32,
+    #[serde(default)]
+    pub(crate) value_x: f32,
+    #[serde(default)]
+    pub(crate) value_y: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct UiRenderNode {
+    pub(crate) id: String,
+    pub(crate) kind: UiNodeKind,
+    pub(crate) rect: UiRect,
+    pub(crate) text: String,
+    pub(crate) background: Option<[f32; 4]>,
+    pub(crate) foreground: [f32; 4],
+    pub(crate) border_color: Option<[f32; 4]>,
+    pub(crate) border_width: f32,
+    pub(crate) corner_radius: f32,
+    pub(crate) font_size: f32,
+    pub(crate) text_align: UiAlignment,
+    pub(crate) accent: [f32; 4],
+    pub(crate) value: f32,
+    pub(crate) value_x: f32,
+    pub(crate) value_y: f32,
+    pub(crate) pressed: bool,
+    pub(crate) disabled: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct UiFrame {
+    pub(crate) viewport: UiViewport,
+    pub(crate) nodes: Vec<UiRenderNode>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UiEvent {
+    pub(crate) node_id: String,
+    pub(crate) action: String,
+    pub(crate) phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) value: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) x: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) y: Option<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UiPointerPhase {
+    Down,
+    Move,
+    Up,
+    Cancel,
+}
+
+#[derive(Clone, Debug)]
+struct UiHitRegion {
+    id: String,
+    action: String,
+    kind: UiNodeKind,
+    rect: UiRect,
+    disabled: bool,
+}
+
+#[derive(Clone, Debug)]
+struct UiCapture {
+    region: UiHitRegion,
+}
+
+#[derive(Default)]
+pub(crate) struct UiRuntime {
+    document: UiDocument,
+    viewport: UiViewport,
+    frame: UiFrame,
+    hit_regions: Vec<UiHitRegion>,
+    captures: HashMap<u64, UiCapture>,
+    host_events: VecDeque<UiEvent>,
+    script_events: VecDeque<UiEvent>,
+    event_buffer: Vec<u8>,
+    dirty: bool,
+}
+
+impl UiRuntime {
+    pub(crate) fn set_viewport(&mut self, viewport: UiViewport) {
+        let viewport = UiViewport {
+            width: viewport.width.max(0.0),
+            height: viewport.height.max(0.0),
+            scale: viewport.scale.max(0.1),
+            safe_area: UiInsets {
+                top: viewport.safe_area.top.max(0.0),
+                right: viewport.safe_area.right.max(0.0),
+                bottom: viewport.safe_area.bottom.max(0.0),
+                left: viewport.safe_area.left.max(0.0),
+            },
+        };
+        if self.viewport != viewport {
+            self.viewport = viewport;
+            self.dirty = true;
+        }
+    }
+
+    pub(crate) fn set_document_json(&mut self, source: &str) -> Result<(), String> {
+        let document: UiDocument =
+            serde_json::from_str(source).map_err(|error| error.to_string())?;
+        validate_document(&document)?;
+        self.document = document;
+        self.captures.clear();
+        self.dirty = true;
+        Ok(())
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.document.nodes.clear();
+        self.captures.clear();
+        self.dirty = true;
+    }
+
+    pub(crate) fn set_text(&mut self, id: &str, text: &str) -> bool {
+        let Some(node) = find_node_mut(&mut self.document.nodes, id) else {
+            return false;
+        };
+        node.text = text.chars().take(256).collect();
+        self.dirty = true;
+        true
+    }
+
+    pub(crate) fn set_value(&mut self, id: &str, value: f32) -> bool {
+        let Some(node) = find_node_mut(&mut self.document.nodes, id) else {
+            return false;
+        };
+        node.value = value.clamp(node.minimum, node.maximum.max(node.minimum));
+        self.dirty = true;
+        true
+    }
+
+    pub(crate) fn set_checked(&mut self, id: &str, checked: bool) -> bool {
+        let Some(node) = find_node_mut(&mut self.document.nodes, id) else {
+            return false;
+        };
+        node.checked = checked;
+        node.value = f32::from(checked);
+        self.dirty = true;
+        true
+    }
+
+    pub(crate) fn set_visible(&mut self, id: &str, visible: bool) -> bool {
+        let Some(node) = find_node_mut(&mut self.document.nodes, id) else {
+            return false;
+        };
+        node.visible = visible;
+        self.dirty = true;
+        true
+    }
+
+    pub(crate) fn frame(&mut self) -> &UiFrame {
+        self.rebuild_if_needed();
+        &self.frame
+    }
+
+    pub(crate) fn pointer(
+        &mut self,
+        pointer_id: u64,
+        phase: UiPointerPhase,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        self.rebuild_if_needed();
+        match phase {
+            UiPointerPhase::Down => {
+                let Some(region) = self
+                    .hit_regions
+                    .iter()
+                    .rev()
+                    .find(|region| !region.disabled && region.rect.contains(x, y))
+                    .cloned()
+                else {
+                    return false;
+                };
+                self.captures.insert(pointer_id, UiCapture { region });
+                self.update_pointer_control(pointer_id, x, y, "change");
+                self.dirty = true;
+                true
+            }
+            UiPointerPhase::Move => {
+                if !self.captures.contains_key(&pointer_id) {
+                    return false;
+                }
+                self.update_pointer_control(pointer_id, x, y, "change");
+                self.dirty = true;
+                true
+            }
+            UiPointerPhase::Up => {
+                let Some(capture) = self.captures.remove(&pointer_id) else {
+                    return false;
+                };
+                if capture.region.kind == UiNodeKind::Joystick {
+                    self.reset_joystick(&capture.region, "release");
+                } else if capture.region.rect.contains(x, y) {
+                    self.activate(capture.region, x);
+                }
+                self.dirty = true;
+                true
+            }
+            UiPointerPhase::Cancel => {
+                let capture = self.captures.remove(&pointer_id);
+                if let Some(capture) = &capture
+                    && capture.region.kind == UiNodeKind::Joystick
+                {
+                    self.reset_joystick(&capture.region, "cancel");
+                }
+                let consumed = capture.is_some();
+                self.dirty |= consumed;
+                consumed
+            }
+        }
+    }
+
+    pub(crate) fn take_script_events(&mut self) -> Vec<UiEvent> {
+        self.script_events.drain(..).collect()
+    }
+
+    pub(crate) fn poll_event(&mut self) -> bool {
+        let Some(event) = self.host_events.pop_front() else {
+            self.event_buffer.clear();
+            return false;
+        };
+        self.event_buffer = serde_json::to_vec(&event).unwrap_or_default();
+        true
+    }
+
+    pub(crate) fn event_buffer(&self) -> &[u8] {
+        &self.event_buffer
+    }
+
+    fn rebuild_if_needed(&mut self) {
+        if !self.dirty {
+            return;
+        }
+        let safe = UiRect {
+            x: self.viewport.safe_area.left,
+            y: self.viewport.safe_area.top,
+            width: (self.viewport.width
+                - self.viewport.safe_area.left
+                - self.viewport.safe_area.right)
+                .max(0.0),
+            height: (self.viewport.height
+                - self.viewport.safe_area.top
+                - self.viewport.safe_area.bottom)
+                .max(0.0),
+        };
+        let pressed = self
+            .captures
+            .values()
+            .map(|capture| capture.region.id.as_str())
+            .collect::<HashSet<_>>();
+        let mut nodes = Vec::new();
+        let mut hit_regions = Vec::new();
+        for node in &self.document.nodes {
+            if !node.visible {
+                continue;
+            }
+            let available = if node.layout.ignore_safe_area {
+                UiRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: self.viewport.width,
+                    height: self.viewport.height,
+                }
+            } else {
+                safe
+            };
+            let intrinsic = measure_node(node, available.width, available.height);
+            let width = clamp_length(
+                node.layout.width.resolve(available.width, intrinsic.0),
+                node.layout.max_width,
+                available.width,
+            );
+            let height = clamp_length(
+                node.layout.height.resolve(available.height, intrinsic.1),
+                node.layout.max_height,
+                available.height,
+            );
+            let rect = anchored_rect(
+                available,
+                width,
+                height,
+                node.layout.anchor,
+                node.layout.offset,
+            );
+            layout_node(node, rect, &pressed, &mut nodes, &mut hit_regions);
+        }
+        self.frame = UiFrame {
+            viewport: self.viewport,
+            nodes,
+        };
+        self.hit_regions = hit_regions;
+        self.dirty = false;
+    }
+
+    fn update_pointer_control(&mut self, pointer_id: u64, x: f32, y: f32, phase: &str) {
+        let Some(capture) = self.captures.get(&pointer_id).cloned() else {
+            return;
+        };
+        match capture.region.kind {
+            UiNodeKind::Slider => self.update_slider(&capture.region, x, phase),
+            UiNodeKind::Joystick => self.update_joystick(&capture.region, x, y, phase),
+            _ => {}
+        }
+    }
+
+    fn update_slider(&mut self, region: &UiHitRegion, x: f32, phase: &str) {
+        let fraction = ((x - region.rect.x) / region.rect.width.max(1.0)).clamp(0.0, 1.0);
+        let Some(node) = find_node_mut(&mut self.document.nodes, &region.id) else {
+            return;
+        };
+        let value = node.minimum + fraction * (node.maximum - node.minimum).max(0.0);
+        if (node.value - value).abs() <= f32::EPSILON {
+            return;
+        }
+        node.value = value;
+        self.push_event(UiEvent {
+            node_id: region.id.clone(),
+            action: region.action.clone(),
+            phase: phase.to_owned(),
+            value: Some(value),
+            x: None,
+            y: None,
+        });
+    }
+
+    fn update_joystick(&mut self, region: &UiHitRegion, x: f32, y: f32, phase: &str) {
+        let radius = region.rect.width.min(region.rect.height).max(1.0) * 0.5;
+        let center_x = region.rect.x + region.rect.width * 0.5;
+        let center_y = region.rect.y + region.rect.height * 0.5;
+        let mut value_x = (x - center_x) / radius;
+        let mut value_y = (y - center_y) / radius;
+        let length = value_x.hypot(value_y);
+        if length > 1.0 {
+            value_x /= length;
+            value_y /= length;
+        }
+        let Some(node) = find_node_mut(&mut self.document.nodes, &region.id) else {
+            return;
+        };
+        if (node.value_x - value_x).abs() <= f32::EPSILON
+            && (node.value_y - value_y).abs() <= f32::EPSILON
+        {
+            return;
+        }
+        node.value_x = value_x;
+        node.value_y = value_y;
+        self.push_event(UiEvent {
+            node_id: region.id.clone(),
+            action: region.action.clone(),
+            phase: phase.to_owned(),
+            value: None,
+            x: Some(value_x),
+            y: Some(value_y),
+        });
+    }
+
+    fn reset_joystick(&mut self, region: &UiHitRegion, phase: &str) {
+        let Some(node) = find_node_mut(&mut self.document.nodes, &region.id) else {
+            return;
+        };
+        node.value_x = 0.0;
+        node.value_y = 0.0;
+        self.push_event(UiEvent {
+            node_id: region.id.clone(),
+            action: region.action.clone(),
+            phase: phase.to_owned(),
+            value: None,
+            x: Some(0.0),
+            y: Some(0.0),
+        });
+    }
+
+    fn activate(&mut self, region: UiHitRegion, x: f32) {
+        match region.kind {
+            UiNodeKind::Toggle => {
+                let Some(node) = find_node_mut(&mut self.document.nodes, &region.id) else {
+                    return;
+                };
+                node.checked = !node.checked;
+                node.value = f32::from(node.checked);
+                let value = node.value;
+                self.push_event(UiEvent {
+                    node_id: region.id,
+                    action: region.action,
+                    phase: "activate".to_owned(),
+                    value: Some(value),
+                    x: None,
+                    y: None,
+                });
+            }
+            UiNodeKind::Slider => self.update_slider_on_activation(region, x),
+            UiNodeKind::Button => self.push_event(UiEvent {
+                node_id: region.id,
+                action: region.action,
+                phase: "activate".to_owned(),
+                value: None,
+                x: None,
+                y: None,
+            }),
+            _ if !region.action.is_empty() => self.push_event(UiEvent {
+                node_id: region.id,
+                action: region.action,
+                phase: "activate".to_owned(),
+                value: None,
+                x: None,
+                y: None,
+            }),
+            _ => {}
+        }
+    }
+
+    fn update_slider_on_activation(&mut self, region: UiHitRegion, x: f32) {
+        let fraction = ((x - region.rect.x) / region.rect.width.max(1.0)).clamp(0.0, 1.0);
+        let Some(node) = find_node_mut(&mut self.document.nodes, &region.id) else {
+            return;
+        };
+        node.value = node.minimum + fraction * (node.maximum - node.minimum).max(0.0);
+        let value = node.value;
+        self.push_event(UiEvent {
+            node_id: region.id,
+            action: region.action,
+            phase: "commit".to_owned(),
+            value: Some(value),
+            x: None,
+            y: None,
+        });
+    }
+
+    fn push_event(&mut self, event: UiEvent) {
+        const MAX_PENDING_EVENTS: usize = 128;
+        if self.host_events.len() >= MAX_PENDING_EVENTS {
+            self.host_events.pop_front();
+        }
+        if self.script_events.len() >= MAX_PENDING_EVENTS {
+            self.script_events.pop_front();
+        }
+        self.host_events.push_back(event.clone());
+        self.script_events.push_back(event);
+        self.dirty = true;
+    }
+}
+
+fn validate_document(document: &UiDocument) -> Result<(), String> {
+    fn visit(
+        nodes: &[UiNode],
+        depth: usize,
+        count: &mut usize,
+        ids: &mut HashSet<String>,
+    ) -> Result<(), String> {
+        if depth > MAX_UI_DEPTH {
+            return Err(format!("UI nesting exceeds {MAX_UI_DEPTH} levels"));
+        }
+        for node in nodes {
+            *count += 1;
+            if *count > MAX_UI_NODES {
+                return Err(format!("UI document exceeds {MAX_UI_NODES} nodes"));
+            }
+            if node.id.trim().is_empty() {
+                return Err("Every UI node needs a non-empty id".to_owned());
+            }
+            if !ids.insert(node.id.clone()) {
+                return Err(format!("Duplicate UI node id: {}", node.id));
+            }
+            visit(&node.children, depth + 1, count, ids)?;
+        }
+        Ok(())
+    }
+
+    visit(&document.nodes, 0, &mut 0, &mut HashSet::new())
+}
+
+fn find_node_mut<'a>(nodes: &'a mut [UiNode], id: &str) -> Option<&'a mut UiNode> {
+    for node in nodes {
+        if node.id == id {
+            return Some(node);
+        }
+        if let Some(found) = find_node_mut(&mut node.children, id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn measure_node(node: &UiNode, available_width: f32, available_height: f32) -> (f32, f32) {
+    let padding = node.layout.padding.max(0.0) * 2.0;
+    let font_size = node.style.font_size.max(7.0);
+    let text_width = node
+        .text
+        .lines()
+        .map(|line| line.chars().count() as f32 * font_size * 0.72)
+        .fold(0.0, f32::max);
+    let text_height = node.text.lines().count().max(1) as f32 * font_size * 1.25;
+    let child_sizes = node
+        .children
+        .iter()
+        .filter(|child| child.visible)
+        .map(|child| measure_node(child, available_width, available_height))
+        .collect::<Vec<_>>();
+    let gap = node.layout.gap.max(0.0) * child_sizes.len().saturating_sub(1) as f32;
+    let (children_width, children_height) = match node.layout.direction {
+        UiDirection::Row => (
+            child_sizes.iter().map(|size| size.0).sum::<f32>() + gap,
+            child_sizes.iter().map(|size| size.1).fold(0.0, f32::max),
+        ),
+        UiDirection::Column => (
+            child_sizes.iter().map(|size| size.0).fold(0.0, f32::max),
+            child_sizes.iter().map(|size| size.1).sum::<f32>() + gap,
+        ),
+    };
+    let leaf_width = match node.kind {
+        UiNodeKind::Toggle => 72.0,
+        UiNodeKind::Slider => 180.0,
+        UiNodeKind::Joystick => 120.0,
+        UiNodeKind::Button => text_width.max(MIN_TOUCH_TARGET),
+        _ => text_width,
+    };
+    let leaf_height = match node.kind {
+        UiNodeKind::Joystick => 120.0,
+        UiNodeKind::Button | UiNodeKind::Toggle | UiNodeKind::Slider => MIN_TOUCH_TARGET,
+        _ => text_height,
+    };
+    let intrinsic_width = leaf_width.max(children_width) + padding;
+    let intrinsic_height = if node.children.is_empty() {
+        leaf_height + padding
+    } else {
+        children_height.max(if node.text.is_empty() {
+            0.0
+        } else {
+            leaf_height
+        }) + padding
+    };
+    let minimum = if matches!(
+        node.kind,
+        UiNodeKind::Button | UiNodeKind::Toggle | UiNodeKind::Slider | UiNodeKind::Joystick
+    ) {
+        MIN_TOUCH_TARGET
+    } else {
+        0.0
+    };
+    (
+        clamp_length(
+            node.layout
+                .width
+                .resolve(available_width, intrinsic_width)
+                .max(minimum.min(available_width)),
+            node.layout.max_width,
+            available_width,
+        ),
+        clamp_length(
+            node.layout
+                .height
+                .resolve(available_height, intrinsic_height)
+                .max(minimum.min(available_height)),
+            node.layout.max_height,
+            available_height,
+        ),
+    )
+}
+
+fn clamp_length(value: f32, maximum: Option<f32>, available: f32) -> f32 {
+    value
+        .min(maximum.unwrap_or(f32::MAX).max(0.0))
+        .min(available.max(0.0))
+}
+
+fn anchored_rect(
+    parent: UiRect,
+    width: f32,
+    height: f32,
+    anchor: UiAnchor,
+    offset: [f32; 2],
+) -> UiRect {
+    let horizontal = match anchor {
+        UiAnchor::Top | UiAnchor::Center | UiAnchor::Bottom => 0.5,
+        UiAnchor::TopRight | UiAnchor::Right | UiAnchor::BottomRight => 1.0,
+        _ => 0.0,
+    };
+    let vertical = match anchor {
+        UiAnchor::Left | UiAnchor::Center | UiAnchor::Right => 0.5,
+        UiAnchor::BottomLeft | UiAnchor::Bottom | UiAnchor::BottomRight => 1.0,
+        _ => 0.0,
+    };
+    UiRect {
+        x: parent.x + (parent.width - width) * horizontal + offset[0],
+        y: parent.y + (parent.height - height) * vertical + offset[1],
+        width,
+        height,
+    }
+}
+
+fn layout_node(
+    node: &UiNode,
+    rect: UiRect,
+    pressed: &HashSet<&str>,
+    nodes: &mut Vec<UiRenderNode>,
+    hit_regions: &mut Vec<UiHitRegion>,
+) {
+    if !node.visible {
+        return;
+    }
+    let value = match node.kind {
+        UiNodeKind::Toggle => f32::from(node.checked),
+        UiNodeKind::Slider => ((node.value - node.minimum)
+            / (node.maximum - node.minimum).max(f32::EPSILON))
+        .clamp(0.0, 1.0),
+        _ => node.value,
+    };
+    nodes.push(UiRenderNode {
+        id: node.id.clone(),
+        kind: node.kind,
+        rect,
+        text: node.text.clone(),
+        background: node.style.background.as_deref().and_then(parse_color),
+        foreground: parse_color(&node.style.foreground).unwrap_or([1.0; 4]),
+        border_color: node.style.border_color.as_deref().and_then(parse_color),
+        border_width: node.style.border_width.max(0.0),
+        corner_radius: node.style.corner_radius.max(0.0),
+        font_size: node.style.font_size.max(7.0),
+        text_align: node.style.text_align,
+        accent: node
+            .style
+            .accent
+            .as_deref()
+            .and_then(parse_color)
+            .unwrap_or([0.0, 0.58, 1.0, 1.0]),
+        value,
+        value_x: node.value_x,
+        value_y: node.value_y,
+        pressed: pressed.contains(node.id.as_str()),
+        disabled: node.disabled,
+    });
+    let inherently_interactive = matches!(
+        node.kind,
+        UiNodeKind::Button | UiNodeKind::Toggle | UiNodeKind::Slider | UiNodeKind::Joystick
+    );
+    if inherently_interactive || node.blocks_input || !node.action.is_empty() {
+        hit_regions.push(UiHitRegion {
+            id: node.id.clone(),
+            action: if node.action.is_empty() && inherently_interactive {
+                node.id.clone()
+            } else {
+                node.action.clone()
+            },
+            kind: node.kind,
+            rect,
+            disabled: node.disabled,
+        });
+    }
+    if node.children.is_empty() {
+        return;
+    }
+
+    let content = rect.inset(node.layout.padding);
+    let visible_children = node
+        .children
+        .iter()
+        .filter(|child| child.visible)
+        .collect::<Vec<_>>();
+    if visible_children.is_empty() {
+        return;
+    }
+    let gap = node.layout.gap.max(0.0);
+    let main_available = match node.layout.direction {
+        UiDirection::Row => content.width,
+        UiDirection::Column => content.height,
+    };
+    let cross_available = match node.layout.direction {
+        UiDirection::Row => content.height,
+        UiDirection::Column => content.width,
+    };
+    let intrinsic = visible_children
+        .iter()
+        .map(|child| measure_node(child, content.width, content.height))
+        .collect::<Vec<_>>();
+    let fill_count = visible_children
+        .iter()
+        .filter(|child| match node.layout.direction {
+            UiDirection::Row => child.layout.width.is_fill(),
+            UiDirection::Column => child.layout.height.is_fill(),
+        })
+        .count();
+    let fixed_main = visible_children
+        .iter()
+        .zip(&intrinsic)
+        .filter(|(child, _)| match node.layout.direction {
+            UiDirection::Row => !child.layout.width.is_fill(),
+            UiDirection::Column => !child.layout.height.is_fill(),
+        })
+        .map(|(_, size)| match node.layout.direction {
+            UiDirection::Row => size.0,
+            UiDirection::Column => size.1,
+        })
+        .sum::<f32>();
+    let base_gap = gap * visible_children.len().saturating_sub(1) as f32;
+    let fill_main = if fill_count > 0 {
+        ((main_available - fixed_main - base_gap).max(0.0)) / fill_count as f32
+    } else {
+        0.0
+    };
+    let used_main = if fill_count > 0 {
+        main_available
+    } else {
+        fixed_main
+            + intrinsic
+                .iter()
+                .enumerate()
+                .filter_map(|(index, size)| {
+                    let child = visible_children[index];
+                    let is_fill = match node.layout.direction {
+                        UiDirection::Row => child.layout.width.is_fill(),
+                        UiDirection::Column => child.layout.height.is_fill(),
+                    };
+                    is_fill.then_some(match node.layout.direction {
+                        UiDirection::Row => size.0,
+                        UiDirection::Column => size.1,
+                    })
+                })
+                .sum::<f32>()
+            + base_gap
+    };
+    let mut actual_gap = gap;
+    let mut cursor = match node.layout.justify {
+        UiJustification::Center => (main_available - used_main).max(0.0) * 0.5,
+        UiJustification::End => (main_available - used_main).max(0.0),
+        UiJustification::SpaceBetween if visible_children.len() > 1 && fill_count == 0 => {
+            actual_gap = ((main_available - (used_main - base_gap)).max(0.0))
+                / visible_children.len().saturating_sub(1) as f32;
+            0.0
+        }
+        _ => 0.0,
+    };
+
+    for (child, intrinsic) in visible_children.into_iter().zip(intrinsic) {
+        let main_is_fill = match node.layout.direction {
+            UiDirection::Row => child.layout.width.is_fill(),
+            UiDirection::Column => child.layout.height.is_fill(),
+        };
+        let main = if main_is_fill {
+            fill_main
+        } else {
+            match node.layout.direction {
+                UiDirection::Row => intrinsic.0,
+                UiDirection::Column => intrinsic.1,
+            }
+        };
+        let child_cross_fill = match node.layout.direction {
+            UiDirection::Row => child.layout.height.is_fill(),
+            UiDirection::Column => child.layout.width.is_fill(),
+        } || node.layout.align == UiAlignment::Stretch;
+        let cross = if child_cross_fill {
+            cross_available
+        } else {
+            match node.layout.direction {
+                UiDirection::Row => intrinsic.1.min(cross_available),
+                UiDirection::Column => intrinsic.0.min(cross_available),
+            }
+        };
+        let cross_offset = match node.layout.align {
+            UiAlignment::Center => (cross_available - cross) * 0.5,
+            UiAlignment::End => cross_available - cross,
+            _ => 0.0,
+        };
+        let child_rect = match node.layout.direction {
+            UiDirection::Row => UiRect {
+                x: content.x + cursor + child.layout.offset[0],
+                y: content.y + cross_offset + child.layout.offset[1],
+                width: main,
+                height: cross,
+            },
+            UiDirection::Column => UiRect {
+                x: content.x + cross_offset + child.layout.offset[0],
+                y: content.y + cursor + child.layout.offset[1],
+                width: cross,
+                height: main,
+            },
+        };
+        layout_node(child, child_rect, pressed, nodes, hit_regions);
+        cursor += main + actual_gap;
+    }
+}
+
+pub(crate) fn parse_color(value: &str) -> Option<[f32; 4]> {
+    let value = value.trim().trim_start_matches('#');
+    if value.len() != 6 && value.len() != 8 {
+        return None;
+    }
+    let color = u32::from_str_radix(value, 16).ok()?;
+    let (rgb, alpha) = if value.len() == 8 {
+        (color >> 8, (color & 0xff) as f32 / 255.0)
+    } else {
+        (color, 1.0)
+    };
+    Some([
+        ((rgb >> 16) & 0xff) as f32 / 255.0,
+        ((rgb >> 8) & 0xff) as f32 / 255.0,
+        (rgb & 0xff) as f32 / 255.0,
+        alpha,
+    ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn runtime(source: &str, width: f32, height: f32) -> UiRuntime {
+        let mut runtime = UiRuntime::default();
+        runtime.set_viewport(UiViewport {
+            width,
+            height,
+            scale: 1.0,
+            safe_area: UiInsets {
+                top: 47.0,
+                right: 0.0,
+                bottom: 34.0,
+                left: 0.0,
+            },
+        });
+        runtime.set_document_json(source).unwrap();
+        runtime
+    }
+
+    #[test]
+    fn anchors_to_safe_area_and_respects_max_width() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"header","kind":"panel","layout":{"anchor":"top","width":"fill","height":64,"maxWidth":720}}]}"##,
+            1280.0,
+            800.0,
+        );
+        let header = &runtime.frame().nodes[0];
+        assert_eq!(
+            header.rect,
+            UiRect {
+                x: 280.0,
+                y: 47.0,
+                width: 720.0,
+                height: 64.0
+            }
+        );
+    }
+
+    #[test]
+    fn bottom_dock_stays_above_home_indicator() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"dock","kind":"panel","layout":{"anchor":"bottom","width":320,"height":56,"offset":[0,-16]}}]}"##,
+            390.0,
+            844.0,
+        );
+        let dock = &runtime.frame().nodes[0];
+        assert_eq!(dock.rect.y, 738.0);
+        assert!(dock.rect.y + dock.rect.height <= 844.0 - 34.0);
+    }
+
+    #[test]
+    fn button_requires_release_inside_and_emits_host_event() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"build","kind":"button","text":"BUILD","action":"build.use","layout":{"width":120,"height":48}}]}"##,
+            390.0,
+            844.0,
+        );
+        assert!(runtime.pointer(7, UiPointerPhase::Down, 30.0, 60.0));
+        assert!(runtime.pointer(7, UiPointerPhase::Up, 30.0, 60.0));
+        assert!(runtime.poll_event());
+        let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
+        assert_eq!(event["action"], "build.use");
+        assert_eq!(event["phase"], "activate");
+    }
+
+    #[test]
+    fn slider_updates_value_during_drag() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"music","kind":"slider","action":"settings.music","value":0.5,"layout":{"width":200,"height":44}}]}"##,
+            390.0,
+            844.0,
+        );
+        assert!(runtime.pointer(2, UiPointerPhase::Down, 100.0, 60.0));
+        assert!(runtime.pointer(2, UiPointerPhase::Move, 180.0, 60.0));
+        let slider = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "music")
+            .unwrap();
+        assert!((slider.value - 0.9).abs() < 0.001);
+    }
+
+    #[test]
+    fn rejects_duplicate_ids() {
+        let mut runtime = UiRuntime::default();
+        let error = runtime
+            .set_document_json(r##"{"nodes":[{"id":"same"},{"id":"same"}]}"##)
+            .unwrap_err();
+        assert!(error.contains("Duplicate"));
+    }
+
+    #[test]
+    fn modal_scrim_can_cover_unsafe_area_and_block_world_input() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"scrim","kind":"panel","blocksInput":true,"layout":{"width":"fill","height":"fill","ignoreSafeArea":true}}]}"##,
+            390.0,
+            844.0,
+        );
+        let scrim = &runtime.frame().nodes[0];
+        assert_eq!(
+            scrim.rect,
+            UiRect {
+                x: 0.0,
+                y: 0.0,
+                width: 390.0,
+                height: 844.0
+            }
+        );
+        assert!(runtime.pointer(11, UiPointerPhase::Down, 5.0, 5.0));
+        assert!(runtime.pointer(11, UiPointerPhase::Up, 5.0, 5.0));
+        assert!(!runtime.poll_event());
+    }
+
+    #[test]
+    fn joystick_clamps_vector_and_resets_on_release() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"move","kind":"joystick","action":"player.move","layout":{"width":120,"height":120}}]}"##,
+            390.0,
+            844.0,
+        );
+        assert!(runtime.pointer(4, UiPointerPhase::Down, 60.0, 107.0));
+        assert!(runtime.pointer(4, UiPointerPhase::Move, 180.0, 107.0));
+        let stick = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "move")
+            .unwrap();
+        assert_eq!(stick.value_x, 1.0);
+        assert_eq!(stick.value_y, 0.0);
+        assert!(runtime.pointer(4, UiPointerPhase::Up, 180.0, 107.0));
+        let stick = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "move")
+            .unwrap();
+        assert_eq!((stick.value_x, stick.value_y), (0.0, 0.0));
+        assert!(runtime.host_events.iter().any(|event| {
+            event.phase == "release" && event.x == Some(0.0) && event.y == Some(0.0)
+        }));
+    }
+}

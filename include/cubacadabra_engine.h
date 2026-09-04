@@ -6,6 +6,11 @@
 typedef struct CubacadabraEngine CubacadabraEngine;
 typedef struct CubacadabraRenderer CubacadabraRenderer;
 
+#define CUBACADABRA_UI_POINTER_DOWN 0
+#define CUBACADABRA_UI_POINTER_MOVE 1
+#define CUBACADABRA_UI_POINTER_UP 2
+#define CUBACADABRA_UI_POINTER_CANCEL 3
+
 CubacadabraEngine *engine_create(void);
 void engine_set_input(
     CubacadabraEngine *engine,
@@ -17,6 +22,28 @@ void engine_set_input(
     float look_y,
     float zoom_delta
 );
+void engine_set_ui_viewport(
+    CubacadabraEngine *engine,
+    float width,
+    float height,
+    float scale,
+    float safe_top,
+    float safe_right,
+    float safe_bottom,
+    float safe_left
+);
+uint8_t *engine_ui_document_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_load_ui_document_buffer(CubacadabraEngine *engine);
+uint8_t engine_ui_pointer(
+    CubacadabraEngine *engine,
+    uint64_t pointer_id,
+    uint8_t phase,
+    float x,
+    float y
+);
+uint8_t engine_ui_poll_event(CubacadabraEngine *engine);
+const uint8_t *engine_ui_event_ptr(const CubacadabraEngine *engine);
+uintptr_t engine_ui_event_len(const CubacadabraEngine *engine);
 void engine_step(CubacadabraEngine *engine, float delta);
 void engine_reset_view(CubacadabraEngine *engine);
 void engine_set_launch_pad(

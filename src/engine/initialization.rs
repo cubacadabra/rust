@@ -1,7 +1,10 @@
 use crate::engine::{DEFAULT_LAUNCH_COUNTDOWN, Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 use crate::math::Random;
 use crate::types::{Input, Player};
+use crate::ui::UiRuntime;
 use crate::world::{LaunchPad, block_bounds};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 impl Engine {
     pub fn new() -> Self {
@@ -52,6 +55,8 @@ impl Engine {
             username: "PLAYER".to_owned(),
             username_buffer: Vec::new(),
             portal_cooldown_until: 0.0,
+            ui: Rc::new(RefCell::new(UiRuntime::default())),
+            ui_document_buffer: Vec::new(),
         };
         engine.write_snapshot();
         engine

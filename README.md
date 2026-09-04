@@ -69,6 +69,17 @@ session, follow [web/README.md](../web/README.md) and
 engine binaries but load the deployed package and connect to the deployed
 Worker.
 
+## Shared in-game UI
+
+Experience HUDs and in-game modals can be declared by Luau and are owned by the
+engine. Rust performs responsive safe-area layout, pointer hit testing, state
+updates, and an orthographic `wgpu` overlay pass, so the same UI can render on
+iOS, Android, and the browser. Native shells continue to own OS presentation
+and forward host-service actions from the engine's UI event queue.
+
+See [docs/ui-runtime.md](docs/ui-runtime.md) for the Luau document model,
+supported widgets, responsive layout rules, and C ABI integration.
+
 ## Scripting status
 
 All targets execute `game.luau` through the host in `scripting.rs`. Native
@@ -85,6 +96,7 @@ expose the same sandboxed `lobby`, `session`, and lifecycle API.
 - `npc.rs` — agent spawning, roaming, separation, and assembly behavior
 - `game_package.rs` — manifest/world data model
 - `scripting.rs` — native Luau lifecycle host and browser seam
+- `ui.rs` — retained UI document, layout, hit testing, and event queue
 - `world.rs` — starter-world bounds and navigation points
 - `types.rs` and `math.rs` — shared simulation primitives
 - `ffi.rs` — C/WASM engine entry points

@@ -1,11 +1,13 @@
 mod device;
 mod draw;
 mod scene;
+mod ui;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
 
 use crate::types::BuildBlock;
+use crate::ui::UiFrame;
 
 pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -187,6 +189,9 @@ pub struct Renderer {
     pub(super) static_vertex_count: usize,
     pub(super) dynamic_vertex_buffer: wgpu::Buffer,
     pub(super) dynamic_vertex_capacity: usize,
+    pub(super) ui_pipeline: wgpu::RenderPipeline,
+    pub(super) ui_vertex_buffer: wgpu::Buffer,
+    pub(super) ui_vertex_capacity: usize,
     pub(super) config: wgpu::SurfaceConfiguration,
     pub(super) depth_view: wgpu::TextureView,
     pub(super) width: f32,
@@ -195,6 +200,7 @@ pub struct Renderer {
     pub(super) package_generation: u32,
     pub(super) active_world: usize,
     pub(super) worlds: Vec<RenderWorld>,
+    pub(super) ui_frame: UiFrame,
 }
 
 fn default_player_style() -> AvatarStyle {
@@ -649,7 +655,7 @@ fn add_pixel_text(
     }
 }
 
-fn glyph(character: char) -> [u8; 7] {
+pub(super) fn glyph(character: char) -> [u8; 7] {
     match character {
         'A' => [14, 17, 17, 31, 17, 17, 17],
         'B' => [30, 17, 17, 30, 17, 17, 30],
@@ -687,6 +693,13 @@ fn glyph(character: char) -> [u8; 7] {
         '7' => [31, 1, 2, 4, 8, 8, 8],
         '8' => [14, 17, 17, 14, 17, 17, 14],
         '9' => [14, 17, 17, 15, 1, 1, 14],
+        '.' => [0, 0, 0, 0, 0, 12, 12],
+        ':' => [0, 12, 12, 0, 12, 12, 0],
+        '/' => [1, 2, 2, 4, 8, 8, 16],
+        '+' => [0, 4, 4, 31, 4, 4, 0],
+        '&' => [12, 18, 20, 8, 21, 18, 13],
+        '!' => [4, 4, 4, 4, 4, 0, 4],
+        '?' => [14, 17, 1, 2, 4, 0, 4],
         '-' => [0, 0, 0, 31, 0, 0, 0],
         '_' => [0, 0, 0, 0, 0, 0, 31],
         _ => [0; 7],
