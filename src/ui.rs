@@ -367,6 +367,9 @@ pub(crate) struct UiRuntime {
     script_events: VecDeque<UiEvent>,
     event_buffer: Vec<u8>,
     dirty: bool,
+    shared_modal_progress: f32,
+    shared_modal_target: f32,
+    shared_modal_tab: usize,
 }
 
 impl Default for UiRuntime {
@@ -382,6 +385,9 @@ impl Default for UiRuntime {
             script_events: VecDeque::new(),
             event_buffer: Vec::new(),
             dirty: false,
+            shared_modal_progress: 0.0,
+            shared_modal_target: 0.0,
+            shared_modal_tab: 0,
         }
     }
 }
@@ -477,6 +483,20 @@ impl UiRuntime {
     pub(crate) fn frame(&mut self) -> &UiFrame {
         self.rebuild_if_needed();
         &self.frame
+    }
+
+    pub(crate) fn advance(&mut self, delta: f32) {
+        if (self.shared_modal_progress - self.shared_modal_target).abs() <= f32::EPSILON {
+            return;
+        }
+        let step = (delta.max(0.0) / SHARED_MODAL_ANIMATION_SECONDS).clamp(0.0, 1.0);
+        self.shared_modal_progress +=
+            (self.shared_modal_target - self.shared_modal_progress) * step;
+        self.shared_modal_progress = self.shared_modal_progress.clamp(0.0, 1.0);
+        if (self.shared_modal_progress - self.shared_modal_target).abs() < 0.001 {
+            self.shared_modal_progress = self.shared_modal_target;
+        }
+        self.dirty = true;
     }
 
     pub(crate) fn pointer(
@@ -643,7 +663,9 @@ impl UiRuntime {
         {
             hit_regions.push(UiHitRegion {
                 id: node.id.clone(),
-                action: String::new(),
+                action: (node.id == "__shared_header_logo_surface")
+                    .then(|| "shared.header.toggle".to_owned())
+                    .unwrap_or_default(),
                 kind: UiNodeKind::Panel,
                 rect: node.rect,
                 disabled: false,
@@ -786,6 +808,15 @@ impl UiRuntime {
                 &mut hit_regions,
             );
         }
+        let modal = shared_modal_nodes(
+            self.viewport,
+            safe,
+            self.shared_modal_progress,
+            self.shared_modal_target,
+            self.shared_modal_tab,
+        );
+        nodes.extend(modal.nodes);
+        hit_regions.extend(modal.hit_regions);
         self.frame = UiFrame {
             viewport: self.viewport,
             nodes,
@@ -873,6 +904,25 @@ impl UiRuntime {
     }
 
     fn activate(&mut self, region: UiHitRegion, x: f32) {
+        if region.id == "__shared_header_logo_surface" {
+            self.shared_modal_target = if self.shared_modal_target > 0.5 {
+                0.0
+            } else {
+                1.0
+            };
+            self.dirty = true;
+            return;
+        }
+        if region.id == "__shared_modal_scrim" {
+            self.shared_modal_target = 0.0;
+            self.dirty = true;
+            return;
+        }
+        if let Some(tab) = shared_modal_tab_index(&region.id) {
+            self.shared_modal_tab = tab;
+            self.dirty = true;
+            return;
+        }
         match region.kind {
             UiNodeKind::Toggle => {
                 let Some(node) = find_node_mut(&mut self.document.nodes, &region.id) else {
@@ -1113,6 +1163,7 @@ fn anchored_rect(
     }
 }
 
+const SHARED_MODAL_ANIMATION_SECONDS: f32 = 0.22;
 const SHARED_HEADER_SIZE: f32 = 56.0;
 const SHARED_HEADER_MARGIN: f32 = 24.0;
 const SHARED_HEADER_GAP: f32 = 12.0;
@@ -1229,6 +1280,196 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> SharedHeaderGeomet
         y,
         size,
     }
+}
+
+struct SharedModalGeometry {
+    nodes: Vec<UiRenderNode>,
+    hit_regions: Vec<UiHitRegion>,
+}
+
+fn shared_modal_nodes(
+    viewport: UiViewport,
+    safe: UiRect,
+    progress: f32,
+    target: f32,
+    selected_tab: usize,
+) -> SharedModalGeometry {
+    if viewport.width <= 0.0
+        || viewport.height <= 0.0
+        || (progress <= 0.0 && target <= 0.0)
+    {
+        return SharedModalGeometry {
+            nodes: Vec::new(),
+            hit_regions: Vec::new(),
+        };
+    }
+
+    let compact = safe.width < 600.0 || safe.height > safe.width * 1.15;
+    let horizontal_margin = if compact { 12.0 } else { 18.0 };
+    let top_gap = if compact { 48.0 } else { 52.0 };
+    let panel = UiRect {
+        x: (safe.x + horizontal_margin).min(viewport.width),
+        y: (safe.y + top_gap).min(viewport.height),
+        width: (safe.width - horizontal_margin * 2.0).max(0.0),
+        height: (safe.height - top_gap).max(0.0),
+    };
+    let eased = progress * progress * (3.0 - 2.0 * progress);
+    let slide_distance = (viewport.height - panel.y).max(0.0);
+    let animated_panel = UiRect {
+        y: panel.y + slide_distance * (1.0 - eased),
+        ..panel
+    };
+    let scrim = UiRect {
+        x: 0.0,
+        y: 0.0,
+        width: viewport.width,
+        height: viewport.height,
+    };
+    let mut nodes = vec![modal_node(
+        "__shared_modal_scrim",
+        UiNodeKind::Modal,
+        scrim,
+        Some([0.01, 0.015, 0.02, 0.54 * progress]),
+        None,
+        0.0,
+    )];
+    let mut hit_regions = vec![UiHitRegion {
+        id: "__shared_modal_scrim".to_owned(),
+        action: "shared.modal.close".to_owned(),
+        kind: UiNodeKind::Modal,
+        rect: scrim,
+        disabled: false,
+    }];
+
+    nodes.push(modal_node(
+        "__shared_modal_panel",
+        UiNodeKind::Panel,
+        animated_panel,
+        Some([0.10, 0.12, 0.15, 0.94]),
+        Some([0.52, 0.60, 0.64, 0.32]),
+        if compact { 18.0 } else { 22.0 },
+    ));
+    hit_regions.push(UiHitRegion {
+        id: "__shared_modal_panel".to_owned(),
+        action: String::new(),
+        kind: UiNodeKind::Panel,
+        rect: animated_panel,
+        disabled: false,
+    });
+
+    let tab_padding = if compact { 12.0 } else { 18.0 };
+    let tab_gap = if compact { 5.0 } else { 8.0 };
+    let tab_row = UiRect {
+        x: animated_panel.x + tab_padding,
+        y: animated_panel.y + tab_padding,
+        width: (animated_panel.width - tab_padding * 2.0).max(0.0),
+        height: if compact { 46.0 } else { 50.0 },
+    };
+    let tab_width = ((tab_row.width - tab_gap * 4.0) / 5.0).max(0.0);
+    for (index, label) in ["About", "Settings", "People", "Report", "Help"]
+        .into_iter()
+        .enumerate()
+    {
+        let tab_rect = UiRect {
+            x: tab_row.x + index as f32 * (tab_width + tab_gap),
+            y: tab_row.y,
+            width: tab_width,
+            height: tab_row.height,
+        };
+        let selected = index == selected_tab;
+        let id = format!("__shared_modal_tab_{index}");
+        nodes.push(modal_node(
+            &id,
+            UiNodeKind::Button,
+            tab_rect,
+            Some(if selected {
+                [0.24, 0.30, 0.34, 0.98]
+            } else {
+                [0.13, 0.16, 0.19, 0.76]
+            }),
+            Some(if selected {
+                [0.78, 0.87, 0.88, 0.72]
+            } else {
+                [0.50, 0.59, 0.62, 0.24]
+            }),
+            if compact { 12.0 } else { 14.0 },
+        ));
+        if let Some(node) = nodes.last_mut() {
+            node.text = label.to_owned();
+            node.font_size = if compact { 12.0 } else { 14.0 };
+            node.text_align = UiAlignment::Center;
+        }
+        hit_regions.push(UiHitRegion {
+            id,
+            action: "shared.modal.tab".to_owned(),
+            kind: UiNodeKind::Button,
+            rect: tab_rect,
+            disabled: false,
+        });
+    }
+
+    // The body intentionally has no copy or controls from the reference
+    // image. It is simply a quiet surface reserved for future tab content.
+    let body = UiRect {
+        x: animated_panel.x + tab_padding,
+        y: tab_row.y + tab_row.height + tab_padding,
+        width: (animated_panel.width - tab_padding * 2.0).max(0.0),
+        height: (animated_panel.height - tab_padding * 3.0 - tab_row.height).max(0.0),
+    };
+    nodes.push(modal_node(
+        "__shared_modal_body",
+        UiNodeKind::Panel,
+        body,
+        Some([0.07, 0.09, 0.11, 0.52]),
+        Some([0.42, 0.50, 0.54, 0.18]),
+        if compact { 12.0 } else { 16.0 },
+    ));
+    hit_regions.push(UiHitRegion {
+        id: "__shared_modal_body".to_owned(),
+        action: String::new(),
+        kind: UiNodeKind::Panel,
+        rect: body,
+        disabled: false,
+    });
+
+    SharedModalGeometry { nodes, hit_regions }
+}
+
+fn modal_node(
+    id: &str,
+    kind: UiNodeKind,
+    rect: UiRect,
+    background: Option<[f32; 4]>,
+    border_color: Option<[f32; 4]>,
+    corner_radius: f32,
+) -> UiRenderNode {
+    UiRenderNode {
+        id: id.to_owned(),
+        kind,
+        rect,
+        text: String::new(),
+        icon: None,
+        background,
+        foreground: [0.95, 0.97, 0.96, 1.0],
+        border_color,
+        border_width: if border_color.is_some() { 1.0 } else { 0.0 },
+        corner_radius,
+        font_size: default_font_size(),
+        text_align: UiAlignment::Start,
+        accent: [0.10, 0.55, 0.92, 1.0],
+        image: None,
+        image_invert: false,
+        value: 0.0,
+        value_x: 0.0,
+        value_y: 0.0,
+        checked: false,
+        pressed: false,
+        disabled: false,
+    }
+}
+
+fn shared_modal_tab_index(id: &str) -> Option<usize> {
+    id.strip_prefix("__shared_modal_tab_")?.parse().ok()
 }
 
 fn header_surface(
@@ -1618,6 +1859,80 @@ mod tests {
         assert!(runtime.pointer(1, UiPointerPhase::Down, 32.0, 80.0));
         assert!(runtime.pointer(1, UiPointerPhase::Up, 32.0, 80.0));
         assert!(!runtime.poll_event());
+    }
+
+    #[test]
+    fn shared_logo_opens_and_closes_placeholder_modal() {
+        let mut runtime = runtime(r##"{"nodes":[]}"##, 390.0, 844.0);
+        let logo = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_header_logo_surface")
+            .expect("shared logo should render")
+            .rect;
+        let logo_x = logo.x + logo.width * 0.5;
+        let logo_y = logo.y + logo.height * 0.5;
+
+        assert!(runtime.pointer(1, UiPointerPhase::Down, logo_x, logo_y));
+        assert!(runtime.pointer(1, UiPointerPhase::Up, logo_x, logo_y));
+        runtime.advance(1.0);
+        let frame = runtime.frame().clone();
+        for label in ["About", "Settings", "People", "Report", "Help"] {
+            assert!(frame.nodes.iter().any(|node| node.text == label));
+        }
+        assert!(frame.nodes.iter().any(|node| node.id == "__shared_modal_scrim"));
+        assert!(frame.nodes.iter().any(|node| node.id == "__shared_modal_body"));
+        assert!(!runtime.poll_event(), "shared modal is engine-owned");
+
+        // The scrim is above the header, so tapping the logo while open is
+        // the same dismiss gesture as tapping anywhere outside the panel.
+        assert!(runtime.pointer(2, UiPointerPhase::Down, logo_x, logo_y));
+        assert!(runtime.pointer(2, UiPointerPhase::Up, logo_x, logo_y));
+        runtime.advance(1.0);
+        assert!(runtime
+            .frame()
+            .nodes
+            .iter()
+            .all(|node| !node.id.starts_with("__shared_modal_")));
+    }
+
+    #[test]
+    fn shared_modal_tabs_are_selectable_without_script_events() {
+        let mut runtime = runtime(r##"{"nodes":[]}"##, 1024.0, 768.0);
+        let logo = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_header_logo_surface")
+            .expect("shared logo should render")
+            .rect;
+        let logo_x = logo.x + logo.width * 0.5;
+        let logo_y = logo.y + logo.height * 0.5;
+        assert!(runtime.pointer(1, UiPointerPhase::Down, logo_x, logo_y));
+        assert!(runtime.pointer(1, UiPointerPhase::Up, logo_x, logo_y));
+        runtime.advance(1.0);
+
+        let people = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.text == "People")
+            .expect("People placeholder tab should render")
+            .rect;
+        let people_x = people.x + people.width * 0.5;
+        let people_y = people.y + people.height * 0.5;
+        assert!(runtime.pointer(3, UiPointerPhase::Down, people_x, people_y));
+        assert!(runtime.pointer(3, UiPointerPhase::Up, people_x, people_y));
+        assert!(!runtime.poll_event(), "placeholder tabs are engine-owned");
+
+        let people = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.text == "People")
+            .unwrap();
+        assert_eq!(people.background, Some([0.24, 0.30, 0.34, 0.98]));
     }
 
     #[test]

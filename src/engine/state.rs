@@ -43,6 +43,7 @@ impl Engine {
     pub fn step(&mut self, delta: f32) {
         let delta = delta.clamp(0.0, 0.05);
         self.elapsed += delta;
+        self.ui.borrow_mut().advance(delta);
         self.tick_script(delta);
         self.apply_camera_input();
         self.smooth_camera(delta);
