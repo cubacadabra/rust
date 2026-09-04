@@ -146,6 +146,13 @@ pub unsafe extern "C" fn engine_ui_event_len(engine: *const Engine) -> usize {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_ui_node_count(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, Engine::ui_node_count)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_step(engine: *mut Engine, delta: f32) {
     if let Some(engine) = unsafe { engine.as_mut() } {
         engine.step(delta);

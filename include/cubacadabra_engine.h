@@ -44,6 +44,7 @@ uint8_t engine_ui_pointer(
 uint8_t engine_ui_poll_event(CubacadabraEngine *engine);
 const uint8_t *engine_ui_event_ptr(const CubacadabraEngine *engine);
 uintptr_t engine_ui_event_len(const CubacadabraEngine *engine);
+uintptr_t engine_ui_node_count(const CubacadabraEngine *engine);
 void engine_step(CubacadabraEngine *engine, float delta);
 void engine_reset_view(CubacadabraEngine *engine);
 void engine_set_launch_pad(

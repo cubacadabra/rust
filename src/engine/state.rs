@@ -12,6 +12,10 @@ impl Engine {
         self.ui.borrow_mut().set_viewport(viewport);
     }
 
+    pub(crate) fn ui_node_count(&self) -> usize {
+        self.ui.borrow().document_node_count()
+    }
+
     pub(crate) fn set_ui_document(&mut self, source: &str) -> bool {
         self.ui.borrow_mut().set_document_json(source).is_ok()
     }

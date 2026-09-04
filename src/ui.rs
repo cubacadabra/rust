@@ -341,6 +341,14 @@ pub(crate) struct UiRuntime {
 }
 
 impl UiRuntime {
+    pub(crate) fn document_node_count(&self) -> usize {
+        fn count(nodes: &[UiNode]) -> usize {
+            nodes.iter().map(|node| 1 + count(&node.children)).sum()
+        }
+
+        count(&self.document.nodes)
+    }
+
     pub(crate) fn set_viewport(&mut self, viewport: UiViewport) {
         let viewport = UiViewport {
             width: viewport.width.max(0.0),
