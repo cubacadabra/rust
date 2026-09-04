@@ -579,6 +579,12 @@ impl UiRuntime {
         let mut hit_regions = Vec::new();
         let mut overlay_roots = Vec::new();
         for node in &self.document.nodes {
+            // Movement controls belong to the engine-owned HUD layer. Keep
+            // them out of the normal document pass so a world-scoped or
+            // script-hidden document node cannot remove them accidentally.
+            if is_persistent_gameplay_control(node) {
+                continue;
+            }
             if !node_is_visible(node, &self.world_id) {
                 continue;
             }
@@ -692,6 +698,52 @@ impl UiRuntime {
             &mut nodes,
             &mut hit_regions,
         );
+
+        // Keep movement controls alongside the shared header: they are
+        // available in every world and remain above ordinary game UI. Clone
+        // the document definitions so the game package still owns their
+        // styling and actions, but deliberately ignore document visibility
+        // and world scope for this engine-owned layer.
+        for node in &self.document.nodes {
+            if !is_persistent_gameplay_control(node) {
+                continue;
+            }
+            let mut persistent_node = node.clone();
+            persistent_node.visible = true;
+            persistent_node.visible_in = None;
+            let intrinsic = measure_node(&persistent_node, safe.width, safe.height, &self.world_id);
+            let width = clamp_length(
+                persistent_node
+                    .layout
+                    .width
+                    .resolve(safe.width, intrinsic.0),
+                persistent_node.layout.max_width,
+                safe.width,
+            );
+            let height = clamp_length(
+                persistent_node
+                    .layout
+                    .height
+                    .resolve(safe.height, intrinsic.1),
+                persistent_node.layout.max_height,
+                safe.height,
+            );
+            let rect = anchored_rect(
+                safe,
+                width,
+                height,
+                persistent_node.layout.anchor,
+                persistent_node.layout.offset,
+            );
+            layout_node(
+                &persistent_node,
+                rect,
+                &self.world_id,
+                &pressed,
+                &mut nodes,
+                &mut hit_regions,
+            );
+        }
 
         // Menus and modals are a deliberate top layer. This keeps a full-screen
         // scrim above the shared header and touch controls while its menu
@@ -937,6 +989,13 @@ fn node_is_visible(node: &UiNode, world_id: &str) -> bool {
             .visible_in
             .as_ref()
             .is_none_or(|worlds| worlds.iter().any(|world| world == world_id))
+}
+
+fn is_persistent_gameplay_control(node: &UiNode) -> bool {
+    matches!(
+        node.id.as_str(),
+        "player-joystick" | "player-jump" | "player-run"
+    )
 }
 
 fn measure_node(
@@ -1633,6 +1692,49 @@ mod tests {
         assert!(runtime.poll_event());
         let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
         assert_eq!(event["action"], "build.place");
+    }
+
+    #[test]
+    fn gameplay_controls_are_persistent_across_worlds() {
+        let mut runtime = runtime(
+            r##"{
+                "nodes":[
+                    {"id":"player-joystick","kind":"joystick","action":"player.move","visible":false,"visibleIn":["real-game"],"layout":{"anchor":"bottomLeft","width":120,"height":120,"offset":[20,-24]},"style":{"background":"#091A22C9","foreground":"#EDF0E5FF"}},
+                    {"id":"player-jump","kind":"button","text":"JUMP","action":"player.jump","visible":false,"visibleIn":["real-game"],"layout":{"anchor":"bottomRight","width":86,"height":44,"offset":[-22,-84]},"style":{"background":"#102D3AE8","foreground":"#F7F8EEFF"}},
+                    {"id":"player-run","kind":"button","text":"RUN","action":"player.run","visible":false,"visibleIn":["real-game"],"layout":{"anchor":"bottomRight","width":86,"height":44,"offset":[-22,-30]},"style":{"background":"#102D3AE8","foreground":"#F7F8EEFF"}}
+                ]
+            }"##,
+            1024.0,
+            768.0,
+        );
+        let frame = runtime.frame().clone();
+        for id in ["player-joystick", "player-jump", "player-run"] {
+            assert!(
+                frame.nodes.iter().any(|node| node.id == id),
+                "persistent control {id} should render in the lobby"
+            );
+        }
+        let joystick = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "player-joystick")
+            .expect("joystick should render");
+        assert!(joystick.rect.x >= 20.0);
+        assert!(joystick.rect.y + joystick.rect.height <= 768.0 - 34.0);
+
+        let jump = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "player-jump")
+            .expect("jump should render");
+        let jump_x = jump.rect.x + jump.rect.width * 0.5;
+        let jump_y = jump.rect.y + jump.rect.height * 0.5;
+        assert!(runtime.pointer(7, UiPointerPhase::Down, jump_x, jump_y));
+        assert!(runtime.pointer(7, UiPointerPhase::Up, jump_x, jump_y));
+        assert!(runtime.poll_event());
+        assert!(std::str::from_utf8(runtime.event_buffer())
+            .expect("event should be UTF-8")
+            .contains("player.jump"));
     }
 
     #[test]

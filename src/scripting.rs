@@ -418,5 +418,23 @@ mod tests {
                 .contains("BUILD TOGETHER")
         );
         assert!(ui.borrow().document_node_count() > 0);
+        ui.borrow_mut().set_viewport(UiViewport {
+            width: 1024.0,
+            height: 768.0,
+            scale: 1.0,
+            safe_area: crate::ui::UiInsets {
+                top: 47.0,
+                right: 0.0,
+                bottom: 34.0,
+                left: 0.0,
+            },
+        });
+        let frame = ui.borrow_mut().frame().clone();
+        for id in ["player-joystick", "player-jump", "player-run"] {
+            assert!(
+                frame.nodes.iter().any(|node| node.id == id),
+                "bundled first-game control {id} should render in the lobby"
+            );
+        }
     }
 }
