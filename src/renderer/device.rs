@@ -138,7 +138,12 @@ impl Renderer {
         let (instance, surface) = {
             let window = NonNull::new(layer)?;
             let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
+                // Android Studio emulators commonly expose a software Vulkan
+                // device that can be selected before the emulator's GLES
+                // device. GLES is the more reliable native SurfaceView path
+                // across emulator graphics modes and is already compiled in
+                // by the Android build.
+                backends: wgpu::Backends::GL,
                 ..wgpu::InstanceDescriptor::new_without_display_handle()
             });
             let window_handle = raw_window_handle::AndroidNdkWindowHandle::new(window);
