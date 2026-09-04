@@ -141,6 +141,7 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.ui_pipeline);
+            pass.set_bind_group(0, &self.ui_texture_bind_group, &[]);
             pass.set_vertex_buffer(0, self.ui_vertex_buffer.slice(..));
             pass.draw(0..ui_vertices.len() as u32, 0..1);
         }

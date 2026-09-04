@@ -7,11 +7,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use fontdue::{Font, FontSettings};
 use glam::Vec3;
 
-use crate::ui::{UiAlignment, UiFrame, UiNodeKind, UiRect, UiRenderNode};
+use crate::ui::{UiAlignment, UiFrame, UiImage, UiNodeKind, UiRect, UiRenderNode};
 
 use super::Vertex;
 
 const UI_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/RobotoCondensed-Light.ttf");
+
+pub(super) const UI_ATLAS_PADDING: u32 = 2;
+pub(super) const UI_ATLAS_WIDTH: u32 = 2756;
+pub(super) const UI_ATLAS_HEIGHT: u32 = 1210;
 
 fn ui_font() -> &'static Font {
     static FONT: OnceLock<Font> = OnceLock::new();
@@ -121,6 +125,17 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
                 faded([0.92, 0.98, 0.97, 0.075], opacity),
             );
         }
+    }
+
+    if let Some(image) = node.image {
+        add_image(
+            vertices,
+            frame,
+            node.rect,
+            image,
+            node.image_invert,
+            opacity,
+        );
     }
 
     if node.pressed && has_surface {
@@ -520,6 +535,80 @@ fn add_rect(vertices: &mut Vec<Vertex>, frame: &UiFrame, rect: UiRect, color: [f
     add_ui_triangle(vertices, frame, top_left, bottom_right, bottom_left, color);
 }
 
+fn add_image(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    rect: UiRect,
+    image: UiImage,
+    invert: bool,
+    opacity: f32,
+) {
+    if rect.width <= 0.0 || rect.height <= 0.0 {
+        return;
+    }
+    let [u0, v0, u1, v1] = image_uv(image);
+    let top_left = (rect.x, rect.y, [u0, v0]);
+    let top_right = (rect.x + rect.width, rect.y, [u1, v0]);
+    let bottom_right = (rect.x + rect.width, rect.y + rect.height, [u1, v1]);
+    let bottom_left = (rect.x, rect.y + rect.height, [u0, v1]);
+    add_ui_image_triangle(
+        vertices,
+        frame,
+        top_left,
+        top_right,
+        bottom_right,
+        opacity,
+        invert,
+    );
+    add_ui_image_triangle(
+        vertices,
+        frame,
+        top_left,
+        bottom_right,
+        bottom_left,
+        opacity,
+        invert,
+    );
+}
+
+fn image_uv(image: UiImage) -> [f32; 4] {
+    let padding = UI_ATLAS_PADDING as f32;
+    let (x, width, height) = match image {
+        UiImage::Logo => (padding, 1206.0, 1206.0),
+        UiImage::Cube => (1212.0, 512.0, 512.0),
+        UiImage::Chat => (1728.0, 512.0, 512.0),
+        UiImage::Voice => (2244.0, 512.0, 512.0),
+    };
+    [
+        x / UI_ATLAS_WIDTH as f32,
+        padding / UI_ATLAS_HEIGHT as f32,
+        (x + width) / UI_ATLAS_WIDTH as f32,
+        (padding + height) / UI_ATLAS_HEIGHT as f32,
+    ]
+}
+
+fn add_ui_image_triangle(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    a: (f32, f32, [f32; 2]),
+    b: (f32, f32, [f32; 2]),
+    c: (f32, f32, [f32; 2]),
+    opacity: f32,
+    invert: bool,
+) {
+    for (x, y, tex_coords) in [a, b, c] {
+        let x = x / frame.viewport.width.max(1.0) * 2.0 - 1.0;
+        let y = 1.0 - y / frame.viewport.height.max(1.0) * 2.0;
+        vertices.push(Vertex {
+            position: [x, y, 0.0],
+            normal: Vec3::ZERO.to_array(),
+            color: [1.0, 1.0, 1.0, opacity],
+            tex_coords,
+            image_invert: f32::from(invert),
+        });
+    }
+}
+
 fn add_ui_triangle(
     vertices: &mut Vec<Vertex>,
     frame: &UiFrame,
@@ -535,6 +624,8 @@ fn add_ui_triangle(
             position: [x, y, 0.0],
             normal: Vec3::ZERO.to_array(),
             color,
+            tex_coords: [-1.0, -1.0],
+            image_invert: 0.0,
         });
     }
 }
@@ -585,6 +676,8 @@ mod tests {
                 font_size: 14.0,
                 text_align: UiAlignment::Center,
                 accent: [0.0, 0.5, 1.0, 1.0],
+                image: None,
+                image_invert: false,
                 value: 0.0,
                 value_x: 0.0,
                 value_y: 0.0,

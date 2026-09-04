@@ -71,6 +71,14 @@ pub(crate) enum UiNodeKind {
     Joystick,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UiImage {
+    Logo,
+    Cube,
+    Chat,
+    Voice,
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum UiAnchor {
@@ -278,6 +286,8 @@ pub(crate) struct UiRenderNode {
     pub(crate) font_size: f32,
     pub(crate) text_align: UiAlignment,
     pub(crate) accent: [f32; 4],
+    pub(crate) image: Option<UiImage>,
+    pub(crate) image_invert: bool,
     pub(crate) value: f32,
     pub(crate) value_x: f32,
     pub(crate) value_y: f32,
@@ -557,6 +567,23 @@ impl UiRuntime {
             );
             layout_node(node, rect, &pressed, &mut nodes, &mut hit_regions);
         }
+        // Draw the platform-owned controls last so game UI cannot cover them.
+        // Their surfaces consume taps without emitting events until platform
+        // actions are connected.
+        let shared_nodes = shared_header_nodes(self.viewport, safe);
+        for node in shared_nodes
+            .iter()
+            .filter(|node| node.id.ends_with("_surface"))
+        {
+            hit_regions.push(UiHitRegion {
+                id: node.id.clone(),
+                action: String::new(),
+                kind: UiNodeKind::Panel,
+                rect: node.rect,
+                disabled: false,
+            });
+        }
+        nodes.extend(shared_nodes);
         self.frame = UiFrame {
             viewport: self.viewport,
             nodes,
@@ -861,6 +888,140 @@ fn anchored_rect(
     }
 }
 
+const SHARED_HEADER_SIZE: f32 = 56.0;
+const SHARED_HEADER_GAP: f32 = 10.0;
+const SHARED_HEADER_CELL_GAP: f32 = 4.0;
+
+fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> Vec<UiRenderNode> {
+    if viewport.width <= 0.0 || viewport.height <= 0.0 {
+        return Vec::new();
+    }
+
+    let margin = 12.0;
+    let x = safe.x + margin;
+    let y = safe.y + margin;
+    let available_width = (safe.width - margin * 2.0).max(0.0);
+    let size = SHARED_HEADER_SIZE
+        .min(((available_width - SHARED_HEADER_GAP - SHARED_HEADER_CELL_GAP * 2.0) / 4.0).max(0.0));
+    if size < 1.0 {
+        return Vec::new();
+    }
+
+    let surface = [0.02, 0.04, 0.05, 0.92];
+    let logo_rect = UiRect {
+        x,
+        y,
+        width: size,
+        height: size,
+    };
+    let controls_x = x + size + SHARED_HEADER_GAP;
+    let cell_size = size;
+    let controls_width = cell_size * 3.0 + SHARED_HEADER_CELL_GAP * 2.0;
+    let icon_size = (cell_size - 16.0).max(1.0);
+
+    let mut nodes = vec![header_surface(
+        "__shared_header_logo_surface",
+        logo_rect,
+        size * 0.5,
+        surface,
+    )];
+    nodes.push(header_image(
+        "__shared_header_logo",
+        UiImage::Logo,
+        logo_rect.inset((cell_size - icon_size) * 0.5),
+        false,
+    ));
+
+    let controls_rect = UiRect {
+        x: controls_x,
+        y,
+        width: controls_width,
+        height: size,
+    };
+    nodes.push(header_surface(
+        "__shared_header_controls_surface",
+        controls_rect,
+        size * 0.5,
+        surface,
+    ));
+    for (index, image) in [UiImage::Cube, UiImage::Chat, UiImage::Voice]
+        .into_iter()
+        .enumerate()
+    {
+        let cell = UiRect {
+            x: controls_x + index as f32 * (cell_size + SHARED_HEADER_CELL_GAP),
+            y,
+            width: cell_size,
+            height: size,
+        };
+        nodes.push(header_image(
+            match image {
+                UiImage::Cube => "__shared_header_cube",
+                UiImage::Chat => "__shared_header_chat",
+                UiImage::Voice => "__shared_header_voice",
+                UiImage::Logo => unreachable!(),
+            },
+            image,
+            cell.inset((cell_size - icon_size) * 0.5),
+            true,
+        ));
+    }
+    nodes
+}
+
+fn header_surface(
+    id: &str,
+    rect: UiRect,
+    corner_radius: f32,
+    background: [f32; 4],
+) -> UiRenderNode {
+    UiRenderNode {
+        id: id.to_owned(),
+        kind: UiNodeKind::Panel,
+        rect,
+        text: String::new(),
+        background: Some(background),
+        foreground: [1.0; 4],
+        border_color: None,
+        border_width: 0.0,
+        corner_radius,
+        font_size: default_font_size(),
+        text_align: UiAlignment::Start,
+        accent: [0.0, 0.58, 1.0, 1.0],
+        image: None,
+        image_invert: false,
+        value: 0.0,
+        value_x: 0.0,
+        value_y: 0.0,
+        pressed: false,
+        disabled: false,
+    }
+}
+
+fn header_image(id: &str, image: UiImage, rect: UiRect, image_invert: bool) -> UiRenderNode {
+    UiRenderNode {
+        id: id.to_owned(),
+        kind: UiNodeKind::Panel,
+        rect,
+        text: String::new(),
+        background: None,
+        foreground: [1.0; 4],
+        border_color: None,
+        border_width: 0.0,
+        corner_radius: 0.0,
+        font_size: default_font_size(),
+        text_align: UiAlignment::Start,
+        accent: [0.0, 0.58, 1.0, 1.0],
+        image: Some(image),
+        image_invert,
+        value: 0.0,
+        value_x: 0.0,
+        value_y: 0.0,
+        pressed: false,
+        disabled: false,
+    }
+}
+
 fn layout_node(
     node: &UiNode,
     rect: UiRect,
@@ -896,6 +1057,8 @@ fn layout_node(
             .as_deref()
             .and_then(parse_color)
             .unwrap_or([0.0, 0.58, 1.0, 1.0]),
+        image: None,
+        image_invert: false,
         value,
         value_x: node.value_x,
         value_y: node.value_y,
@@ -1112,6 +1275,22 @@ mod tests {
     }
 
     #[test]
+    fn shared_header_is_engine_owned_and_emits_no_event() {
+        let mut runtime = runtime(r##"{"nodes":[]}"##, 390.0, 844.0);
+        let frame = runtime.frame().clone();
+        let shared_ids = frame
+            .nodes
+            .iter()
+            .filter(|node| node.id.starts_with("__shared_header_"))
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(shared_ids.len(), 6);
+        assert!(runtime.pointer(1, UiPointerPhase::Down, 20.0, 70.0));
+        assert!(runtime.pointer(1, UiPointerPhase::Up, 20.0, 70.0));
+        assert!(!runtime.poll_event());
+    }
+
+    #[test]
     fn bottom_dock_stays_above_home_indicator() {
         let mut runtime = runtime(
             r##"{"nodes":[{"id":"dock","kind":"panel","layout":{"anchor":"bottom","width":320,"height":56,"offset":[0,-16]}}]}"##,
@@ -1126,12 +1305,12 @@ mod tests {
     #[test]
     fn button_requires_release_inside_and_emits_host_event() {
         let mut runtime = runtime(
-            r##"{"nodes":[{"id":"build","kind":"button","text":"BUILD","action":"build.use","layout":{"width":120,"height":48}}]}"##,
+            r##"{"nodes":[{"id":"build","kind":"button","text":"BUILD","action":"build.use","layout":{"width":120,"height":48,"offset":[0,140]}}]}"##,
             390.0,
             844.0,
         );
-        assert!(runtime.pointer(7, UiPointerPhase::Down, 30.0, 60.0));
-        assert!(runtime.pointer(7, UiPointerPhase::Up, 30.0, 60.0));
+        assert!(runtime.pointer(7, UiPointerPhase::Down, 30.0, 200.0));
+        assert!(runtime.pointer(7, UiPointerPhase::Up, 30.0, 200.0));
         assert!(runtime.poll_event());
         let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
         assert_eq!(event["action"], "build.use");
@@ -1141,12 +1320,12 @@ mod tests {
     #[test]
     fn slider_updates_value_during_drag() {
         let mut runtime = runtime(
-            r##"{"nodes":[{"id":"music","kind":"slider","action":"settings.music","value":0.5,"layout":{"width":200,"height":44}}]}"##,
+            r##"{"nodes":[{"id":"music","kind":"slider","action":"settings.music","value":0.5,"layout":{"width":200,"height":44,"offset":[0,140]}}]}"##,
             390.0,
             844.0,
         );
-        assert!(runtime.pointer(2, UiPointerPhase::Down, 100.0, 60.0));
-        assert!(runtime.pointer(2, UiPointerPhase::Move, 180.0, 60.0));
+        assert!(runtime.pointer(2, UiPointerPhase::Down, 100.0, 200.0));
+        assert!(runtime.pointer(2, UiPointerPhase::Move, 180.0, 200.0));
         let slider = runtime
             .frame()
             .nodes
@@ -1190,12 +1369,12 @@ mod tests {
     #[test]
     fn joystick_clamps_vector_and_resets_on_release() {
         let mut runtime = runtime(
-            r##"{"nodes":[{"id":"move","kind":"joystick","action":"player.move","layout":{"width":120,"height":120}}]}"##,
+            r##"{"nodes":[{"id":"move","kind":"joystick","action":"player.move","layout":{"width":120,"height":120,"offset":[0,140]}}]}"##,
             390.0,
             844.0,
         );
-        assert!(runtime.pointer(4, UiPointerPhase::Down, 60.0, 107.0));
-        assert!(runtime.pointer(4, UiPointerPhase::Move, 180.0, 107.0));
+        assert!(runtime.pointer(4, UiPointerPhase::Down, 60.0, 247.0));
+        assert!(runtime.pointer(4, UiPointerPhase::Move, 180.0, 247.0));
         let stick = runtime
             .frame()
             .nodes
@@ -1204,7 +1383,7 @@ mod tests {
             .unwrap();
         assert_eq!(stick.value_x, 1.0);
         assert_eq!(stick.value_y, 0.0);
-        assert!(runtime.pointer(4, UiPointerPhase::Up, 180.0, 107.0));
+        assert!(runtime.pointer(4, UiPointerPhase::Up, 180.0, 247.0));
         let stick = runtime
             .frame()
             .nodes

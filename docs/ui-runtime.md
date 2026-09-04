@@ -6,6 +6,12 @@ after the 3D world. This is the portable layer for experience HUDs, touch
 controls, and in-game modals. Platform shells still own operating-system UI
 such as sign-in, purchases, permissions, and text input.
 
+Every game also receives an engine-owned top-left header containing the shared
+logo, cube, chat, and voice controls. These controls are rendered from the
+bundled image assets, are not part of the Luau document, and currently consume
+their tap area without emitting UI events. Games should define only the
+game-specific controls that follow this shared header.
+
 ## Luau API
 
 An experience can install a document during `on_start`. `set_document` accepts
@@ -18,47 +24,6 @@ local game = {}
 function game.on_start(api)
     api.ui:set_document({
         nodes = {
-            {
-                id = "game-header",
-                kind = "panel",
-                layout = {
-                    anchor = "top",
-                    width = "fill",
-                    maxWidth = 920,
-                    height = 60,
-                    padding = 8,
-                    direction = "row",
-                    align = "center",
-                    gap = 8,
-                },
-                style = {
-                    background = "#101820D9",
-                    borderColor = "#FFFFFF24",
-                    borderWidth = 1,
-                    cornerRadius = 18,
-                },
-                children = {
-                    {
-                        id = "game-menu",
-                        kind = "button",
-                        text = "MENU",
-                        action = "hud.menu",
-                        layout = { width = 76, height = 44 },
-                        style = {
-                            background = "#FFFFFF1F",
-                            cornerRadius = 22,
-                            textAlign = "center",
-                        },
-                    },
-                    {
-                        id = "session-title",
-                        kind = "text",
-                        text = "THE CLEARING",
-                        layout = { width = "fill", height = 44 },
-                        style = { fontSize = 14 },
-                    },
-                },
-            },
             {
                 id = "build-dock",
                 kind = "panel",
@@ -175,7 +140,7 @@ Colors use `#RRGGBB` or `#RRGGBBAA`. Styles currently support `background`,
 `textAlign`, and `accent`.
 
 Documents are limited to 512 nodes and 32 levels of nesting. The current first
-slice intentionally omits image assets, clipping/scrolling, rich font shaping,
+Luau-authored UI intentionally omits image assets, clipping/scrolling, rich font shaping,
 keyboard focus, and the native accessibility mirror; those can be added
 without changing document ownership or input routing.
 

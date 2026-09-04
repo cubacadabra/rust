@@ -122,6 +122,8 @@ pub(super) struct Vertex {
     pub(super) position: [f32; 3],
     pub(super) normal: [f32; 3],
     pub(super) color: [f32; 4],
+    pub(super) tex_coords: [f32; 2],
+    pub(super) image_invert: f32,
 }
 
 impl Vertex {
@@ -131,7 +133,9 @@ impl Vertex {
         attributes: &wgpu::vertex_attr_array![
             0 => Float32x3,
             1 => Float32x3,
-            2 => Float32x4
+            2 => Float32x4,
+            3 => Float32x2,
+            4 => Float32
         ],
     };
 }
@@ -190,6 +194,7 @@ pub struct Renderer {
     pub(super) dynamic_vertex_buffer: wgpu::Buffer,
     pub(super) dynamic_vertex_capacity: usize,
     pub(super) ui_pipeline: wgpu::RenderPipeline,
+    pub(super) ui_texture_bind_group: wgpu::BindGroup,
     pub(super) ui_vertex_buffer: wgpu::Buffer,
     pub(super) ui_vertex_capacity: usize,
     pub(super) config: wgpu::SurfaceConfiguration,
@@ -827,16 +832,22 @@ fn add_triangle(
             position: a.to_array(),
             normal,
             color,
+            tex_coords: [0.0, 0.0],
+            image_invert: 0.0,
         },
         Vertex {
             position: b.to_array(),
             normal,
             color,
+            tex_coords: [0.0, 0.0],
+            image_invert: 0.0,
         },
         Vertex {
             position: c.to_array(),
             normal,
             color,
+            tex_coords: [0.0, 0.0],
+            image_invert: 0.0,
         },
     ]);
 }

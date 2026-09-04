@@ -12,6 +12,8 @@ struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) color: vec4<f32>,
+    @location(3) tex_coords: vec2<f32>,
+    @location(4) image_invert: f32,
 };
 
 struct VertexOutput {
@@ -48,17 +50,34 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 struct UiVertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec4<f32>,
+    @location(1) tex_coords: vec2<f32>,
+    @location(2) image_invert: f32,
 };
+
+@group(0) @binding(0)
+var ui_texture: texture_2d<f32>;
+
+@group(0) @binding(1)
+var ui_sampler: sampler;
 
 @vertex
 fn vs_ui(input: VertexInput) -> UiVertexOutput {
     var output: UiVertexOutput;
     output.position = vec4<f32>(input.position.xy, 0.0, 1.0);
     output.color = input.color;
+    output.tex_coords = input.tex_coords;
+    output.image_invert = input.image_invert;
     return output;
 }
 
 @fragment
 fn fs_ui(input: UiVertexOutput) -> @location(0) vec4<f32> {
-    return input.color;
+    if input.tex_coords.x < 0.0 {
+        return input.color;
+    }
+    var image = textureSample(ui_texture, ui_sampler, input.tex_coords);
+    if input.image_invert > 0.5 {
+        image = vec4<f32>(vec3<f32>(1.0) - image.rgb, image.a);
+    }
+    return input.color * image;
 }
