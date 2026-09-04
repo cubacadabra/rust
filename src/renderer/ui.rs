@@ -1,19 +1,53 @@
 use std::f32::consts::{FRAC_PI_2, PI};
+use std::sync::OnceLock;
 
+#[cfg(target_os = "ios")]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use fontdue::{Font, FontSettings};
 use glam::Vec3;
 
 use crate::ui::{UiAlignment, UiFrame, UiNodeKind, UiRect, UiRenderNode};
 
-use super::{Vertex, glyph};
+use super::Vertex;
+
+const UI_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/LilitaOne-Regular.ttf");
+
+fn ui_font() -> &'static Font {
+    static FONT: OnceLock<Font> = OnceLock::new();
+    FONT.get_or_init(|| {
+        #[cfg(target_os = "ios")]
+        eprintln!(
+            "[RustRenderer] loading bundled UI font LilitaOne-Regular.ttf ({} bytes)",
+            UI_FONT_BYTES.len()
+        );
+        Font::from_bytes(UI_FONT_BYTES, FontSettings::default())
+            .expect("bundled Lilita One font should be valid")
+    })
+}
+
+#[cfg(target_os = "ios")]
+static LAST_UI_DRAW_VERTEX_COUNT: AtomicUsize = AtomicUsize::new(usize::MAX);
+
+#[cfg(target_os = "ios")]
+fn log_ui_draw_vertex_count(count: usize) {
+    if LAST_UI_DRAW_VERTEX_COUNT.swap(count, Ordering::Relaxed) != count {
+        eprintln!("[RustRenderer] UI draw vertices={count}");
+    }
+}
 
 pub(super) fn build_ui_vertices(frame: &UiFrame) -> Vec<Vertex> {
     if frame.viewport.width <= 0.0 || frame.viewport.height <= 0.0 {
+        #[cfg(target_os = "ios")]
+        log_ui_draw_vertex_count(0);
         return Vec::new();
     }
     let mut vertices = Vec::with_capacity(frame.nodes.len() * 96);
     for node in &frame.nodes {
         add_node(&mut vertices, frame, node);
     }
+    #[cfg(target_os = "ios")]
+    log_ui_draw_vertex_count(vertices.len());
     vertices
 }
 
@@ -71,6 +105,22 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
             (node.corner_radius - inset).max(0.0),
             faded(background, opacity),
         );
+
+        // A narrow upper sheen gives the dark surfaces a material edge and
+        // makes the primary controls read as intentional interactive objects.
+        if node.rect.height >= 28.0 {
+            let highlight = inset_rect(node.rect, border_width + 1.0);
+            add_rounded_rect(
+                vertices,
+                frame,
+                UiRect {
+                    height: (highlight.height * 0.34).max(2.0),
+                    ..highlight
+                },
+                (node.corner_radius - border_width - 1.0).max(0.0),
+                faded([0.92, 0.98, 0.97, 0.075], opacity),
+            );
+        }
     }
 
     if node.pressed && has_surface {
@@ -242,46 +292,112 @@ fn add_text(
     alignment: UiAlignment,
     color: [f32; 4],
 ) {
-    // The small offset ink pass gives the bitmap face a confident edge at
-    // both 1x web scale and 2x Retina scale without needing a texture atlas.
-    add_text_glyphs(
+    let font_size = font_size.max(7.0);
+    let lines = text
+        .lines()
+        .take(8)
+        .map(|line| {
+            let glyphs = line
+                .chars()
+                .filter(|character| character.is_ascii())
+                .map(|character| {
+                    let character = character.to_ascii_uppercase();
+                    let (metrics, bitmap) = ui_font().rasterize(character, font_size);
+                    UiGlyph { metrics, bitmap }
+                })
+                .take(96)
+                .collect::<Vec<_>>();
+            let width = glyphs.iter().map(|glyph| glyph.metrics.advance_width).sum();
+            UiTextLine { glyphs, width }
+        })
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
+        return;
+    }
+
+    let line_height = ui_font()
+        .horizontal_line_metrics(font_size)
+        .map(|metrics| metrics.new_line_size)
+        .unwrap_or(font_size * 1.2)
+        .max(font_size * 1.1);
+    let block_height = lines.len() as f32 * line_height;
+    let first_baseline = rect.y
+        + (rect.height - block_height).max(0.0) * 0.5
+        + ui_font()
+            .horizontal_line_metrics(font_size)
+            .map_or(font_size * 0.82, |metrics| metrics.ascent);
+
+    // Shadow, then a broad game-style outline, then the anti-aliased face.
+    add_raster_text(
         vertices,
         frame,
-        text,
-        UiRect {
-            x: rect.x + 0.9,
-            y: rect.y + 1.0,
-            ..rect
-        },
-        font_size,
+        &lines,
+        rect,
+        first_baseline,
+        line_height,
         alignment,
-        faded([0.01, 0.04, 0.05, 0.38], color[3]),
+        [0.01, 0.04, 0.05, color[3] * 0.42],
+        [2.0, 3.0],
     );
-    add_text_glyphs(vertices, frame, text, rect, font_size, alignment, color);
+    for offset in [
+        [-1.7, -1.3],
+        [0.0, -1.9],
+        [1.7, -1.3],
+        [-1.9, 0.0],
+        [1.9, 0.0],
+        [-1.5, 1.4],
+        [0.0, 1.8],
+        [1.5, 1.4],
+    ] {
+        add_raster_text(
+            vertices,
+            frame,
+            &lines,
+            rect,
+            first_baseline,
+            line_height,
+            alignment,
+            [0.01, 0.025, 0.03, color[3] * 0.90],
+            offset,
+        );
+    }
+    add_raster_text(
+        vertices,
+        frame,
+        &lines,
+        rect,
+        first_baseline,
+        line_height,
+        alignment,
+        color,
+        [0.0, 0.0],
+    );
 }
 
-fn add_text_glyphs(
+struct UiGlyph {
+    metrics: fontdue::Metrics,
+    bitmap: Vec<u8>,
+}
+
+struct UiTextLine {
+    glyphs: Vec<UiGlyph>,
+    width: f32,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_raster_text(
     vertices: &mut Vec<Vertex>,
     frame: &UiFrame,
-    text: &str,
+    lines: &[UiTextLine],
     rect: UiRect,
-    font_size: f32,
+    first_baseline: f32,
+    line_height: f32,
     alignment: UiAlignment,
     color: [f32; 4],
+    offset: [f32; 2],
 ) {
-    let pixel = (font_size / 7.0).max(1.0);
-    let line_height = pixel * 9.0;
-    let lines = text.lines().take(8).collect::<Vec<_>>();
-    let block_height = lines.len() as f32 * line_height - pixel * 2.0;
-    let first_y = rect.y + (rect.height - block_height).max(0.0) * 0.5;
-    for (line_index, line) in lines.into_iter().enumerate() {
-        let characters = line
-            .chars()
-            .filter(|character| character.is_ascii())
-            .map(|character| character.to_ascii_uppercase())
-            .take(96)
-            .collect::<Vec<_>>();
-        let line_width = characters.len().saturating_mul(6).saturating_sub(1) as f32 * pixel;
+    for (line_index, line) in lines.iter().enumerate() {
+        let line_width = line.width;
         let start_x = match alignment {
             UiAlignment::Center | UiAlignment::Stretch => {
                 rect.x + (rect.width - line_width).max(0.0) * 0.5
@@ -289,21 +405,33 @@ fn add_text_glyphs(
             UiAlignment::End => rect.x + (rect.width - line_width).max(0.0),
             UiAlignment::Start => rect.x,
         };
-        for (character_index, character) in characters.into_iter().enumerate() {
-            for (row, bits) in glyph(character).into_iter().enumerate() {
-                for column in 0..5 {
-                    if bits & (1 << (4 - column)) == 0 {
+        let mut cursor_x = start_x + offset[0];
+        let baseline = first_baseline + line_index as f32 * line_height + offset[1];
+        for glyph in &line.glyphs {
+            let top = baseline - glyph.metrics.ymin as f32 - glyph.metrics.height as f32;
+            let left = cursor_x + glyph.metrics.xmin as f32;
+            for row in 0..glyph.metrics.height {
+                for column in 0..glyph.metrics.width {
+                    let coverage = glyph.bitmap[row * glyph.metrics.width + column];
+                    if coverage == 0 {
                         continue;
                     }
-                    let pixel_rect = UiRect {
-                        x: start_x + (character_index * 6 + column) as f32 * pixel,
-                        y: first_y + line_index as f32 * line_height + row as f32 * pixel,
-                        width: pixel * 0.94,
-                        height: pixel * 0.94,
-                    };
-                    add_rect(vertices, frame, pixel_rect, color);
+                    let mut pixel_color = color;
+                    pixel_color[3] *= coverage as f32 / 255.0;
+                    add_rect(
+                        vertices,
+                        frame,
+                        UiRect {
+                            x: left + column as f32,
+                            y: top + row as f32,
+                            width: 1.05,
+                            height: 1.05,
+                        },
+                        pixel_color,
+                    );
                 }
             }
+            cursor_x += glyph.metrics.advance_width;
         }
     }
 }

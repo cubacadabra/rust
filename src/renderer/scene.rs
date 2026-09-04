@@ -1,10 +1,52 @@
 use crate::engine::{Engine, SNAPSHOT_STRIDE};
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
+#[cfg(target_os = "ios")]
+use crate::ui::UiFrame;
+
+#[cfg(target_os = "ios")]
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
     AvatarStyle, RenderBlock, RenderCloud, RenderEntity, RenderPad, RenderPalette, RenderSign,
     RenderWorld, Renderer,
 };
+
+#[cfg(target_os = "ios")]
+static LAST_UI_FRAME_SIGNATURE: AtomicU64 = AtomicU64::new(u64::MAX);
+
+#[cfg(target_os = "ios")]
+fn log_ui_frame(frame: &UiFrame) {
+    let signature = (frame.nodes.len() as u64)
+        ^ u64::from(frame.viewport.width.to_bits()).rotate_left(17)
+        ^ u64::from(frame.viewport.height.to_bits()).rotate_left(41);
+    if LAST_UI_FRAME_SIGNATURE.swap(signature, Ordering::Relaxed) == signature {
+        return;
+    }
+    let vertices = super::ui::build_ui_vertices(frame).len();
+    eprintln!(
+        "[RustRenderer] UI frame viewport={:.1}x{:.1} safe=({:.1},{:.1},{:.1},{:.1}) nodes={} vertices={}",
+        frame.viewport.width,
+        frame.viewport.height,
+        frame.viewport.safe_area.top,
+        frame.viewport.safe_area.right,
+        frame.viewport.safe_area.bottom,
+        frame.viewport.safe_area.left,
+        frame.nodes.len(),
+        vertices,
+    );
+    for node in &frame.nodes {
+        eprintln!(
+            "[RustRenderer] UI node id={} kind={:?} rect=({:.1},{:.1},{:.1},{:.1}) text={:?}",
+            node.id,
+            node.kind,
+            node.rect.x,
+            node.rect.y,
+            node.rect.width,
+            node.rect.height,
+            node.text,
+        );
+    }
+}
 
 impl Renderer {
     pub fn sync_engine(&mut self, engine: &Engine) {
@@ -70,6 +112,8 @@ impl Renderer {
             .build_blocks
             .extend_from_slice(engine.build_blocks());
         self.ui_frame = engine.ui.borrow_mut().frame().clone();
+        #[cfg(target_os = "ios")]
+        log_ui_frame(&self.ui_frame);
     }
 }
 
