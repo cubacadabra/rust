@@ -148,17 +148,21 @@ impl Renderer {
             });
             let window_handle = raw_window_handle::AndroidNdkWindowHandle::new(window);
             let display_handle = raw_window_handle::AndroidDisplayHandle::new();
-            let surface = unsafe {
-                instance
-                    .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
-                        raw_display_handle: Some(raw_window_handle::RawDisplayHandle::Android(
-                            display_handle,
-                        )),
-                        raw_window_handle: raw_window_handle::RawWindowHandle::AndroidNdk(
-                            window_handle,
-                        ),
-                    })
-                    .ok()?
+            let surface = match unsafe {
+                instance.create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                    raw_display_handle: Some(raw_window_handle::RawDisplayHandle::Android(
+                        display_handle,
+                    )),
+                    raw_window_handle: raw_window_handle::RawWindowHandle::AndroidNdk(
+                        window_handle,
+                    ),
+                })
+            } {
+                Ok(surface) => surface,
+                Err(error) => {
+                    eprintln!("[RustRenderer] Android GLES surface creation failed: {error}");
+                    return None;
+                }
             };
             (instance, surface)
         };
