@@ -11,14 +11,14 @@ use crate::ui::{UiAlignment, UiFrame, UiNodeKind, UiRect, UiRenderNode};
 
 use super::Vertex;
 
-const UI_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/LilitaOne-Regular.ttf");
+const UI_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/RobotoCondensed-Light.ttf");
 
 fn ui_font() -> &'static Font {
     static FONT: OnceLock<Font> = OnceLock::new();
     FONT.get_or_init(|| {
         #[cfg(target_os = "ios")]
         eprintln!(
-            "[RustRenderer] loading bundled UI font LilitaOne-Regular.ttf ({} bytes)",
+            "[RustRenderer] loading bundled UI font RobotoCondensed-Light.ttf ({} bytes)",
             UI_FONT_BYTES.len()
         );
         Font::from_bytes(UI_FONT_BYTES, FontSettings::default())
