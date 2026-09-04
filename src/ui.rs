@@ -889,20 +889,27 @@ fn anchored_rect(
 }
 
 const SHARED_HEADER_SIZE: f32 = 56.0;
-const SHARED_HEADER_GAP: f32 = 10.0;
-const SHARED_HEADER_CELL_GAP: f32 = 4.0;
+const SHARED_HEADER_MARGIN: f32 = 24.0;
+const SHARED_HEADER_GAP: f32 = 12.0;
+const SHARED_HEADER_CELL_GAP: f32 = 8.0;
+const SHARED_HEADER_PILL_PADDING: f32 = 14.0;
 
 fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> Vec<UiRenderNode> {
     if viewport.width <= 0.0 || viewport.height <= 0.0 {
         return Vec::new();
     }
 
-    let margin = 12.0;
-    let x = safe.x + margin;
-    let y = safe.y + margin;
-    let available_width = (safe.width - margin * 2.0).max(0.0);
-    let size = SHARED_HEADER_SIZE
-        .min(((available_width - SHARED_HEADER_GAP - SHARED_HEADER_CELL_GAP * 2.0) / 4.0).max(0.0));
+    let x = safe.x + SHARED_HEADER_MARGIN;
+    let y = safe.y + SHARED_HEADER_MARGIN;
+    let available_width = (safe.width - SHARED_HEADER_MARGIN * 2.0).max(0.0);
+    let size = SHARED_HEADER_SIZE.min(
+        ((available_width
+            - SHARED_HEADER_GAP
+            - SHARED_HEADER_CELL_GAP * 2.0
+            - SHARED_HEADER_PILL_PADDING * 2.0)
+            / 4.0)
+            .max(0.0),
+    );
     if size < 1.0 {
         return Vec::new();
     }
@@ -916,7 +923,8 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> Vec<UiRenderNode> 
     };
     let controls_x = x + size + SHARED_HEADER_GAP;
     let cell_size = size;
-    let controls_width = cell_size * 3.0 + SHARED_HEADER_CELL_GAP * 2.0;
+    let controls_width =
+        cell_size * 3.0 + SHARED_HEADER_CELL_GAP * 2.0 + SHARED_HEADER_PILL_PADDING * 2.0;
     let icon_size = (cell_size - 16.0).max(1.0);
 
     let mut nodes = vec![header_surface(
@@ -949,7 +957,9 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> Vec<UiRenderNode> 
         .enumerate()
     {
         let cell = UiRect {
-            x: controls_x + index as f32 * (cell_size + SHARED_HEADER_CELL_GAP),
+            x: controls_x
+                + SHARED_HEADER_PILL_PADDING
+                + index as f32 * (cell_size + SHARED_HEADER_CELL_GAP),
             y,
             width: cell_size,
             height: size,
@@ -1285,8 +1295,8 @@ mod tests {
             .map(|node| node.id.as_str())
             .collect::<Vec<_>>();
         assert_eq!(shared_ids.len(), 6);
-        assert!(runtime.pointer(1, UiPointerPhase::Down, 20.0, 70.0));
-        assert!(runtime.pointer(1, UiPointerPhase::Up, 20.0, 70.0));
+        assert!(runtime.pointer(1, UiPointerPhase::Down, 32.0, 80.0));
+        assert!(runtime.pointer(1, UiPointerPhase::Up, 32.0, 80.0));
         assert!(!runtime.poll_event());
     }
 
