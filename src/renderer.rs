@@ -1,75 +1,67 @@
-#[cfg(not(target_arch = "wasm32"))]
-use std::ffi::c_void;
-#[cfg(target_os = "android")]
-use std::ptr::NonNull;
+mod device;
+mod draw;
+mod scene;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};
-#[cfg(target_os = "android")]
-use raw_window_handle::{
-    AndroidDisplayHandle, AndroidNdkWindowHandle, RawDisplayHandle, RawWindowHandle,
-};
-use wgpu::util::DeviceExt;
 
-use crate::engine::{Engine, SNAPSHOT_STRIDE};
-use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
 use crate::types::BuildBlock;
 
-const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 #[derive(Clone)]
-struct RenderBlock {
-    position: [f32; 3],
-    size: [f32; 3],
-    color: [f32; 4],
-    outline: bool,
+pub(super) struct RenderBlock {
+    pub(super) position: [f32; 3],
+    pub(super) size: [f32; 3],
+    pub(super) color: [f32; 4],
+    pub(super) outline: bool,
 }
 
 #[derive(Clone)]
-struct RenderPad {
-    x: f32,
-    z: f32,
-    radius: f32,
-    code: String,
-    label: String,
-    color: [f32; 4],
-    enabled: bool,
-    availability_label: String,
+pub(super) struct RenderPad {
+    pub(super) x: f32,
+    pub(super) z: f32,
+    pub(super) radius: f32,
+    pub(super) code: String,
+    pub(super) label: String,
+    pub(super) color: [f32; 4],
+    pub(super) enabled: bool,
+    pub(super) availability_label: String,
 }
 
 #[derive(Clone)]
-struct RenderSign {
-    text: String,
-    position: [f32; 3],
-    yaw: f32,
-    max_width: f32,
-    color: [f32; 4],
+pub(super) struct RenderSign {
+    pub(super) text: String,
+    pub(super) position: [f32; 3],
+    pub(super) yaw: f32,
+    pub(super) max_width: f32,
+    pub(super) color: [f32; 4],
 }
 
 #[derive(Clone, Copy, Default)]
-struct RenderEntity {
-    position: [f32; 3],
-    yaw: f32,
-    walk_cycle: f32,
-    assembled: f32,
+pub(super) struct RenderEntity {
+    pub(super) position: [f32; 3],
+    pub(super) yaw: f32,
+    pub(super) walk_cycle: f32,
+    pub(super) assembled: f32,
 }
 
 #[derive(Clone, Copy)]
-struct AvatarStyle {
-    skin: [f32; 4],
-    shirt: [f32; 4],
-    pants: [f32; 4],
-    shoes: [f32; 4],
+pub(super) struct AvatarStyle {
+    pub(super) skin: [f32; 4],
+    pub(super) shirt: [f32; 4],
+    pub(super) pants: [f32; 4],
+    pub(super) shoes: [f32; 4],
 }
 
 #[derive(Clone, Copy)]
-struct RenderPalette {
-    sky: [f32; 4],
-    ground: [f32; 4],
-    ground_edge: [f32; 4],
-    grid: [f32; 4],
-    ink: [f32; 4],
-    paper: [f32; 4],
+pub(super) struct RenderPalette {
+    pub(super) sky: [f32; 4],
+    pub(super) ground: [f32; 4],
+    pub(super) ground_edge: [f32; 4],
+    pub(super) grid: [f32; 4],
+    pub(super) ink: [f32; 4],
+    pub(super) paper: [f32; 4],
 }
 
 impl Default for RenderPalette {
@@ -86,23 +78,23 @@ impl Default for RenderPalette {
 }
 
 #[derive(Clone)]
-struct RenderCloud {
-    position: [f32; 3],
-    scale: f32,
+pub(super) struct RenderCloud {
+    pub(super) position: [f32; 3],
+    pub(super) scale: f32,
 }
 
 #[derive(Clone)]
-struct RenderWorld {
-    blocks: Vec<RenderBlock>,
-    pads: Vec<RenderPad>,
-    clouds: Vec<RenderCloud>,
-    ground_size: f32,
-    grid_size: f32,
-    grid_divisions: usize,
-    spawn: [f32; 3],
-    show_spawn_pad: bool,
-    palette: RenderPalette,
-    signs: Vec<RenderSign>,
+pub(super) struct RenderWorld {
+    pub(super) blocks: Vec<RenderBlock>,
+    pub(super) pads: Vec<RenderPad>,
+    pub(super) clouds: Vec<RenderCloud>,
+    pub(super) ground_size: f32,
+    pub(super) grid_size: f32,
+    pub(super) grid_divisions: usize,
+    pub(super) spawn: [f32; 3],
+    pub(super) show_spawn_pad: bool,
+    pub(super) palette: RenderPalette,
+    pub(super) signs: Vec<RenderSign>,
 }
 
 impl Default for RenderWorld {
@@ -124,14 +116,14 @@ impl Default for RenderWorld {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-    color: [f32; 4],
+pub(super) struct Vertex {
+    pub(super) position: [f32; 3],
+    pub(super) normal: [f32; 3],
+    pub(super) color: [f32; 4],
 }
 
 impl Vertex {
-    const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+    pub(super) const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &wgpu::vertex_attr_array![
@@ -144,25 +136,25 @@ impl Vertex {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
-struct Globals {
-    view_projection: [[f32; 4]; 4],
-    camera_position: [f32; 4],
-    sun_direction: [f32; 4],
-    fog_color: [f32; 4],
+pub(super) struct Globals {
+    pub(super) view_projection: [[f32; 4]; 4],
+    pub(super) camera_position: [f32; 4],
+    pub(super) sun_direction: [f32; 4],
+    pub(super) fog_color: [f32; 4],
 }
 
-struct Scene {
-    world: RenderWorld,
-    agents: Vec<RenderEntity>,
-    remote_players: Vec<RenderEntity>,
-    player: RenderEntity,
-    pad_seconds: Vec<f32>,
-    player_style: AvatarStyle,
-    npc_styles: Vec<AvatarStyle>,
-    camera: [f32; 3],
-    elapsed: f32,
-    username: String,
-    build_blocks: Vec<BuildBlock>,
+pub(super) struct Scene {
+    pub(super) world: RenderWorld,
+    pub(super) agents: Vec<RenderEntity>,
+    pub(super) remote_players: Vec<RenderEntity>,
+    pub(super) player: RenderEntity,
+    pub(super) pad_seconds: Vec<f32>,
+    pub(super) player_style: AvatarStyle,
+    pub(super) npc_styles: Vec<AvatarStyle>,
+    pub(super) camera: [f32; 3],
+    pub(super) elapsed: f32,
+    pub(super) username: String,
+    pub(super) build_blocks: Vec<BuildBlock>,
 }
 
 impl Default for Scene {
@@ -184,754 +176,25 @@ impl Default for Scene {
 }
 
 pub struct Renderer {
-    surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    pipeline: wgpu::RenderPipeline,
-    globals_buffer: wgpu::Buffer,
-    globals_bind_group: wgpu::BindGroup,
-    static_vertex_buffer: wgpu::Buffer,
-    static_vertex_capacity: usize,
-    static_vertex_count: usize,
-    dynamic_vertex_buffer: wgpu::Buffer,
-    dynamic_vertex_capacity: usize,
-    config: wgpu::SurfaceConfiguration,
-    depth_view: wgpu::TextureView,
-    width: f32,
-    height: f32,
-    scene: Scene,
-    package_generation: u32,
-    active_world: usize,
-    worlds: Vec<RenderWorld>,
-}
-
-impl Renderer {
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
-        if layer.is_null() || width <= 0.0 || height <= 0.0 {
-            return None;
-        }
-
-        #[cfg(target_os = "android")]
-        let (instance, surface) = {
-            let window = NonNull::new(layer)?;
-            let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
-                ..wgpu::InstanceDescriptor::new_without_display_handle()
-            });
-            let window_handle = AndroidNdkWindowHandle::new(window);
-            let display_handle = AndroidDisplayHandle::new();
-            let surface = unsafe {
-                instance
-                    .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
-                        raw_display_handle: Some(RawDisplayHandle::Android(display_handle)),
-                        raw_window_handle: RawWindowHandle::AndroidNdk(window_handle),
-                    })
-                    .ok()?
-            };
-            (instance, surface)
-        };
-
-        #[cfg(not(target_os = "android"))]
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::METAL,
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
-        });
-        #[cfg(not(target_os = "android"))]
-        let surface = unsafe {
-            instance
-                .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer))
-                .ok()?
-        };
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        }))
-        .ok()?;
-        let limits = wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits());
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("cubacadabra game device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: limits,
-            experimental_features: wgpu::ExperimentalFeatures::disabled(),
-            memory_hints: wgpu::MemoryHints::Performance,
-            trace: wgpu::Trace::Off,
-        }))
-        .ok()?;
-        Some(Self::from_parts(
-            surface, adapter, device, queue, width, height, false,
-        ))
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub async fn new_web(
-        canvas: web_sys::HtmlCanvasElement,
-        width: f32,
-        height: f32,
-    ) -> Result<Self, wasm_bindgen::JsValue> {
-        if width <= 0.0 || height <= 0.0 {
-            return Err(wasm_bindgen::JsValue::from_str(
-                "The renderer size must be positive.",
-            ));
-        }
-
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
-        });
-        let surface = instance
-            .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
-            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
-        let limits = wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits());
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("cubacadabra browser device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: limits,
-                experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                memory_hints: wgpu::MemoryHints::Performance,
-                trace: wgpu::Trace::Off,
-            })
-            .await
-            .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
-
-        Ok(Self::from_parts(
-            surface, adapter, device, queue, width, height, true,
-        ))
-    }
-
-    fn from_parts(
-        surface: wgpu::Surface<'static>,
-        adapter: wgpu::Adapter,
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        width: f32,
-        height: f32,
-        prefer_srgb: bool,
-    ) -> Self {
-        let capabilities = surface.get_capabilities(&adapter);
-        let format = if prefer_srgb {
-            capabilities
-                .formats
-                .iter()
-                .copied()
-                .find(wgpu::TextureFormat::is_srgb)
-                .or_else(|| capabilities.formats.first().copied())
-        } else {
-            capabilities
-                .formats
-                .iter()
-                .copied()
-                .find(|format| !format.is_srgb())
-                .or_else(|| capabilities.formats.first().copied())
-        }
-        .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: width.max(1.0) as u32,
-            height: height.max(1.0) as u32,
-            present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: capabilities
-                .alpha_modes
-                .first()
-                .copied()
-                .unwrap_or(wgpu::CompositeAlphaMode::Auto),
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &config);
-
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("cubacadabra world shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("renderer.wgsl").into()),
-        });
-        let globals_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("cubacadabra globals layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let globals_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("cubacadabra globals"),
-            contents: bytemuck::bytes_of(&Globals::zeroed()),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        let globals_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("cubacadabra globals bind group"),
-            layout: &globals_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: globals_buffer.as_entire_binding(),
-            }],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("cubacadabra pipeline layout"),
-            bind_group_layouts: &[Some(&globals_layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("cubacadabra world pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Vertex::LAYOUT],
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                cull_mode: None,
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Less),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        let static_vertex_capacity = 16_384;
-        let dynamic_vertex_capacity = 16_384;
-        let static_vertex_buffer = create_vertex_buffer(&device, static_vertex_capacity);
-        let dynamic_vertex_buffer = create_vertex_buffer(&device, dynamic_vertex_capacity);
-        let depth_view = create_depth_view(&device, config.width, config.height);
-
-        Self {
-            surface,
-            device,
-            queue,
-            pipeline,
-            globals_buffer,
-            globals_bind_group,
-            static_vertex_buffer,
-            static_vertex_capacity,
-            static_vertex_count: 0,
-            dynamic_vertex_buffer,
-            dynamic_vertex_capacity,
-            config,
-            depth_view,
-            width,
-            height,
-            scene: Scene::default(),
-            package_generation: 0,
-            active_world: usize::MAX,
-            worlds: Vec::new(),
-        }
-    }
-
-    pub fn resize(&mut self, width: f32, height: f32) {
-        if width <= 0.0 || height <= 0.0 {
-            return;
-        }
-        self.width = width;
-        self.height = height;
-        self.config.width = width.max(1.0) as u32;
-        self.config.height = height.max(1.0) as u32;
-        self.surface.configure(&self.device, &self.config);
-        self.depth_view = create_depth_view(&self.device, self.config.width, self.config.height);
-    }
-
-    pub fn sync_engine(&mut self, engine: &Engine) {
-        if self.package_generation != engine.package_generation {
-            self.worlds = engine
-                .package
-                .as_ref()
-                .map(|package| {
-                    let (player_style, npc_styles) = resolve_avatar_styles(package);
-                    self.scene.player_style = player_style;
-                    self.scene.npc_styles = npc_styles;
-                    package
-                        .world_entries()
-                        .into_iter()
-                        .map(|(_, world)| resolve_world(&world))
-                        .collect()
-                })
-                .unwrap_or_default();
-            self.package_generation = engine.package_generation;
-            self.active_world = usize::MAX;
-        }
-
-        if self.active_world != engine.active_world
-            && let Some(world) = self.worlds.get(engine.active_world).cloned()
-        {
-            self.active_world = engine.active_world;
-            self.scene.world = world;
-            self.rebuild_static_vertices();
-        }
-
-        let snapshot = engine.snapshot();
-        self.scene.player = render_entity(snapshot.get(..SNAPSHOT_STRIDE).unwrap_or(&[]));
-        self.scene.agents.clear();
-        self.scene.remote_players.clear();
-        let local_agent_count = engine.local_agent_count();
-        self.scene.agents.extend(
-            snapshot
-                .as_chunks::<SNAPSHOT_STRIDE>()
-                .0
-                .iter()
-                .skip(1)
-                .take(local_agent_count)
-                .map(|values| render_entity(values)),
-        );
-        self.scene.remote_players.extend(
-            snapshot
-                .as_chunks::<SNAPSHOT_STRIDE>()
-                .0
-                .iter()
-                .skip(local_agent_count + 1)
-                .take(engine.remote_player_count())
-                .map(|values| render_entity(values)),
-        );
-        self.scene.pad_seconds.clear();
-        self.scene
-            .pad_seconds
-            .extend((0..engine.launch_pad_count()).map(|index| engine.launch_pad_seconds(index)));
-        self.scene.camera = engine.camera();
-        self.scene.elapsed = engine.elapsed();
-        self.scene.username.clone_from(&engine.username);
-        self.scene.build_blocks.clear();
-        self.scene
-            .build_blocks
-            .extend_from_slice(engine.build_blocks());
-    }
-
-    pub fn draw(&mut self) {
-        let player = Vec3::from_array(self.scene.player.position);
-        let [yaw, pitch, distance] = self.scene.camera;
-        let (camera_position, target) = if distance <= 0.75 {
-            let camera_position = player + Vec3::new(0.0, 3.4, 0.0);
-            let look_direction = Vec3::new(
-                yaw.sin() * pitch.cos(),
-                pitch.sin(),
-                -yaw.cos() * pitch.cos(),
-            );
-            (camera_position, camera_position + look_direction)
-        } else {
-            let target = player + Vec3::new(0.0, 1.78, 0.0);
-            let horizontal_distance = distance * pitch.cos();
-            let camera_position = target
-                + Vec3::new(
-                    yaw.sin() * horizontal_distance,
-                    (distance * pitch.sin()).clamp(-2.0, 7.0),
-                    yaw.cos() * horizontal_distance,
-                );
-            (camera_position, target)
-        };
-        let view_projection = Mat4::perspective_rh(
-            62.0_f32.to_radians(),
-            (self.width / self.height.max(1.0)).max(0.1),
-            0.05,
-            240.0,
-        ) * Mat4::look_at_rh(camera_position, target, Vec3::Y);
-        let globals = Globals {
-            view_projection: view_projection.to_cols_array_2d(),
-            camera_position: camera_position.extend(1.0).to_array(),
-            sun_direction: Vec3::new(-0.45, -0.82, 0.32)
-                .normalize()
-                .extend(0.0)
-                .to_array(),
-            fog_color: self.scene.world.palette.sky,
-        };
-        let dynamic_vertices = self.build_dynamic_vertices();
-        self.ensure_dynamic_vertex_capacity(dynamic_vertices.len());
-        if !dynamic_vertices.is_empty() {
-            self.queue.write_buffer(
-                &self.dynamic_vertex_buffer,
-                0,
-                bytemuck::cast_slice(&dynamic_vertices),
-            );
-        }
-        self.queue
-            .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
-
-        let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(frame)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.config);
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Timeout
-            | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation => return,
-        };
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("cubacadabra frame encoder"),
-            });
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("cubacadabra world pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: self.scene.world.palette.sky[0] as f64,
-                            g: self.scene.world.palette.sky[1] as f64,
-                            b: self.scene.world.palette.sky[2] as f64,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_view,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            pass.set_pipeline(&self.pipeline);
-            pass.set_bind_group(0, &self.globals_bind_group, &[]);
-            if self.static_vertex_count > 0 {
-                pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
-                pass.draw(0..self.static_vertex_count as u32, 0..1);
-            }
-            if !dynamic_vertices.is_empty() {
-                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
-                pass.draw(0..dynamic_vertices.len() as u32, 0..1);
-            }
-        }
-        self.queue.submit(Some(encoder.finish()));
-        frame.present();
-    }
-
-    fn build_static_vertices(&self) -> Vec<Vertex> {
-        let mut mesh = Vec::with_capacity(16_384);
-        let world = &self.scene.world;
-        add_cuboid(
-            &mut mesh,
-            Vec3::new(0.0, -0.08, 0.0),
-            Vec3::new(world.ground_size, 0.16, world.ground_size),
-            world.palette.ground,
-        );
-        add_cuboid_outline(
-            &mut mesh,
-            Vec3::new(0.0, -0.08, 0.0),
-            Vec3::new(world.ground_size, 0.16, world.ground_size),
-            0.035,
-            faded(world.palette.ground_edge, 0.46),
-        );
-        for block in &world.blocks {
-            add_cuboid(
-                &mut mesh,
-                Vec3::from_array(block.position),
-                Vec3::from_array(block.size),
-                block.color,
-            );
-            if block.outline {
-                add_cuboid_outline(
-                    &mut mesh,
-                    Vec3::from_array(block.position),
-                    Vec3::from_array(block.size),
-                    0.025,
-                    faded(world.palette.paper, 0.22),
-                );
-            }
-        }
-        let divisions = world.grid_divisions.clamp(1, 128);
-        let half = world.grid_size * 0.5;
-        let grid_step = world.grid_size / divisions as f32;
-        for index in 0..=divisions {
-            let offset = -half + index as f32 * grid_step;
-            add_cuboid(
-                &mut mesh,
-                Vec3::new(offset, 0.015, 0.0),
-                Vec3::new(0.018, 0.025, world.grid_size),
-                faded(world.palette.grid, 0.34),
-            );
-            add_cuboid(
-                &mut mesh,
-                Vec3::new(0.0, 0.016, offset),
-                Vec3::new(world.grid_size, 0.026, 0.018),
-                faded(world.palette.grid, 0.34),
-            );
-        }
-        mesh
-    }
-
-    fn build_dynamic_vertices(&self) -> Vec<Vertex> {
-        let mut mesh = Vec::with_capacity(16_384);
-        let world = &self.scene.world;
-        if world.show_spawn_pad {
-            add_spawn_pad(
-                &mut mesh,
-                Vec3::from_array(world.spawn),
-                world.palette,
-                self.scene.elapsed,
-            );
-        }
-        for (index, cloud) in world.clouds.iter().enumerate() {
-            add_cloud(
-                &mut mesh,
-                cloud,
-                index,
-                world.palette.paper,
-                self.scene.elapsed,
-            );
-        }
-        for (index, pad) in world.pads.iter().enumerate() {
-            add_launch_pad(
-                &mut mesh,
-                pad,
-                self.scene.pad_seconds.get(index).copied().unwrap_or(0.0),
-                world.palette,
-                self.scene.elapsed,
-                index,
-            );
-        }
-        for sign in &world.signs {
-            let text = if sign.text == "{{username}}" {
-                &self.scene.username
-            } else {
-                &sign.text
-            };
-            add_pixel_text(
-                &mut mesh,
-                text,
-                Vec3::from_array(sign.position),
-                sign.yaw,
-                sign.max_width,
-                sign.color,
-            );
-        }
-        for block in &self.scene.build_blocks {
-            let size = if block.rotation % 2 == 0 {
-                block.size
-            } else {
-                [block.size[2], block.size[1], block.size[0]]
-            };
-            let color = color(block.color);
-            add_cuboid(
-                &mut mesh,
-                Vec3::from_array(block.position),
-                Vec3::from_array(size),
-                color,
-            );
-            add_cuboid_outline(
-                &mut mesh,
-                Vec3::from_array(block.position),
-                Vec3::from_array(size),
-                0.025,
-                faded(world.palette.paper, 0.3),
-            );
-        }
-        for player in &self.scene.remote_players {
-            add_avatar(
-                &mut mesh,
-                *player,
-                self.scene.player_style,
-                world.palette.ink,
-            );
-        }
-        if self.scene.camera[2] > 0.75 {
-            add_avatar(
-                &mut mesh,
-                self.scene.player,
-                self.scene.player_style,
-                world.palette.ink,
-            );
-        }
-        mesh
-    }
-
-    fn rebuild_static_vertices(&mut self) {
-        let vertices = self.build_static_vertices();
-        self.ensure_static_vertex_capacity(vertices.len());
-        self.static_vertex_count = vertices.len();
-        if !vertices.is_empty() {
-            self.queue.write_buffer(
-                &self.static_vertex_buffer,
-                0,
-                bytemuck::cast_slice(&vertices),
-            );
-        }
-    }
-
-    fn ensure_static_vertex_capacity(&mut self, required: usize) {
-        if required <= self.static_vertex_capacity {
-            return;
-        }
-        self.static_vertex_capacity = required.next_power_of_two();
-        self.static_vertex_buffer = create_vertex_buffer(&self.device, self.static_vertex_capacity);
-    }
-
-    fn ensure_dynamic_vertex_capacity(&mut self, required: usize) {
-        if required <= self.dynamic_vertex_capacity {
-            return;
-        }
-        self.dynamic_vertex_capacity = required.next_power_of_two();
-        self.dynamic_vertex_buffer =
-            create_vertex_buffer(&self.device, self.dynamic_vertex_capacity);
-    }
-}
-
-fn render_entity(values: &[f32]) -> RenderEntity {
-    let value = |index: usize| values.get(index).copied().unwrap_or(0.0);
-    RenderEntity {
-        position: [value(0), value(1), value(2)],
-        yaw: value(3),
-        walk_cycle: value(4),
-        assembled: value(7),
-    }
-}
-
-fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
-    let defaults = RenderPalette::default();
-    let palette = RenderPalette {
-        sky: resolve_color(&definition.palette, "sky", defaults.sky),
-        ground: resolve_color(&definition.palette, "ground", defaults.ground),
-        ground_edge: resolve_color(&definition.palette, "groundEdge", defaults.ground_edge),
-        grid: resolve_color(&definition.palette, "grid", defaults.grid),
-        ink: resolve_color(&definition.palette, "ink", defaults.ink),
-        paper: resolve_color(&definition.palette, "paper", defaults.paper),
-    };
-    RenderWorld {
-        blocks: definition
-            .blocks
-            .iter()
-            .map(|block| RenderBlock {
-                position: block.position(),
-                size: block.size(),
-                color: resolve_color(&definition.palette, &block.color, color(0xffffff)),
-                outline: block.outline,
-            })
-            .collect(),
-        pads: definition
-            .launch_pads
-            .iter()
-            .map(|pad| RenderPad {
-                x: pad.x(),
-                z: pad.z(),
-                radius: pad.radius.max(0.2),
-                code: pad.code.clone(),
-                label: pad.label.clone(),
-                color: resolve_color(&definition.palette, &pad.color, palette.paper),
-                enabled: pad.enabled,
-                availability_label: if pad.availability_label.is_empty() {
-                    "COMING SOON".to_owned()
-                } else {
-                    pad.availability_label.clone()
-                },
-            })
-            .collect(),
-        clouds: definition
-            .world
-            .clouds
-            .iter()
-            .map(|cloud| RenderCloud {
-                position: cloud.position(),
-                scale: cloud.scale.max(0.1),
-            })
-            .collect(),
-        ground_size: definition.world.ground_size.max(10.0),
-        grid_size: definition.world.grid_size.max(1.0),
-        grid_divisions: definition.world.grid_divisions,
-        spawn: definition.world.spawn(),
-        show_spawn_pad: definition.world.show_spawn_pad,
-        palette,
-        signs: definition
-            .signs
-            .iter()
-            .map(|sign| RenderSign {
-                text: sign.text.clone(),
-                position: sign.position(),
-                yaw: sign.yaw,
-                max_width: sign.max_width.max(0.2),
-                color: resolve_color(&definition.palette, &sign.color, palette.paper),
-            })
-            .collect(),
-    }
-}
-
-fn resolve_avatar_styles(package: &GamePackageDefinition) -> (AvatarStyle, Vec<AvatarStyle>) {
-    let player = package
-        .avatars
-        .player
-        .as_ref()
-        .map_or_else(default_player_style, |style| {
-            resolve_avatar_style(style, default_player_style())
-        });
-    let npcs = if package.avatars.npcs.is_empty() {
-        default_npc_styles()
-    } else {
-        let defaults = default_npc_styles();
-        package
-            .avatars
-            .npcs
-            .iter()
-            .enumerate()
-            .map(|(index, style)| resolve_avatar_style(style, defaults[index % defaults.len()]))
-            .collect()
-    };
-    (player, npcs)
-}
-
-fn resolve_avatar_style(definition: &AvatarDefinition, fallback: AvatarStyle) -> AvatarStyle {
-    AvatarStyle {
-        skin: definition
-            .skin
-            .as_deref()
-            .and_then(parse_hex_color)
-            .unwrap_or(fallback.skin),
-        shirt: definition
-            .shirt
-            .as_deref()
-            .and_then(parse_hex_color)
-            .unwrap_or(fallback.shirt),
-        pants: definition
-            .pants
-            .as_deref()
-            .and_then(parse_hex_color)
-            .unwrap_or(fallback.pants),
-        shoes: definition
-            .shoes
-            .as_deref()
-            .and_then(parse_hex_color)
-            .unwrap_or(fallback.shoes),
-    }
+    pub(super) surface: wgpu::Surface<'static>,
+    pub(super) device: wgpu::Device,
+    pub(super) queue: wgpu::Queue,
+    pub(super) pipeline: wgpu::RenderPipeline,
+    pub(super) globals_buffer: wgpu::Buffer,
+    pub(super) globals_bind_group: wgpu::BindGroup,
+    pub(super) static_vertex_buffer: wgpu::Buffer,
+    pub(super) static_vertex_capacity: usize,
+    pub(super) static_vertex_count: usize,
+    pub(super) dynamic_vertex_buffer: wgpu::Buffer,
+    pub(super) dynamic_vertex_capacity: usize,
+    pub(super) config: wgpu::SurfaceConfiguration,
+    pub(super) depth_view: wgpu::TextureView,
+    pub(super) width: f32,
+    pub(super) height: f32,
+    pub(super) scene: Scene,
+    pub(super) package_generation: u32,
+    pub(super) active_world: usize,
+    pub(super) worlds: Vec<RenderWorld>,
 }
 
 fn default_player_style() -> AvatarStyle {
@@ -959,27 +222,6 @@ fn default_npc_styles() -> Vec<AvatarStyle> {
         shoes: color(0x293a43),
     })
     .to_vec()
-}
-
-fn resolve_color(
-    palette: &std::collections::BTreeMap<String, String>,
-    token: &str,
-    fallback: [f32; 4],
-) -> [f32; 4] {
-    palette
-        .get(token)
-        .map(String::as_str)
-        .or_else(|| token.starts_with('#').then_some(token))
-        .and_then(parse_hex_color)
-        .unwrap_or(fallback)
-}
-
-fn parse_hex_color(value: &str) -> Option<[f32; 4]> {
-    let value = value.trim().trim_start_matches('#');
-    if value.len() != 6 {
-        return None;
-    }
-    u32::from_str_radix(value, 16).ok().map(color)
 }
 
 fn color(value: u32) -> [f32; 4] {
@@ -1584,32 +826,4 @@ fn add_triangle(
             color,
         },
     ]);
-}
-
-fn create_vertex_buffer(device: &wgpu::Device, capacity: usize) -> wgpu::Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("cubacadabra vertices"),
-        size: (capacity * std::mem::size_of::<Vertex>()) as u64,
-        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    })
-}
-
-fn create_depth_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
-    device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: Some("cubacadabra depth"),
-            size: wgpu::Extent3d {
-                width: width.max(1),
-                height: height.max(1),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        })
-        .create_view(&wgpu::TextureViewDescriptor::default())
 }
