@@ -66,9 +66,20 @@ pub(crate) enum UiNodeKind {
     Stack,
     Text,
     Button,
+    Menu,
+    Modal,
     Toggle,
     Slider,
     Joystick,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum UiRegion {
+    #[default]
+    Canvas,
+    Header,
+    BottomCenter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -182,6 +193,8 @@ pub(crate) struct UiLayout {
     pub(crate) offset: [f32; 2],
     #[serde(default)]
     pub(crate) ignore_safe_area: bool,
+    #[serde(default)]
+    pub(crate) region: UiRegion,
 }
 
 fn default_foreground() -> String {
@@ -245,6 +258,8 @@ pub(crate) struct UiNode {
     #[serde(default)]
     pub(crate) text: String,
     #[serde(default)]
+    pub(crate) icon: Option<String>,
+    #[serde(default)]
     pub(crate) action: String,
     #[serde(default)]
     pub(crate) layout: UiLayout,
@@ -278,6 +293,7 @@ pub(crate) struct UiRenderNode {
     pub(crate) kind: UiNodeKind,
     pub(crate) rect: UiRect,
     pub(crate) text: String,
+    pub(crate) icon: Option<String>,
     pub(crate) background: Option<[f32; 4]>,
     pub(crate) foreground: [f32; 4],
     pub(crate) border_color: Option<[f32; 4]>,
@@ -533,8 +549,16 @@ impl UiRuntime {
             .collect::<HashSet<_>>();
         let mut nodes = Vec::new();
         let mut hit_regions = Vec::new();
+        let mut overlay_roots = Vec::new();
         for node in &self.document.nodes {
             if !node.visible {
+                continue;
+            }
+            if node.layout.region != UiRegion::Canvas {
+                continue;
+            }
+            if matches!(node.kind, UiNodeKind::Menu | UiNodeKind::Modal) {
+                overlay_roots.push(node);
                 continue;
             }
             let available = if node.layout.ignore_safe_area {
@@ -570,8 +594,9 @@ impl UiRuntime {
         // Draw the platform-owned controls last so game UI cannot cover them.
         // Their surfaces consume taps without emitting events until platform
         // actions are connected.
-        let shared_nodes = shared_header_nodes(self.viewport, safe);
-        for node in shared_nodes
+        let shared_header = shared_header_nodes(self.viewport, safe);
+        for node in shared_header
+            .nodes
             .iter()
             .filter(|node| node.id.ends_with("_surface"))
         {
@@ -583,7 +608,83 @@ impl UiRuntime {
                 disabled: false,
             });
         }
-        nodes.extend(shared_nodes);
+        nodes.extend(shared_header.nodes);
+
+        let header_nodes = self
+            .document
+            .nodes
+            .iter()
+            .filter(|node| node.visible && node.layout.region == UiRegion::Header)
+            .collect::<Vec<_>>();
+        layout_region_roots(
+            &header_nodes,
+            UiRect {
+                x: shared_header.custom_x,
+                y: shared_header.y,
+                width: (safe.x + safe.width - SHARED_HEADER_MARGIN - shared_header.custom_x)
+                    .max(0.0),
+                height: shared_header.size,
+            },
+            false,
+            &pressed,
+            &mut nodes,
+            &mut hit_regions,
+        );
+
+        let bottom_nodes = self
+            .document
+            .nodes
+            .iter()
+            .filter(|node| node.visible && node.layout.region == UiRegion::BottomCenter)
+            .collect::<Vec<_>>();
+        layout_region_roots(
+            &bottom_nodes,
+            UiRect {
+                x: safe.x + SHARED_HEADER_MARGIN,
+                y: safe.y + safe.height - SHARED_HEADER_MARGIN - REGION_CONTROL_HEIGHT,
+                width: (safe.width - SHARED_HEADER_MARGIN * 2.0).max(0.0),
+                height: REGION_CONTROL_HEIGHT,
+            },
+            true,
+            &pressed,
+            &mut nodes,
+            &mut hit_regions,
+        );
+
+        // Menus and modals are a deliberate top layer. This keeps a full-screen
+        // scrim above the shared header and touch controls while its menu
+        // children remain above the scrim itself.
+        for node in overlay_roots {
+            let available = if node.layout.ignore_safe_area {
+                UiRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: self.viewport.width,
+                    height: self.viewport.height,
+                }
+            } else {
+                safe
+            };
+            let intrinsic = measure_node(node, available.width, available.height);
+            let width = clamp_length(
+                node.layout.width.resolve(available.width, intrinsic.0),
+                node.layout.max_width,
+                available.width,
+            );
+            let height = clamp_length(
+                node.layout.height.resolve(available.height, intrinsic.1),
+                node.layout.max_height,
+                available.height,
+            );
+            let rect = anchored_rect(
+                available,
+                width,
+                height,
+                node.layout.anchor,
+                node.layout.offset,
+            );
+            layout_node(node, rect, &pressed, &mut nodes, &mut hit_regions);
+        }
         self.frame = UiFrame {
             viewport: self.viewport,
             nodes,
@@ -811,6 +912,7 @@ fn measure_node(node: &UiNode, available_width: f32, available_height: f32) -> (
         UiNodeKind::Toggle => 72.0,
         UiNodeKind::Slider => 180.0,
         UiNodeKind::Joystick => 120.0,
+        UiNodeKind::Button if node.icon.is_some() && node.text.is_empty() => MIN_TOUCH_TARGET,
         UiNodeKind::Button => text_width.max(MIN_TOUCH_TARGET),
         _ => text_width,
     };
@@ -893,10 +995,23 @@ const SHARED_HEADER_MARGIN: f32 = 24.0;
 const SHARED_HEADER_GAP: f32 = 12.0;
 const SHARED_HEADER_CELL_GAP: f32 = 8.0;
 const SHARED_HEADER_PILL_PADDING: f32 = 14.0;
+const REGION_CONTROL_HEIGHT: f32 = 56.0;
 
-fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> Vec<UiRenderNode> {
+struct SharedHeaderGeometry {
+    nodes: Vec<UiRenderNode>,
+    custom_x: f32,
+    y: f32,
+    size: f32,
+}
+
+fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> SharedHeaderGeometry {
     if viewport.width <= 0.0 || viewport.height <= 0.0 {
-        return Vec::new();
+        return SharedHeaderGeometry {
+            nodes: Vec::new(),
+            custom_x: safe.x,
+            y: safe.y,
+            size: 0.0,
+        };
     }
 
     let x = safe.x + SHARED_HEADER_MARGIN;
@@ -911,7 +1026,12 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> Vec<UiRenderNode> 
             .max(0.0),
     );
     if size < 1.0 {
-        return Vec::new();
+        return SharedHeaderGeometry {
+            nodes: Vec::new(),
+            custom_x: x,
+            y,
+            size: 0.0,
+        };
     }
 
     let surface = [0.02, 0.04, 0.05, 0.92];
@@ -976,7 +1096,12 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> Vec<UiRenderNode> 
             true,
         ));
     }
-    nodes
+    SharedHeaderGeometry {
+        nodes,
+        custom_x: controls_rect.x + controls_rect.width + SHARED_HEADER_GAP,
+        y,
+        size,
+    }
 }
 
 fn header_surface(
@@ -990,6 +1115,7 @@ fn header_surface(
         kind: UiNodeKind::Panel,
         rect,
         text: String::new(),
+        icon: None,
         background: Some(background),
         foreground: [1.0; 4],
         border_color: None,
@@ -1014,6 +1140,7 @@ fn header_image(id: &str, image: UiImage, rect: UiRect, image_invert: bool) -> U
         kind: UiNodeKind::Panel,
         rect,
         text: String::new(),
+        icon: None,
         background: None,
         foreground: [1.0; 4],
         border_color: None,
@@ -1029,6 +1156,57 @@ fn header_image(id: &str, image: UiImage, rect: UiRect, image_invert: bool) -> U
         value_y: 0.0,
         pressed: false,
         disabled: false,
+    }
+}
+
+fn layout_region_roots(
+    roots: &[&UiNode],
+    parent: UiRect,
+    centered: bool,
+    pressed: &HashSet<&str>,
+    nodes: &mut Vec<UiRenderNode>,
+    hit_regions: &mut Vec<UiHitRegion>,
+) {
+    if roots.is_empty() || parent.width <= 0.0 || parent.height <= 0.0 {
+        return;
+    }
+
+    let sizes = roots
+        .iter()
+        .map(|node| {
+            let intrinsic = measure_node(node, parent.width, parent.height);
+            (
+                clamp_length(
+                    node.layout.width.resolve(parent.width, intrinsic.0),
+                    node.layout.max_width,
+                    parent.width,
+                ),
+                clamp_length(
+                    node.layout.height.resolve(parent.height, intrinsic.1),
+                    node.layout.max_height,
+                    parent.height,
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+    let gap = SHARED_HEADER_CELL_GAP;
+    let total_width =
+        sizes.iter().map(|size| size.0).sum::<f32>() + gap * roots.len().saturating_sub(1) as f32;
+    let mut cursor = if centered {
+        (parent.width - total_width).max(0.0) * 0.5
+    } else {
+        0.0
+    };
+
+    for (node, (width, height)) in roots.iter().zip(sizes) {
+        let rect = UiRect {
+            x: parent.x + cursor + node.layout.offset[0],
+            y: parent.y + (parent.height - height).max(0.0) * 0.5 + node.layout.offset[1],
+            width,
+            height,
+        };
+        layout_node(node, rect, pressed, nodes, hit_regions);
+        cursor += width + gap;
     }
 }
 
@@ -1054,6 +1232,7 @@ fn layout_node(
         kind: node.kind,
         rect,
         text: node.text.clone(),
+        icon: node.icon.clone(),
         background: node.style.background.as_deref().and_then(parse_color),
         foreground: parse_color(&node.style.foreground).unwrap_or([1.0; 4]),
         border_color: node.style.border_color.as_deref().and_then(parse_color),
@@ -1301,6 +1480,88 @@ mod tests {
     }
 
     #[test]
+    fn game_header_region_follows_shared_header_and_bottom_region_is_compact() {
+        let mut runtime = runtime(
+            r##"{
+                "nodes":[
+                    {"id":"build","kind":"button","icon":"build","action":"build.menu","layout":{"region":"header","width":56,"height":56}},
+                    {"id":"context","kind":"panel","layout":{"region":"bottomCenter","width":"auto","height":56,"padding":4,"direction":"row","gap":6},"children":[
+                        {"id":"place","kind":"button","icon":"plus","action":"build.place","layout":{"width":48,"height":48}},
+                        {"id":"rotate","kind":"button","icon":"rotate","action":"build.rotate","layout":{"width":48,"height":48}},
+                        {"id":"remove","kind":"button","icon":"trash","action":"build.remove","layout":{"width":48,"height":48}}
+                    ]}
+                ]
+            }"##,
+            390.0,
+            844.0,
+        );
+        let frame = runtime.frame().clone();
+        let shared_controls = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_header_controls_surface")
+            .expect("shared controls should render");
+        let build = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "build")
+            .expect("game header control should render");
+        let context = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "context")
+            .expect("bottom context should render");
+        assert!(build.rect.x >= shared_controls.rect.x + shared_controls.rect.width);
+        assert_eq!(build.icon.as_deref(), Some("build"));
+        assert_eq!(context.rect.width, 164.0);
+        assert!(context.rect.x > 100.0 && context.rect.x + context.rect.width < 290.0);
+        assert!(context.rect.y + context.rect.height <= 844.0 - 34.0);
+    }
+
+    #[test]
+    fn menu_and_modal_nodes_are_valid_container_primitives() {
+        let mut runtime = runtime(
+            r##"{"nodes":[
+                {"id":"scrim","kind":"modal","blocksInput":true,"layout":{"width":"fill","height":"fill","ignoreSafeArea":true}},
+                {"id":"menu","kind":"menu","layout":{"width":220,"height":180},"children":[
+                    {"id":"cube","kind":"button","icon":"cube","text":"CUBE","action":"shape.cube","layout":{"width":96,"height":56}}
+                ]}
+            ]}"##,
+            390.0,
+            844.0,
+        );
+        let frame = runtime.frame().clone();
+        assert_eq!(
+            frame
+                .nodes
+                .iter()
+                .find(|node| node.id == "scrim")
+                .expect("scrim should render")
+                .kind,
+            UiNodeKind::Modal
+        );
+        assert_eq!(
+            frame
+                .nodes
+                .iter()
+                .find(|node| node.id == "menu")
+                .expect("menu should render")
+                .kind,
+            UiNodeKind::Menu
+        );
+        assert_eq!(
+            frame
+                .nodes
+                .iter()
+                .find(|node| node.id == "cube")
+                .expect("menu item should render")
+                .icon
+                .as_deref(),
+            Some("cube")
+        );
+    }
+
+    #[test]
     fn bottom_dock_stays_above_home_indicator() {
         let mut runtime = runtime(
             r##"{"nodes":[{"id":"dock","kind":"panel","layout":{"anchor":"bottom","width":320,"height":56,"offset":[0,-16]}}]}"##,
@@ -1374,6 +1635,23 @@ mod tests {
         assert!(runtime.pointer(11, UiPointerPhase::Down, 5.0, 5.0));
         assert!(runtime.pointer(11, UiPointerPhase::Up, 5.0, 5.0));
         assert!(!runtime.poll_event());
+    }
+
+    #[test]
+    fn modal_overlay_takes_priority_over_shared_and_game_controls() {
+        let mut runtime = runtime(
+            r##"{"nodes":[
+                {"id":"underlay","kind":"button","text":"UNDER","action":"underlay","layout":{"width":120,"height":48,"offset":[0,140]}},
+                {"id":"scrim","kind":"modal","action":"close","blocksInput":true,"layout":{"width":"fill","height":"fill","ignoreSafeArea":true}}
+            ]}"##,
+            390.0,
+            844.0,
+        );
+        assert!(runtime.pointer(9, UiPointerPhase::Down, 30.0, 200.0));
+        assert!(runtime.pointer(9, UiPointerPhase::Up, 30.0, 200.0));
+        assert!(runtime.poll_event());
+        let event = std::str::from_utf8(runtime.event_buffer()).expect("event should be UTF-8");
+        assert!(event.contains("\"action\":\"close\""));
     }
 
     #[test]

@@ -78,7 +78,8 @@ iOS, Android, and the browser. Native shells continue to own OS presentation
 and forward host-service actions from the engine's UI event queue.
 
 See [docs/ui-runtime.md](docs/ui-runtime.md) for the Luau document model,
-supported widgets, responsive layout rules, and C ABI integration.
+semantic icons, header and bottom-center regions, menus/modals, responsive
+layout rules, and C ABI integration.
 
 ## Scripting status
 

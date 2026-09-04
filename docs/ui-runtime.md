@@ -7,10 +7,11 @@ controls, and in-game modals. Platform shells still own operating-system UI
 such as sign-in, purchases, permissions, and text input.
 
 Every game also receives an engine-owned top-left header containing the shared
-logo, cube, chat, and voice controls. These controls are rendered from the
-bundled image assets, are not part of the Luau document, and currently consume
-their tap area without emitting UI events. Games should define only the
-game-specific controls that follow this shared header.
+logo, cube, chat, and voice controls. These four controls are rendered from the
+bundled image assets, are not part of the Luau document, and consume their tap
+area without emitting UI events. A game can append compact semantic icon
+buttons after them with `layout.region = "header"`. The engine keeps those
+game-owned controls in a separate slot so they do not need hard-coded offsets.
 
 ## Luau API
 
@@ -25,58 +26,61 @@ function game.on_start(api)
     api.ui:set_document({
         nodes = {
             {
-                id = "build-dock",
+                id = "build-menu-button",
+                kind = "button",
+                icon = "build",
+                action = "build.menu",
+                layout = { region = "header", width = 56, height = 56 },
+                style = { background = "#0A86E6EE", cornerRadius = 16 },
+            },
+            {
+                id = "build-context",
                 kind = "panel",
                 layout = {
-                    anchor = "bottom",
-                    width = "90%",
-                    maxWidth = 560,
-                    height = 60,
-                    offset = { 0, -16 },
-                    padding = 8,
+                    region = "bottomCenter",
+                    width = "auto",
+                    height = 56,
+                    padding = 4,
                     direction = "row",
                     align = "center",
                     gap = 6,
                 },
                 style = {
                     background = "#101820E8",
-                    cornerRadius = 30,
+                    cornerRadius = 28,
                 },
                 children = {
                     {
-                        id = "tool",
+                        id = "place",
                         kind = "button",
-                        text = "PLACE",
-                        action = "build.tool",
-                        layout = { width = 84, height = 44 },
+                        icon = "plus",
+                        action = "build.place",
+                        layout = { width = 48, height = 48 },
                         style = {
                             background = "#FFFFFF1F",
-                            cornerRadius = 22,
-                            textAlign = "center",
+                            cornerRadius = 16,
                         },
                     },
                     {
-                        id = "shape",
+                        id = "rotate",
                         kind = "button",
-                        text = "CUBE",
-                        action = "build.shape",
-                        layout = { width = 76, height = 44 },
+                        icon = "rotate",
+                        action = "build.rotate",
+                        layout = { width = 48, height = 48 },
                         style = {
                             background = "#FFFFFF1F",
-                            cornerRadius = 22,
-                            textAlign = "center",
+                            cornerRadius = 16,
                         },
                     },
                     {
-                        id = "use-tool",
+                        id = "remove",
                         kind = "button",
-                        text = "BUILD",
-                        action = "build.use",
-                        layout = { width = "fill", height = 44 },
+                        icon = "trash",
+                        action = "build.remove",
+                        layout = { width = 48, height = 48 },
                         style = {
-                            background = "#0094FFFF",
-                            cornerRadius = 22,
-                            textAlign = "center",
+                            background = "#FFFFFF1F",
+                            cornerRadius = 16,
                         },
                     },
                 },
@@ -110,11 +114,15 @@ platform adapter forwards commands that require networking or an OS service.
 
 ## Document model
 
-Supported node kinds are `panel`, `stack`, `text`, `button`, `toggle`,
-`slider`, and `joystick`. Nodes are nested through `children` and each ID must
-be unique. Joystick events contain normalized `x` and `y` values and emit a
-zero vector on release or cancellation, allowing the shared UI to own mobile
-movement controls safely with multiple simultaneous pointers.
+Supported node kinds are `panel`, `stack`, `text`, `button`, `menu`, `modal`,
+`toggle`, `slider`, and `joystick`. `menu` and `modal` are semantic container
+kinds; use `visible` plus ordinary buttons to open and close them. A full-screen
+modal scrim should set `blocksInput = true` and use an action such as
+`build.close` so a tap outside the menu dismisses it. Nodes are nested through
+`children` and each ID must be unique. Joystick events contain normalized `x`
+and `y` values and emit a zero vector on release or cancellation, allowing the
+shared UI to own mobile movement controls safely with multiple simultaneous
+pointers.
 
 Root nodes are positioned inside the safe viewport using `layout.anchor`:
 `topLeft`, `top`, `topRight`, `left`, `center`, `right`, `bottomLeft`, `bottom`,
@@ -123,11 +131,21 @@ parent. Width and height accept logical points, `auto`, `fill`, or a percentage
 such as `90%`. `maxWidth` and `maxHeight` keep UI from stretching on tablets
 and desktop displays.
 
+Root nodes can opt into an engine-managed placement region with
+`layout.region = "header"` or `layout.region = "bottomCenter"`. Header roots are
+laid out after the four shared controls. Bottom-center roots are grouped and
+centered above the safe-area bottom inset. Use one compact root with one to
+three icon buttons there; the region is intended for contextual actions, not a
+large persistent toolbar.
+
 Root layout respects the platform safe area by default. A full-screen modal
 scrim can set `layout.ignoreSafeArea = true`; setting `blocksInput = true` on
 that panel consumes pointer input without emitting an action, preventing taps
 from also moving the camera. Root nodes later in the document are visually and
-interactively above earlier roots, so the modal panel can follow its scrim.
+interactively above earlier roots. `menu` and `modal` roots are additionally
+promoted to the overlay layer, so a full-screen scrim can cover the shared
+header and game controls; overlay children and later overlay roots remain above
+the scrim.
 
 Containers support `padding`, `gap`, `align`, and `justify`. Alignments are
 `start`, `center`, `end`, and `stretch`; justification additionally supports
@@ -137,7 +155,11 @@ points square.
 
 Colors use `#RRGGBB` or `#RRGGBBAA`. Styles currently support `background`,
 `foreground`, `borderColor`, `borderWidth`, `cornerRadius`, `fontSize`,
-`textAlign`, and `accent`.
+`textAlign`, and `accent`. Buttons can set `icon` to a semantic icon name such
+as `build`, `cube`, `beam`, `slab`, `plus`, `rotate`, `trash`, `palette`,
+`save`, `close`, `chevronDown`, or `check`. An icon-only button still receives
+the standard 44-point touch target; when paired with text, the renderer places
+the icon above the label for a readable touch target in a menu.
 
 Documents are limited to 512 nodes and 32 levels of nesting. The current first
 Luau-authored UI intentionally omits image assets, clipping/scrolling, rich font shaping,

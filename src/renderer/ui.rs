@@ -148,6 +148,24 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
         );
     }
 
+    if let Some(icon) = node.icon.as_deref() {
+        let icon_rect = if node.text.is_empty() {
+            node.rect
+        } else {
+            UiRect {
+                height: node.rect.height * 0.52,
+                ..node.rect
+            }
+        };
+        add_icon(
+            vertices,
+            frame,
+            icon,
+            icon_rect,
+            faded(node.foreground, opacity),
+        );
+    }
+
     match node.kind {
         UiNodeKind::Toggle => add_toggle(vertices, frame, node, opacity),
         UiNodeKind::Slider => add_slider(vertices, frame, node, opacity),
@@ -158,6 +176,11 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
         let text_rect = match node.kind {
             UiNodeKind::Toggle => UiRect {
                 width: (node.rect.width - 68.0).max(0.0),
+                ..node.rect
+            },
+            _ if node.icon.is_some() => UiRect {
+                y: node.rect.y + node.rect.height * 0.46,
+                height: node.rect.height * 0.54,
                 ..node.rect
             },
             _ => node.rect,
@@ -473,6 +496,402 @@ fn add_circle(
     );
 }
 
+fn add_line(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    start: (f32, f32),
+    end: (f32, f32),
+    width: f32,
+    color: [f32; 4],
+) {
+    let dx = end.0 - start.0;
+    let dy = end.1 - start.1;
+    let length = dx.hypot(dy).max(0.001);
+    let half_width = width.max(0.5) * 0.5;
+    let nx = -dy / length * half_width;
+    let ny = dx / length * half_width;
+    let points = [
+        (start.0 + nx, start.1 + ny),
+        (end.0 + nx, end.1 + ny),
+        (end.0 - nx, end.1 - ny),
+        (start.0 - nx, start.1 - ny),
+    ];
+    add_ui_triangle(vertices, frame, points[0], points[1], points[2], color);
+    add_ui_triangle(vertices, frame, points[0], points[2], points[3], color);
+}
+
+fn add_icon(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    name: &str,
+    rect: UiRect,
+    color: [f32; 4],
+) {
+    let size = rect.width.min(rect.height).clamp(18.0, 24.0);
+    let left = rect.x + (rect.width - size) * 0.5;
+    let top = rect.y + (rect.height - size) * 0.5;
+    let right = left + size;
+    let bottom = top + size;
+    let mid_x = (left + right) * 0.5;
+    let mid_y = (top + bottom) * 0.5;
+    let stroke = (size * 0.105).max(1.8);
+
+    match name.to_ascii_lowercase().as_str() {
+        "plus" | "add" | "place" => {
+            add_line(
+                vertices,
+                frame,
+                (mid_x, top + 4.0),
+                (mid_x, bottom - 4.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 4.0, mid_y),
+                (right - 4.0, mid_y),
+                stroke,
+                color,
+            );
+        }
+        "rotate" => {
+            add_line(
+                vertices,
+                frame,
+                (left + 5.0, mid_y + 3.0),
+                (left + 6.0, top + 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 6.0, top + 7.0),
+                (mid_x + 5.0, top + 5.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x + 5.0, top + 5.0),
+                (right - 5.0, mid_y),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 5.0, mid_y),
+                (right - 8.0, top + 4.5),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 5.0, mid_y),
+                (right - 3.5, mid_y - 5.0),
+                stroke,
+                color,
+            );
+        }
+        "remove" | "trash" | "delete" => {
+            add_line(
+                vertices,
+                frame,
+                (left + 6.0, top + 7.0),
+                (right - 6.0, top + 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 9.0, top + 4.0),
+                (right - 9.0, top + 4.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 7.0, top + 8.0),
+                (left + 8.0, bottom - 4.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 7.0, top + 8.0),
+                (right - 8.0, bottom - 4.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 8.0, bottom - 4.0),
+                (right - 8.0, bottom - 4.0),
+                stroke,
+                color,
+            );
+        }
+        "cube" | "build" => {
+            add_line(
+                vertices,
+                frame,
+                (mid_x, top + 3.0),
+                (right - 4.0, top + 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 4.0, top + 7.0),
+                (mid_x, mid_y + 2.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x, mid_y + 2.0),
+                (left + 4.0, top + 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 4.0, top + 7.0),
+                (mid_x, top + 3.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x, mid_y + 2.0),
+                (mid_x, bottom - 3.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x, bottom - 3.0),
+                (right - 4.0, bottom - 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x, bottom - 3.0),
+                (left + 4.0, bottom - 7.0),
+                stroke,
+                color,
+            );
+        }
+        "beam" => {
+            add_line(
+                vertices,
+                frame,
+                (left + 4.0, top + 7.0),
+                (right - 4.0, top + 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 4.0, top + 7.0),
+                (right - 4.0, bottom - 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 4.0, bottom - 7.0),
+                (left + 4.0, bottom - 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 4.0, bottom - 7.0),
+                (left + 4.0, top + 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 6.0, mid_y),
+                (right - 6.0, mid_y),
+                stroke,
+                color,
+            );
+        }
+        "slab" => {
+            add_line(
+                vertices,
+                frame,
+                (left + 4.0, mid_y),
+                (mid_x, top + 5.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x, top + 5.0),
+                (right - 4.0, mid_y),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 4.0, mid_y),
+                (mid_x, bottom - 5.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x, bottom - 5.0),
+                (left + 4.0, mid_y),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (left + 7.0, mid_y),
+                (right - 7.0, mid_y),
+                stroke,
+                color,
+            );
+        }
+        "palette" | "color" => {
+            add_circle(vertices, frame, left + 8.0, mid_y, 5.5, color);
+            add_circle(vertices, frame, mid_x, top + 6.0, 2.0, color);
+            add_circle(vertices, frame, right - 6.0, top + 9.0, 2.0, color);
+            add_circle(vertices, frame, right - 6.0, bottom - 7.0, 2.0, color);
+        }
+        "save" => {
+            add_rounded_rect(
+                vertices,
+                frame,
+                UiRect {
+                    x: left + 4.0,
+                    y: top + 3.0,
+                    width: size - 8.0,
+                    height: size - 6.0,
+                },
+                2.5,
+                color,
+            );
+            add_rect(
+                vertices,
+                frame,
+                UiRect {
+                    x: left + 8.0,
+                    y: top + 5.0,
+                    width: size - 16.0,
+                    height: 5.0,
+                },
+                [0.01, 0.04, 0.05, color[3] * 0.75],
+            );
+            add_rounded_rect(
+                vertices,
+                frame,
+                UiRect {
+                    x: left + 8.0,
+                    y: bottom - 9.0,
+                    width: size - 16.0,
+                    height: 5.0,
+                },
+                1.5,
+                [0.01, 0.04, 0.05, color[3] * 0.75],
+            );
+        }
+        "close" | "exit" => {
+            add_line(
+                vertices,
+                frame,
+                (left + 5.0, top + 5.0),
+                (right - 5.0, bottom - 5.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 5.0, top + 5.0),
+                (left + 5.0, bottom - 5.0),
+                stroke,
+                color,
+            );
+        }
+        "chevrondown" | "down" => {
+            add_line(
+                vertices,
+                frame,
+                (left + 5.0, top + 8.0),
+                (mid_x, bottom - 7.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x, bottom - 7.0),
+                (right - 5.0, top + 8.0),
+                stroke,
+                color,
+            );
+        }
+        "check" => {
+            add_line(
+                vertices,
+                frame,
+                (left + 4.0, mid_y),
+                (mid_x - 1.0, bottom - 5.0),
+                stroke,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (mid_x - 1.0, bottom - 5.0),
+                (right - 4.0, top + 5.0),
+                stroke,
+                color,
+            );
+        }
+        _ => {
+            add_circle(vertices, frame, mid_x, mid_y, size * 0.36, color);
+            add_circle(
+                vertices,
+                frame,
+                mid_x,
+                mid_y,
+                size * 0.18,
+                [0.01, 0.04, 0.05, color[3] * 0.8],
+            );
+        }
+    }
+}
+
 fn add_rounded_rect(
     vertices: &mut Vec<Vertex>,
     frame: &UiFrame,
@@ -727,6 +1146,7 @@ mod tests {
                     height: 44.0,
                 },
                 text: "GO".to_owned(),
+                icon: None,
                 background: Some([0.0, 0.5, 1.0, 1.0]),
                 foreground: [1.0; 4],
                 border_color: None,
