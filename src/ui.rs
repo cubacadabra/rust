@@ -307,6 +307,7 @@ pub(crate) struct UiRenderNode {
     pub(crate) value: f32,
     pub(crate) value_x: f32,
     pub(crate) value_y: f32,
+    pub(crate) checked: bool,
     pub(crate) pressed: bool,
     pub(crate) disabled: bool,
 }
@@ -982,9 +983,11 @@ fn anchored_rect(
         UiAnchor::BottomLeft | UiAnchor::Bottom | UiAnchor::BottomRight => 1.0,
         _ => 0.0,
     };
+    let x = parent.x + (parent.width - width) * horizontal + offset[0];
+    let y = parent.y + (parent.height - height) * vertical + offset[1];
     UiRect {
-        x: parent.x + (parent.width - width) * horizontal + offset[0],
-        y: parent.y + (parent.height - height) * vertical + offset[1],
+        x: x.clamp(parent.x, (parent.x + parent.width - width).max(parent.x)),
+        y: y.clamp(parent.y, (parent.y + parent.height - height).max(parent.y)),
         width,
         height,
     }
@@ -995,7 +998,7 @@ const SHARED_HEADER_MARGIN: f32 = 24.0;
 const SHARED_HEADER_GAP: f32 = 12.0;
 const SHARED_HEADER_CELL_GAP: f32 = 8.0;
 const SHARED_HEADER_PILL_PADDING: f32 = 14.0;
-const REGION_CONTROL_HEIGHT: f32 = 56.0;
+const REGION_CONTROL_HEIGHT: f32 = 68.0;
 
 struct SharedHeaderGeometry {
     nodes: Vec<UiRenderNode>,
@@ -1014,17 +1017,21 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> SharedHeaderGeomet
         };
     }
 
-    let x = safe.x + SHARED_HEADER_MARGIN;
-    let y = safe.y + SHARED_HEADER_MARGIN;
-    let available_width = (safe.width - SHARED_HEADER_MARGIN * 2.0).max(0.0);
-    let size = SHARED_HEADER_SIZE.min(
-        ((available_width
-            - SHARED_HEADER_GAP
-            - SHARED_HEADER_CELL_GAP * 2.0
-            - SHARED_HEADER_PILL_PADDING * 2.0)
-            / 4.0)
-            .max(0.0),
-    );
+    let compact = safe.width < 600.0;
+    let margin = if compact { 12.0 } else { SHARED_HEADER_MARGIN };
+    let group_gap = if compact { 8.0 } else { SHARED_HEADER_GAP };
+    let cell_gap = if compact { 6.0 } else { SHARED_HEADER_CELL_GAP };
+    let pill_padding = if compact {
+        8.0
+    } else {
+        SHARED_HEADER_PILL_PADDING
+    };
+    let maximum_size = if compact { 44.0 } else { SHARED_HEADER_SIZE };
+    let x = safe.x + margin;
+    let y = safe.y + margin;
+    let available_width = (safe.width - margin * 2.0).max(0.0);
+    let size = maximum_size
+        .min(((available_width - group_gap - cell_gap * 2.0 - pill_padding * 2.0) / 4.0).max(0.0));
     if size < 1.0 {
         return SharedHeaderGeometry {
             nodes: Vec::new(),
@@ -1041,10 +1048,9 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> SharedHeaderGeomet
         width: size,
         height: size,
     };
-    let controls_x = x + size + SHARED_HEADER_GAP;
+    let controls_x = x + size + group_gap;
     let cell_size = size;
-    let controls_width =
-        cell_size * 3.0 + SHARED_HEADER_CELL_GAP * 2.0 + SHARED_HEADER_PILL_PADDING * 2.0;
+    let controls_width = cell_size * 3.0 + cell_gap * 2.0 + pill_padding * 2.0;
     let icon_size = (cell_size - 16.0).max(1.0);
 
     let mut nodes = vec![header_surface(
@@ -1077,9 +1083,7 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> SharedHeaderGeomet
         .enumerate()
     {
         let cell = UiRect {
-            x: controls_x
-                + SHARED_HEADER_PILL_PADDING
-                + index as f32 * (cell_size + SHARED_HEADER_CELL_GAP),
+            x: controls_x + pill_padding + index as f32 * (cell_size + cell_gap),
             y,
             width: cell_size,
             height: size,
@@ -1098,7 +1102,7 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> SharedHeaderGeomet
     }
     SharedHeaderGeometry {
         nodes,
-        custom_x: controls_rect.x + controls_rect.width + SHARED_HEADER_GAP,
+        custom_x: controls_rect.x + controls_rect.width + group_gap,
         y,
         size,
     }
@@ -1129,6 +1133,7 @@ fn header_surface(
         value: 0.0,
         value_x: 0.0,
         value_y: 0.0,
+        checked: false,
         pressed: false,
         disabled: false,
     }
@@ -1154,6 +1159,7 @@ fn header_image(id: &str, image: UiImage, rect: UiRect, image_invert: bool) -> U
         value: 0.0,
         value_x: 0.0,
         value_y: 0.0,
+        checked: false,
         pressed: false,
         disabled: false,
     }
@@ -1171,7 +1177,7 @@ fn layout_region_roots(
         return;
     }
 
-    let sizes = roots
+    let mut sizes = roots
         .iter()
         .map(|node| {
             let intrinsic = measure_node(node, parent.width, parent.height);
@@ -1190,6 +1196,15 @@ fn layout_region_roots(
         })
         .collect::<Vec<_>>();
     let gap = SHARED_HEADER_CELL_GAP;
+    let requested_width =
+        sizes.iter().map(|size| size.0).sum::<f32>() + gap * roots.len().saturating_sub(1) as f32;
+    if requested_width > parent.width && !sizes.is_empty() {
+        let available = (parent.width - gap * roots.len().saturating_sub(1) as f32).max(0.0);
+        let requested = sizes.iter().map(|size| size.0).sum::<f32>().max(1.0);
+        for size in &mut sizes {
+            size.0 = size.0 * available / requested;
+        }
+    }
     let total_width =
         sizes.iter().map(|size| size.0).sum::<f32>() + gap * roots.len().saturating_sub(1) as f32;
     let mut cursor = if centered {
@@ -1251,6 +1266,7 @@ fn layout_node(
         value,
         value_x: node.value_x,
         value_y: node.value_y,
+        checked: node.checked,
         pressed: pressed.contains(node.id.as_str()),
         disabled: node.disabled,
     });
@@ -1652,6 +1668,25 @@ mod tests {
         assert!(runtime.poll_event());
         let event = std::str::from_utf8(runtime.event_buffer()).expect("event should be UTF-8");
         assert!(event.contains("\"action\":\"close\""));
+    }
+
+    #[test]
+    fn oversized_popover_is_clamped_inside_the_safe_viewport() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"popover","kind":"menu","layout":{"width":336,"height":136,"offset":[380,88]}}]}"##,
+            390.0,
+            844.0,
+        );
+        let popover = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "popover")
+            .unwrap();
+        assert!(popover.rect.x >= 0.0);
+        assert!(popover.rect.x + popover.rect.width <= 390.0);
+        assert!(popover.rect.y >= 47.0);
+        assert!(popover.rect.y + popover.rect.height <= 810.0);
     }
 
     #[test]

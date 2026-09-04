@@ -11,22 +11,54 @@ use crate::ui::{UiAlignment, UiFrame, UiImage, UiNodeKind, UiRect, UiRenderNode}
 
 use super::Vertex;
 
-const UI_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/RobotoCondensed-Light.ttf");
+const UI_FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/LilitaOne-Regular.ttf");
 
 pub(super) const UI_ATLAS_PADDING: u32 = 2;
-pub(super) const UI_ATLAS_WIDTH: u32 = 2756;
-pub(super) const UI_ATLAS_HEIGHT: u32 = 1210;
+pub(super) const UI_ATLAS_WIDTH: u32 = 4096;
+pub(super) const UI_ATLAS_HEIGHT: u32 = 1312;
+pub(super) const UI_FONT_ATLAS_Y: u32 = 1212;
+const UI_FONT_ATLAS_SIZE: f32 = 64.0;
 
 fn ui_font() -> &'static Font {
     static FONT: OnceLock<Font> = OnceLock::new();
     FONT.get_or_init(|| {
         #[cfg(target_os = "ios")]
         eprintln!(
-            "[RustRenderer] loading bundled UI font RobotoCondensed-Light.ttf ({} bytes)",
+            "[RustRenderer] loading bundled UI font LilitaOne-Regular.ttf ({} bytes)",
             UI_FONT_BYTES.len()
         );
         Font::from_bytes(UI_FONT_BYTES, FontSettings::default())
             .expect("bundled Lilita One font should be valid")
+    })
+}
+
+pub(super) struct UiAtlasGlyph {
+    pub(super) character: char,
+    pub(super) x: u32,
+    pub(super) metrics: fontdue::Metrics,
+    pub(super) bitmap: Vec<u8>,
+}
+
+pub(super) fn ui_atlas_glyphs() -> &'static [UiAtlasGlyph] {
+    static GLYPHS: OnceLock<Vec<UiAtlasGlyph>> = OnceLock::new();
+    GLYPHS.get_or_init(|| {
+        let mut x = UI_ATLAS_PADDING;
+        let glyphs = (32_u8..=126)
+            .map(|byte| {
+                let character = char::from(byte);
+                let (metrics, bitmap) = ui_font().rasterize(character, UI_FONT_ATLAS_SIZE);
+                let glyph = UiAtlasGlyph {
+                    character,
+                    x,
+                    metrics,
+                    bitmap,
+                };
+                x += glyph.metrics.width as u32 + UI_ATLAS_PADDING * 2;
+                glyph
+            })
+            .collect::<Vec<_>>();
+        assert!(x <= UI_ATLAS_WIDTH, "UI glyph atlas exceeds its width");
+        glyphs
     })
 }
 
@@ -48,7 +80,13 @@ pub(super) fn build_ui_vertices(frame: &UiFrame) -> Vec<Vertex> {
     }
     let mut vertices = Vec::with_capacity(frame.nodes.len() * 96);
     for node in &frame.nodes {
-        add_node(&mut vertices, frame, node);
+        if node.pressed {
+            let mut pressed = node.clone();
+            pressed.rect.y += 2.0;
+            add_node(&mut vertices, frame, &pressed);
+        } else {
+            add_node(&mut vertices, frame, node);
+        }
     }
     #[cfg(target_os = "ios")]
     log_ui_draw_vertex_count(vertices.len());
@@ -127,6 +165,34 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
         }
     }
 
+    // Checked is the shared selected state for buttons, swatches, tabs, and
+    // toggles. The light keyline plus accent ring stays readable on any fill.
+    if node.checked && matches!(node.kind, UiNodeKind::Button | UiNodeKind::Toggle) {
+        add_rounded_rect(
+            vertices,
+            frame,
+            node.rect,
+            node.corner_radius,
+            faded([0.96, 0.98, 0.94, 1.0], opacity),
+        );
+        add_rounded_rect(
+            vertices,
+            frame,
+            inset_rect(node.rect, 2.0),
+            (node.corner_radius - 2.0).max(0.0),
+            faded(node.accent, opacity),
+        );
+        if let Some(background) = node.background {
+            add_rounded_rect(
+                vertices,
+                frame,
+                inset_rect(node.rect, 5.0),
+                (node.corner_radius - 5.0).max(0.0),
+                faded(background, opacity),
+            );
+        }
+    }
+
     if let Some(image) = node.image {
         add_image(
             vertices,
@@ -193,6 +259,38 @@ fn add_node(vertices: &mut Vec<Vertex>, frame: &UiFrame, node: &UiRenderNode) {
             node.font_size,
             node.text_align,
             faded(node.foreground, opacity),
+        );
+    }
+    if node.checked
+        && node.kind == UiNodeKind::Button
+        && node.rect.width >= 50.0
+        && node.rect.height >= 50.0
+    {
+        let center = (node.rect.x + node.rect.width - 10.0, node.rect.y + 10.0);
+        add_circle(
+            vertices,
+            frame,
+            center.0,
+            center.1,
+            8.0,
+            faded([0.97, 0.99, 0.95, 1.0], opacity),
+        );
+        let ink = faded([0.02, 0.12, 0.18, 1.0], opacity);
+        add_line(
+            vertices,
+            frame,
+            (center.0 - 4.0, center.1),
+            (center.0 - 1.0, center.1 + 3.0),
+            2.2,
+            ink,
+        );
+        add_line(
+            vertices,
+            frame,
+            (center.0 - 1.0, center.1 + 3.0),
+            (center.0 + 4.0, center.1 - 3.0),
+            2.2,
+            ink,
         );
     }
 }
@@ -340,12 +438,24 @@ fn add_text(
                 .filter(|character| character.is_ascii())
                 .map(|character| {
                     let character = character.to_ascii_uppercase();
-                    let (metrics, bitmap) = ui_font().rasterize(character, font_size);
-                    UiGlyph { metrics, bitmap }
+                    let glyph = ui_atlas_glyphs()
+                        .iter()
+                        .find(|glyph| glyph.character == character)
+                        .or_else(|| {
+                            ui_atlas_glyphs()
+                                .iter()
+                                .find(|glyph| glyph.character == '?')
+                        })
+                        .expect("UI atlas includes a fallback glyph");
+                    UiGlyph { glyph }
                 })
                 .take(96)
                 .collect::<Vec<_>>();
-            let width = glyphs.iter().map(|glyph| glyph.metrics.advance_width).sum();
+            let scale = font_size / UI_FONT_ATLAS_SIZE;
+            let width = glyphs
+                .iter()
+                .map(|glyph| glyph.glyph.metrics.advance_width * scale)
+                .sum();
             UiTextLine { glyphs, width }
         })
         .collect::<Vec<_>>();
@@ -365,7 +475,9 @@ fn add_text(
             .horizontal_line_metrics(font_size)
             .map_or(font_size * 0.82, |metrics| metrics.ascent);
 
-    // Shadow, then a broad game-style outline, then the anti-aliased face.
+    // A compact shadow and proportional outline keep small labels crisp while
+    // retaining the friendly game-mark character at larger sizes.
+    let outline = (font_size * 0.11).clamp(0.8, 2.0);
     add_raster_text(
         vertices,
         frame,
@@ -374,18 +486,18 @@ fn add_text(
         first_baseline,
         line_height,
         alignment,
-        [0.01, 0.04, 0.05, color[3] * 0.42],
-        [2.0, 3.0],
+        [0.01, 0.04, 0.05, color[3] * 0.48],
+        [outline * 0.9, outline * 1.5],
     );
     for offset in [
-        [-1.7, -1.3],
-        [0.0, -1.9],
-        [1.7, -1.3],
-        [-1.9, 0.0],
-        [1.9, 0.0],
-        [-1.5, 1.4],
-        [0.0, 1.8],
-        [1.5, 1.4],
+        [-outline * 0.9, -outline * 0.7],
+        [0.0, -outline],
+        [outline * 0.9, -outline * 0.7],
+        [-outline, 0.0],
+        [outline, 0.0],
+        [-outline * 0.8, outline * 0.75],
+        [0.0, outline],
+        [outline * 0.8, outline * 0.75],
     ] {
         add_raster_text(
             vertices,
@@ -413,8 +525,7 @@ fn add_text(
 }
 
 struct UiGlyph {
-    metrics: fontdue::Metrics,
-    bitmap: Vec<u8>,
+    glyph: &'static UiAtlasGlyph,
 }
 
 struct UiTextLine {
@@ -434,6 +545,12 @@ fn add_raster_text(
     color: [f32; 4],
     offset: [f32; 2],
 ) {
+    let atlas_line_height = ui_font()
+        .horizontal_line_metrics(UI_FONT_ATLAS_SIZE)
+        .map(|metrics| metrics.new_line_size)
+        .unwrap_or(UI_FONT_ATLAS_SIZE * 1.2)
+        .max(UI_FONT_ATLAS_SIZE * 1.1);
+    let scale = line_height / atlas_line_height;
     for (line_index, line) in lines.iter().enumerate() {
         let line_width = line.width;
         let start_x = match alignment {
@@ -446,32 +563,49 @@ fn add_raster_text(
         let mut cursor_x = start_x + offset[0];
         let baseline = first_baseline + line_index as f32 * line_height + offset[1];
         for glyph in &line.glyphs {
-            let top = baseline - glyph.metrics.ymin as f32 - glyph.metrics.height as f32;
-            let left = cursor_x + glyph.metrics.xmin as f32;
-            for row in 0..glyph.metrics.height {
-                for column in 0..glyph.metrics.width {
-                    let coverage = glyph.bitmap[row * glyph.metrics.width + column];
-                    if coverage == 0 {
-                        continue;
-                    }
-                    let mut pixel_color = color;
-                    pixel_color[3] *= coverage as f32 / 255.0;
-                    add_rect(
-                        vertices,
-                        frame,
-                        UiRect {
-                            x: left + column as f32,
-                            y: top + row as f32,
-                            width: 1.05,
-                            height: 1.05,
-                        },
-                        pixel_color,
-                    );
-                }
+            let metrics = &glyph.glyph.metrics;
+            let top = baseline - metrics.ymin as f32 * scale - metrics.height as f32 * scale;
+            let left = cursor_x + metrics.xmin as f32 * scale;
+            if metrics.width > 0 && metrics.height > 0 {
+                add_atlas_rect(
+                    vertices,
+                    frame,
+                    UiRect {
+                        x: left,
+                        y: top,
+                        width: metrics.width as f32 * scale,
+                        height: metrics.height as f32 * scale,
+                    },
+                    [
+                        glyph.glyph.x as f32 / UI_ATLAS_WIDTH as f32,
+                        UI_FONT_ATLAS_Y as f32 / UI_ATLAS_HEIGHT as f32,
+                        (glyph.glyph.x + metrics.width as u32) as f32 / UI_ATLAS_WIDTH as f32,
+                        (UI_FONT_ATLAS_Y + metrics.height as u32) as f32 / UI_ATLAS_HEIGHT as f32,
+                    ],
+                    color,
+                );
             }
-            cursor_x += glyph.metrics.advance_width;
+            cursor_x += metrics.advance_width * scale;
         }
     }
+}
+
+fn add_atlas_rect(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    rect: UiRect,
+    uv: [f32; 4],
+    color: [f32; 4],
+) {
+    let [u0, v0, u1, v1] = uv;
+    let points = [
+        (rect.x, rect.y, [u0, v0]),
+        (rect.x + rect.width, rect.y, [u1, v0]),
+        (rect.x + rect.width, rect.y + rect.height, [u1, v1]),
+        (rect.x, rect.y + rect.height, [u0, v1]),
+    ];
+    add_ui_tinted_image_triangle(vertices, frame, points[0], points[1], points[2], color);
+    add_ui_tinted_image_triangle(vertices, frame, points[0], points[2], points[3], color);
 }
 
 fn add_circle(
@@ -527,17 +661,72 @@ fn add_icon(
     rect: UiRect,
     color: [f32; 4],
 ) {
-    let size = rect.width.min(rect.height).clamp(18.0, 24.0);
+    let shadow_rect = UiRect {
+        x: rect.x + 1.0,
+        y: rect.y + 1.5,
+        ..rect
+    };
+    draw_icon(
+        vertices,
+        frame,
+        name,
+        shadow_rect,
+        [0.01, 0.04, 0.05, color[3] * 0.68],
+    );
+    draw_icon(vertices, frame, name, rect, color);
+}
+
+fn draw_cube_mark(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    left: f32,
+    top: f32,
+    size: f32,
+    color: [f32; 4],
+) {
+    let top_point = (left + size * 0.50, top + size * 0.06);
+    let upper_right = (left + size * 0.88, top + size * 0.26);
+    let center = (left + size * 0.50, top + size * 0.48);
+    let upper_left = (left + size * 0.12, top + size * 0.26);
+    let lower_left = (left + size * 0.12, top + size * 0.70);
+    let bottom = (left + size * 0.50, top + size * 0.93);
+    let lower_right = (left + size * 0.88, top + size * 0.70);
+    let top_face = [color[0], color[1], color[2], color[3]];
+    let left_face = [color[0] * 0.82, color[1] * 0.82, color[2] * 0.82, color[3]];
+    let right_face = [color[0] * 0.64, color[1] * 0.64, color[2] * 0.64, color[3]];
+    add_ui_triangle(vertices, frame, top_point, upper_right, center, top_face);
+    add_ui_triangle(vertices, frame, top_point, center, upper_left, top_face);
+    add_ui_triangle(vertices, frame, upper_left, center, bottom, left_face);
+    add_ui_triangle(vertices, frame, upper_left, bottom, lower_left, left_face);
+    add_ui_triangle(
+        vertices,
+        frame,
+        center,
+        upper_right,
+        lower_right,
+        right_face,
+    );
+    add_ui_triangle(vertices, frame, center, lower_right, bottom, right_face);
+}
+
+fn draw_icon(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    name: &str,
+    rect: UiRect,
+    color: [f32; 4],
+) {
+    let size = rect.width.min(rect.height).clamp(20.0, 38.0);
     let left = rect.x + (rect.width - size) * 0.5;
     let top = rect.y + (rect.height - size) * 0.5;
     let right = left + size;
     let bottom = top + size;
     let mid_x = (left + right) * 0.5;
     let mid_y = (top + bottom) * 0.5;
-    let stroke = (size * 0.105).max(1.8);
+    let stroke = (size * 0.13).max(2.2);
 
     match name.to_ascii_lowercase().as_str() {
-        "plus" | "add" | "place" => {
+        "plus" | "add" => {
             add_line(
                 vertices,
                 frame,
@@ -555,147 +744,114 @@ fn add_icon(
                 color,
             );
         }
+        "place" => {
+            let cube_size = size * 0.72;
+            draw_cube_mark(vertices, frame, left, top + size * 0.20, cube_size, color);
+            let badge_x = right - size * 0.18;
+            let badge_y = top + size * 0.22;
+            add_circle(
+                vertices,
+                frame,
+                badge_x,
+                badge_y,
+                size * 0.22,
+                [0.02, 0.12, 0.18, color[3]],
+            );
+            add_line(
+                vertices,
+                frame,
+                (badge_x, badge_y - size * 0.11),
+                (badge_x, badge_y + size * 0.11),
+                stroke * 0.72,
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (badge_x - size * 0.11, badge_y),
+                (badge_x + size * 0.11, badge_y),
+                stroke * 0.72,
+                color,
+            );
+        }
         "rotate" => {
-            add_line(
+            let radius = size * 0.34;
+            let mut previous = None;
+            for step in 0..=9 {
+                let angle = PI * 0.22 + step as f32 / 9.0 * PI * 1.48;
+                let point = (mid_x + angle.cos() * radius, mid_y + angle.sin() * radius);
+                if let Some(previous) = previous {
+                    add_line(vertices, frame, previous, point, stroke, color);
+                }
+                previous = Some(point);
+            }
+            let tip = (mid_x + radius * 0.76, mid_y - radius * 0.76);
+            add_ui_triangle(
                 vertices,
                 frame,
-                (left + 5.0, mid_y + 3.0),
-                (left + 6.0, top + 7.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (left + 6.0, top + 7.0),
-                (mid_x + 5.0, top + 5.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (mid_x + 5.0, top + 5.0),
-                (right - 5.0, mid_y),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (right - 5.0, mid_y),
-                (right - 8.0, top + 4.5),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (right - 5.0, mid_y),
-                (right - 3.5, mid_y - 5.0),
-                stroke,
+                tip,
+                (tip.0 - size * 0.25, tip.1 - size * 0.02),
+                (tip.0 - size * 0.03, tip.1 + size * 0.24),
                 color,
             );
         }
         "remove" | "trash" | "delete" => {
+            add_rounded_rect(
+                vertices,
+                frame,
+                UiRect {
+                    x: left + size * 0.24,
+                    y: top + size * 0.31,
+                    width: size * 0.52,
+                    height: size * 0.53,
+                },
+                size * 0.07,
+                color,
+            );
+            add_rounded_rect(
+                vertices,
+                frame,
+                UiRect {
+                    x: left + size * 0.18,
+                    y: top + size * 0.22,
+                    width: size * 0.64,
+                    height: size * 0.12,
+                },
+                size * 0.05,
+                color,
+            );
+            add_rounded_rect(
+                vertices,
+                frame,
+                UiRect {
+                    x: left + size * 0.38,
+                    y: top + size * 0.12,
+                    width: size * 0.24,
+                    height: size * 0.13,
+                },
+                size * 0.05,
+                color,
+            );
+            let cutout = [0.02, 0.12, 0.18, color[3] * 0.72];
             add_line(
                 vertices,
                 frame,
-                (left + 6.0, top + 7.0),
-                (right - 6.0, top + 7.0),
-                stroke,
-                color,
+                (mid_x - size * 0.10, top + size * 0.43),
+                (mid_x - size * 0.08, bottom - size * 0.25),
+                stroke * 0.48,
+                cutout,
             );
             add_line(
                 vertices,
                 frame,
-                (left + 9.0, top + 4.0),
-                (right - 9.0, top + 4.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (left + 7.0, top + 8.0),
-                (left + 8.0, bottom - 4.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (right - 7.0, top + 8.0),
-                (right - 8.0, bottom - 4.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (left + 8.0, bottom - 4.0),
-                (right - 8.0, bottom - 4.0),
-                stroke,
-                color,
+                (mid_x + size * 0.10, top + size * 0.43),
+                (mid_x + size * 0.08, bottom - size * 0.25),
+                stroke * 0.48,
+                cutout,
             );
         }
         "cube" | "build" => {
-            add_line(
-                vertices,
-                frame,
-                (mid_x, top + 3.0),
-                (right - 4.0, top + 7.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (right - 4.0, top + 7.0),
-                (mid_x, mid_y + 2.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (mid_x, mid_y + 2.0),
-                (left + 4.0, top + 7.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (left + 4.0, top + 7.0),
-                (mid_x, top + 3.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (mid_x, mid_y + 2.0),
-                (mid_x, bottom - 3.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (mid_x, bottom - 3.0),
-                (right - 4.0, bottom - 7.0),
-                stroke,
-                color,
-            );
-            add_line(
-                vertices,
-                frame,
-                (mid_x, bottom - 3.0),
-                (left + 4.0, bottom - 7.0),
-                stroke,
-                color,
-            );
+            draw_cube_mark(vertices, frame, left, top, size, color);
         }
         "beam" => {
             add_line(
@@ -781,11 +937,41 @@ fn add_icon(
                 color,
             );
         }
-        "palette" | "color" => {
+        "palette" | "color" | "colorswap" => {
             add_circle(vertices, frame, left + 8.0, mid_y, 5.5, color);
-            add_circle(vertices, frame, mid_x, top + 6.0, 2.0, color);
-            add_circle(vertices, frame, right - 6.0, top + 9.0, 2.0, color);
-            add_circle(vertices, frame, right - 6.0, bottom - 7.0, 2.0, color);
+            add_circle(vertices, frame, right - 8.0, mid_y, 5.5, color);
+            add_line(
+                vertices,
+                frame,
+                (left + 10.0, top + 7.0),
+                (right - 7.0, top + 7.0),
+                stroke * 0.7,
+                color,
+            );
+            add_ui_triangle(
+                vertices,
+                frame,
+                (right - 5.0, top + 7.0),
+                (right - 11.0, top + 2.0),
+                (right - 11.0, top + 12.0),
+                color,
+            );
+            add_line(
+                vertices,
+                frame,
+                (right - 10.0, bottom - 7.0),
+                (left + 7.0, bottom - 7.0),
+                stroke * 0.7,
+                color,
+            );
+            add_ui_triangle(
+                vertices,
+                frame,
+                (left + 5.0, bottom - 7.0),
+                (left + 11.0, bottom - 12.0),
+                (left + 11.0, bottom - 2.0),
+                color,
+            );
         }
         "save" => {
             add_rounded_rect(
@@ -1068,6 +1254,27 @@ fn add_ui_image_triangle(
     }
 }
 
+fn add_ui_tinted_image_triangle(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    a: (f32, f32, [f32; 2]),
+    b: (f32, f32, [f32; 2]),
+    c: (f32, f32, [f32; 2]),
+    color: [f32; 4],
+) {
+    for (x, y, tex_coords) in [a, b, c] {
+        let x = x / frame.viewport.width.max(1.0) * 2.0 - 1.0;
+        let y = 1.0 - y / frame.viewport.height.max(1.0) * 2.0;
+        vertices.push(Vertex {
+            position: [x, y, 0.0],
+            normal: Vec3::ZERO.to_array(),
+            color,
+            tex_coords,
+            image_invert: 0.0,
+        });
+    }
+}
+
 fn add_ui_triangle(
     vertices: &mut Vec<Vertex>,
     frame: &UiFrame,
@@ -1160,6 +1367,7 @@ mod tests {
                 value: 0.0,
                 value_x: 0.0,
                 value_y: 0.0,
+                checked: false,
                 pressed: false,
                 disabled: false,
             }],
