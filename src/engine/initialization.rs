@@ -47,6 +47,7 @@ impl Engine {
             last_world_destination: 0,
             script: None,
             script_buffer: Vec::new(),
+            script_error_buffer: Vec::new(),
             package: None,
             package_generation: 0,
             package_buffer: Vec::new(),

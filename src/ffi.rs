@@ -409,6 +409,24 @@ pub unsafe extern "C" fn engine_load_script_buffer(engine: *mut Engine) -> u8 {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_script_error_ptr(engine: *const Engine) -> *const u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.script_error_buffer().as_ptr())
+        .unwrap_or(ptr::null())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_script_error_len(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.script_error_buffer().len())
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_package_buffer_ptr(engine: *mut Engine, length: usize) -> *mut u8 {
     unsafe { engine.as_mut() }
         .map(|engine| engine.prepare_package_buffer(length))

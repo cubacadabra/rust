@@ -401,4 +401,22 @@ mod tests {
         assert_eq!(frame.nodes[1].id, "place");
         assert_eq!(frame.nodes[0].rect.width, 351.0);
     }
+
+    #[test]
+    fn loads_the_current_first_game_bundle_resource() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../ios_app/cubacadabra/Resources/game.luau");
+        let source = std::fs::read_to_string(path).expect("bundled first-game script should exist");
+        let ui = Rc::new(RefCell::new(UiRuntime::default()));
+        let script = GameScript::load(&source, Rc::clone(&ui))
+            .unwrap_or_else(|error| panic!("bundled first-game script failed: {error}"));
+        assert!(
+            script
+                .state()
+                .borrow()
+                .lobby_status
+                .contains("BUILD TOGETHER")
+        );
+        assert!(ui.borrow().document_node_count() > 0);
+    }
 }

@@ -232,13 +232,19 @@ impl Engine {
         match GameScript::load(&source, std::rc::Rc::clone(&self.ui)) {
             Ok(script) => {
                 self.script = Some(script);
+                self.script_error_buffer.clear();
                 true
             }
-            Err(_) => {
+            Err(error) => {
                 self.script = None;
+                self.script_error_buffer = error.into_bytes();
                 false
             }
         }
+    }
+
+    pub(crate) fn script_error_buffer(&self) -> &[u8] {
+        &self.script_error_buffer
     }
 
     pub(crate) fn script_loaded(&self) -> bool {

@@ -70,6 +70,7 @@ pub struct Engine {
     pub(crate) last_world_destination: usize,
     pub(crate) script: Option<GameScript>,
     pub(crate) script_buffer: Vec<u8>,
+    pub(crate) script_error_buffer: Vec<u8>,
     pub(crate) package: Option<GamePackageDefinition>,
     pub(crate) package_generation: u32,
     pub(crate) package_buffer: Vec<u8>,
