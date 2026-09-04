@@ -1017,7 +1017,10 @@ fn shared_header_nodes(viewport: UiViewport, safe: UiRect) -> SharedHeaderGeomet
         };
     }
 
-    let compact = safe.width < 600.0;
+    // Safe-area insets make a 4:3 iPad portrait window slightly shorter than
+    // its raw bounds, so use a more forgiving threshold here.
+    let portraitish = safe.height > safe.width * 1.15;
+    let compact = safe.width < 600.0 || portraitish;
     let margin = if compact { 12.0 } else { SHARED_HEADER_MARGIN };
     let group_gap = if compact { 8.0 } else { SHARED_HEADER_GAP };
     let cell_gap = if compact { 6.0 } else { SHARED_HEADER_CELL_GAP };
@@ -1532,6 +1535,24 @@ mod tests {
         assert_eq!(context.rect.width, 164.0);
         assert!(context.rect.x > 100.0 && context.rect.x + context.rect.width < 290.0);
         assert!(context.rect.y + context.rect.height <= 844.0 - 34.0);
+    }
+
+    #[test]
+    fn portrait_ipad_uses_compact_shared_header_geometry() {
+        let mut runtime = runtime(r##"{"nodes":[]}"##, 768.0, 1024.0);
+        let frame = runtime.frame().clone();
+        let logo = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_header_logo_surface")
+            .expect("portrait iPad should render the shared header");
+        let controls = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_header_controls_surface")
+            .expect("portrait iPad should render shared controls");
+        assert_eq!(logo.rect.width, 44.0);
+        assert!(controls.rect.x + controls.rect.width < 768.0);
     }
 
     #[test]

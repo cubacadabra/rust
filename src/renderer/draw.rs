@@ -28,9 +28,10 @@ impl Renderer {
                 );
             (camera_position, target)
         };
+        let world_viewport = self.world_viewport();
         let view_projection = Mat4::perspective_rh(
             62.0_f32.to_radians(),
-            (self.width / self.height.max(1.0)).max(0.1),
+            (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1),
             0.05,
             240.0,
         ) * Mat4::look_at_rh(camera_position, target, Vec3::Y);
@@ -113,6 +114,14 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.pipeline);
+            pass.set_viewport(
+                world_viewport.0,
+                world_viewport.1,
+                world_viewport.2,
+                world_viewport.3,
+                0.0,
+                1.0,
+            );
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
             if self.static_vertex_count > 0 {
                 pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
@@ -147,6 +156,21 @@ impl Renderer {
         }
         self.queue.submit(Some(encoder.finish()));
         frame.present();
+    }
+
+    /// Keep the 3D world in its normal landscape composition when a window
+    /// becomes portrait-ish. The UI pass still covers the full scene so touch
+    /// controls can adapt to the actual window dimensions.
+    fn world_viewport(&self) -> (f32, f32, f32, f32) {
+        const LANDSCAPE_ASPECT: f32 = 16.0 / 9.0;
+        let width = self.width.max(1.0);
+        let height = self.height.max(1.0);
+        let aspect = width / height;
+        if aspect >= 1.25 {
+            return (0.0, 0.0, width, height);
+        }
+        let viewport_height = (width / LANDSCAPE_ASPECT).min(height);
+        (0.0, (height - viewport_height) * 0.5, width, viewport_height)
     }
 
     fn build_static_vertices(&self) -> Vec<Vertex> {
