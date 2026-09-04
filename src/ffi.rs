@@ -144,6 +144,18 @@ pub unsafe extern "C" fn engine_ui_external_link_hit_test(
         .unwrap_or(0)
 }
 
+/// Returns whether the engine-owned shared logo modal is visible, including
+/// its opening and closing animation.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_ui_shared_modal_visible(engine: *const Engine) -> u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| u8::from(engine.ui_shared_modal_visible()))
+        .unwrap_or(0)
+}
+
 #[unsafe(no_mangle)]
 /// Advances the host-facing UI event queue. The event is exposed as UTF-8 JSON
 /// through `engine_ui_event_ptr` and `engine_ui_event_len` until the next poll.

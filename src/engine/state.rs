@@ -24,6 +24,10 @@ impl Engine {
         self.ui.borrow_mut().is_external_link_at(x, y)
     }
 
+    pub(crate) fn ui_shared_modal_visible(&self) -> bool {
+        self.ui.borrow().shared_modal_visible()
+    }
+
     pub(crate) fn set_ui_document(&mut self, source: &str) -> bool {
         self.ui.borrow_mut().set_document_json(source).is_ok()
     }

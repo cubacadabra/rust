@@ -51,6 +51,7 @@ uint8_t engine_ui_external_link_hit_test(
     float x,
     float y
 );
+uint8_t engine_ui_shared_modal_visible(const CubacadabraEngine *engine);
 uint8_t engine_ui_poll_event(CubacadabraEngine *engine);
 const uint8_t *engine_ui_event_ptr(const CubacadabraEngine *engine);
 uintptr_t engine_ui_event_len(const CubacadabraEngine *engine);

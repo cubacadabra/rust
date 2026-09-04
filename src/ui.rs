@@ -485,6 +485,10 @@ impl UiRuntime {
         &self.frame
     }
 
+    pub(crate) fn shared_modal_visible(&self) -> bool {
+        self.shared_modal_progress > 0.0 || self.shared_modal_target > 0.0
+    }
+
     pub(crate) fn is_interactive_at(&mut self, x: f32, y: f32) -> bool {
         self.rebuild_if_needed();
         self.hit_regions.iter().rev().any(|region| {
@@ -1928,6 +1932,7 @@ mod tests {
 
         assert!(runtime.pointer(1, UiPointerPhase::Down, logo_x, logo_y));
         assert!(runtime.pointer(1, UiPointerPhase::Up, logo_x, logo_y));
+        assert!(runtime.shared_modal_visible());
         runtime.advance(1.0);
         let frame = runtime.frame().clone();
         for label in ["About", "Settings", "People", "Report", "Help"] {
@@ -1955,6 +1960,7 @@ mod tests {
         assert!(runtime.pointer(3, UiPointerPhase::Down, logo_x, logo_y));
         assert!(runtime.pointer(3, UiPointerPhase::Up, logo_x, logo_y));
         runtime.advance(1.0);
+        assert!(!runtime.shared_modal_visible());
         assert!(runtime
             .frame()
             .nodes
