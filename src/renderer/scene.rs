@@ -1,5 +1,6 @@
-use crate::engine::{Engine, SNAPSHOT_STRIDE};
+use crate::engine::Engine;
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
+use crate::types::{CharacterEntityKind, CharacterMotionSample};
 #[cfg(target_os = "ios")]
 use crate::ui::UiFrame;
 
@@ -77,29 +78,18 @@ impl Renderer {
             self.rebuild_static_vertices();
         }
 
-        let snapshot = engine.snapshot();
-        self.scene.player = render_entity(snapshot.get(..SNAPSHOT_STRIDE).unwrap_or(&[]));
+        self.scene.player = RenderEntity::default();
         self.scene.agents.clear();
         self.scene.remote_players.clear();
-        let local_agent_count = engine.local_agent_count();
-        self.scene.agents.extend(
-            snapshot
-                .as_chunks::<SNAPSHOT_STRIDE>()
-                .0
-                .iter()
-                .skip(1)
-                .take(local_agent_count)
-                .map(|values| render_entity(values)),
-        );
-        self.scene.remote_players.extend(
-            snapshot
-                .as_chunks::<SNAPSHOT_STRIDE>()
-                .0
-                .iter()
-                .skip(local_agent_count + 1)
-                .take(engine.remote_player_count())
-                .map(|values| render_entity(values)),
-        );
+        for sample in engine.character_motion_samples() {
+            match sample.key.kind {
+                CharacterEntityKind::LocalPlayer => self.scene.player = render_entity(sample),
+                CharacterEntityKind::LocalNpc => self.scene.agents.push(render_entity(sample)),
+                CharacterEntityKind::RemotePlayer => {
+                    self.scene.remote_players.push(render_entity(sample))
+                }
+            }
+        }
         self.scene.pad_seconds.clear();
         self.scene
             .pad_seconds
@@ -124,13 +114,13 @@ impl Renderer {
     }
 }
 
-fn render_entity(values: &[f32]) -> RenderEntity {
-    let value = |index: usize| values.get(index).copied().unwrap_or(0.0);
+fn render_entity(sample: CharacterMotionSample) -> RenderEntity {
     RenderEntity {
-        position: [value(0), value(1), value(2)],
-        yaw: value(3),
-        walk_cycle: value(4),
-        assembled: value(7),
+        position: sample.position,
+        yaw: sample.facing_yaw,
+        walk_cycle: sample.stride_phase,
+        moving: sample.moving,
+        sprinting: sample.sprinting,
     }
 }
 

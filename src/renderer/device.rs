@@ -478,6 +478,7 @@ impl Renderer {
             active_world: usize::MAX,
             worlds: Vec::new(),
             ui_frame: Default::default(),
+            rounded_mesh_cache: super::rounded_geometry::RoundedMeshCache::default(),
         }
     }
 

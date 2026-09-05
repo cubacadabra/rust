@@ -227,7 +227,7 @@ impl Renderer {
         mesh
     }
 
-    fn build_dynamic_vertices(&self) -> Vec<Vertex> {
+    fn build_dynamic_vertices(&mut self) -> Vec<Vertex> {
         let mut mesh = Vec::with_capacity(16_384);
         let world = &self.scene.world;
         if world.show_spawn_pad {
@@ -299,6 +299,7 @@ impl Renderer {
                 *player,
                 self.scene.player_style,
                 world.palette.ink,
+                &mut self.rounded_mesh_cache,
             );
         }
         if self.scene.camera[2] > 0.75 {
@@ -307,6 +308,7 @@ impl Renderer {
                 self.scene.player,
                 self.scene.player_style,
                 world.palette.ink,
+                &mut self.rounded_mesh_cache,
             );
         }
         mesh

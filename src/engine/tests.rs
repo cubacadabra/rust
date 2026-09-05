@@ -1,5 +1,7 @@
 use super::{Engine, SNAPSHOT_STRIDE};
-use crate::types::{Agent, AgentPhase, Input, LaunchPadPhase};
+use crate::types::{
+    Agent, AgentPhase, CharacterEntityKind, CharacterSupport, Input, LaunchPadPhase,
+};
 use crate::ui::{UiInsets, UiViewport};
 
 #[test]
@@ -116,6 +118,58 @@ fn snapshot_abi_fixture_preserves_entity_suffix_meanings() {
     engine.set_remote_player_count(50);
     assert_eq!(engine.remote_player_count(), 17);
     assert_eq!(engine.snapshot.len(), 18 * SNAPSHOT_STRIDE);
+}
+
+#[test]
+fn typed_motion_keeps_local_sprint_separate_from_npc_gathering() {
+    let mut engine = Engine::new();
+    engine.set_input(Input {
+        forward: 1.0,
+        sprint: true,
+        ..Input::default()
+    });
+    engine.step(1.0 / 60.0);
+    let samples: Vec<_> = engine.character_motion_samples().collect();
+    let local = samples
+        .iter()
+        .find(|sample| sample.key.kind == CharacterEntityKind::LocalPlayer)
+        .expect("local sample");
+    assert!(local.moving);
+    assert!(local.sprinting);
+    assert_eq!(local.support, CharacterSupport::Grounded { height: 0.0 });
+    assert_eq!(engine.snapshot[7], 1.0);
+
+    engine.set_remote_player_count(1);
+    let remote = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("remote sample");
+    assert_eq!(remote.support, CharacterSupport::Unknown);
+    assert!(remote.planar_velocity.is_none());
+    assert!(remote.vertical_velocity.is_none());
+
+    engine.agents.push(Agent {
+        position: [1.0, 0.0, 2.0],
+        target: crate::math::Vec2 { x: 1.0, z: 2.0 },
+        meeting_target: crate::math::Vec2 { x: 1.0, z: 2.0 },
+        meeting_index: 0,
+        phase: AgentPhase::Assembling,
+        spawned_at: 0.0,
+        next_decision_at: 0.0,
+        gather_at: 0.0,
+        next_jump_at: 0.0,
+        speed: 1.0,
+        walk_cycle: 0.0,
+        vertical_velocity: 0.0,
+        grounded: true,
+    });
+    let npc = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::LocalNpc)
+        .expect("NPC sample");
+    assert!(npc.moving);
+    assert!(!npc.sprinting);
+    assert_eq!(npc.support, CharacterSupport::Grounded { height: 0.0 });
 }
 
 #[test]

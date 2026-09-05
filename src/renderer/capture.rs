@@ -6,7 +6,8 @@
 //! simulation capacity, public snapshots, or runtime resource lifetime.
 
 use super::{
-    DEPTH_FORMAT, Globals, RenderEntity, RenderPalette, Vertex, add_avatar, add_cuboid, color,
+    DEPTH_FORMAT, Globals, RenderEntity, RenderPalette, Vertex, add_cuboid, add_legacy_avatar,
+    color,
 };
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
@@ -616,7 +617,8 @@ fn build_scene(
                     position: [0.0, y, z],
                     yaw: 0.0,
                     walk_cycle,
-                    assembled: 0.0,
+                    moving: !matches!(pose, Pose::Idle),
+                    sprinting: matches!(pose, Pose::Sprint),
                 });
             }
         }
@@ -627,7 +629,8 @@ fn build_scene(
                 position: [0.0, 2.0, -2.5],
                 yaw: 0.0,
                 walk_cycle: 0.9,
-                assembled: 0.0,
+                moving: true,
+                sprinting: false,
             });
         }
         Scenario::Crowd { count, .. } => {
@@ -644,7 +647,7 @@ fn build_scene(
         );
     }
     for actor in &actors {
-        add_avatar(&mut vertices, *actor, palette.avatar, palette.ink);
+        add_legacy_avatar(&mut vertices, *actor, palette.avatar, palette.ink);
     }
 
     let (camera_position, look_target) = match camera {
@@ -749,7 +752,8 @@ fn crowd_actors(count: usize, seed: u64) -> Vec<RenderEntity> {
                     std::f32::consts::PI
                 },
                 walk_cycle: index as f32 * 0.37,
-                assembled: 0.0,
+                moving: true,
+                sprinting: false,
             }
         })
         .collect()
@@ -787,7 +791,7 @@ fn world_viewport(width: u32, height: u32) -> [u32; 4] {
 }
 
 fn align_to(value: u64, alignment: u64) -> u64 {
-    (value + alignment - 1) / alignment * alignment
+    value.div_ceil(alignment) * alignment
 }
 
 fn write_png(path: &Path, width: u32, height: u32, pixels: &[u8]) -> Result<(), String> {
@@ -829,8 +833,10 @@ mod tests {
 
     #[test]
     fn phase0_quality_scales_capture_targets() {
-        let mut config = CaptureConfig::default();
-        config.quality = CaptureQuality::Half;
+        let config = CaptureConfig {
+            quality: CaptureQuality::Half,
+            ..CaptureConfig::default()
+        };
         assert_eq!(dimensions(config, PHASE0_SCENARIOS[0]), (320, 180));
     }
 }

@@ -37,6 +37,7 @@ impl Engine {
             target_camera_distance: 8.0,
             random: Random::new(0xC0BA_CAFE),
             snapshot: vec![0.0; (MAX_AGENTS + 1) * SNAPSHOT_STRIDE],
+            motion_sequence: 0,
             launch_event_id: 0,
             last_launch_pad: 0,
             last_launch_occupants: 0,

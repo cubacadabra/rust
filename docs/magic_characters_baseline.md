@@ -53,5 +53,6 @@ suffix meanings are intentionally entity-specific and are covered by
 | Remote player | constant `1.0` | constant `-1.0` | constant `0.0` |
 
 Renderer code must not interpret slot 7 as a universal `assembled` flag. The
-current legacy draw path still does so deliberately for the before-image; the
-typed motion correction belongs to Phase 1.
+Phase 0 capture keeps the hard-cuboid before-image isolated from the production
+renderer; Phase 1's typed motion path supplies locomotion state without reading
+this suffix.

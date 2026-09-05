@@ -63,6 +63,7 @@ pub struct Engine {
     pub(crate) target_camera_distance: f32,
     pub(crate) random: Random,
     pub(crate) snapshot: Vec<f32>,
+    pub(crate) motion_sequence: u64,
     pub(crate) launch_event_id: u32,
     pub(crate) last_launch_pad: usize,
     pub(crate) last_launch_occupants: usize,

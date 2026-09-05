@@ -136,6 +136,36 @@ fn add_avatar(
     agent: RenderEntity,
     style: AvatarStyle,
     face_color: [f32; 4],
+    rounded_mesh_cache: &mut rounded_geometry::RoundedMeshCache,
+) {
+    add_avatar_inner(
+        vertices,
+        agent,
+        style,
+        face_color,
+        Some(rounded_mesh_cache),
+    );
+}
+
+/// The Phase 0 capture deliberately keeps a hard-cuboid copy of the old
+/// avatar path so committed before-images do not silently change when the
+/// production comparison path advances.
+#[cfg(feature = "dev-showcase")]
+fn add_legacy_avatar(
+    vertices: &mut Vec<Vertex>,
+    agent: RenderEntity,
+    style: AvatarStyle,
+    face_color: [f32; 4],
+) {
+    add_avatar_inner(vertices, agent, style, face_color, None);
+}
+
+fn add_avatar_inner(
+    vertices: &mut Vec<Vertex>,
+    agent: RenderEntity,
+    style: AvatarStyle,
+    face_color: [f32; 4],
+    mut rounded_mesh_cache: Option<&mut rounded_geometry::RoundedMeshCache>,
 ) {
     let mut shadow_color = face_color;
     shadow_color[3] = 0.14;
@@ -148,10 +178,13 @@ fn add_avatar(
     );
     let root = Mat4::from_translation(Vec3::from_array(agent.position))
         * Mat4::from_quat(Quat::from_rotation_y(agent.yaw));
-    let stride = if agent.assembled > 0.5 {
-        0.03
-    } else {
+    let stride = if rounded_mesh_cache.is_none() {
         agent.walk_cycle.sin() * 0.5
+    } else if agent.moving {
+        let amplitude = if agent.sprinting { 0.55 } else { 0.5 };
+        agent.walk_cycle.sin() * amplitude
+    } else {
+        0.0
     };
     let bob = if agent.position[1] <= 0.01 {
         agent.walk_cycle.sin().abs() * 0.025
@@ -162,7 +195,11 @@ fn add_avatar(
     let mut part = |position: Vec3, size: Vec3, pitch: f32, color: [f32; 4]| {
         let transform =
             root * Mat4::from_translation(position) * Mat4::from_quat(Quat::from_rotation_x(pitch));
-        add_transformed_cuboid(vertices, transform, size, color);
+        if let Some(cache) = rounded_mesh_cache.as_deref_mut() {
+            add_rounded_transformed_cuboid(vertices, cache, transform, size, color);
+        } else {
+            add_transformed_cuboid(vertices, transform, size, color);
+        }
     };
 
     part(
@@ -227,4 +264,37 @@ fn add_avatar(
     );
 }
 
-
+fn add_rounded_transformed_cuboid(
+    vertices: &mut Vec<Vertex>,
+    cache: &mut rounded_geometry::RoundedMeshCache,
+    transform: Mat4,
+    size: Vec3,
+    color: [f32; 4],
+) {
+    let radius = (size.min_element() * 0.16).max(0.01);
+    let recipe = rounded_geometry::RoundedBoxRecipe::new(
+        size,
+        radius,
+        2,
+        rounded_geometry::TaperProfile::default(),
+    );
+    let Ok(mesh) = cache.get_or_build(recipe) else {
+        add_transformed_cuboid(vertices, transform, size, color);
+        return;
+    };
+    let normal_transform = transform.inverse().transpose();
+    for &index in &mesh.indices {
+        let source = mesh.vertices[index as usize];
+        let position = transform.transform_point3(source.position);
+        let normal = normal_transform
+            .transform_vector3(source.normal)
+            .normalize_or_zero();
+        vertices.push(Vertex {
+            position: position.to_array(),
+            normal: normal.to_array(),
+            color,
+            tex_coords: source.uv,
+            image_invert: 0.0,
+        });
+    }
+}

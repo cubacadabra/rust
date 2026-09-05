@@ -1,6 +1,9 @@
 use crate::engine::{ENABLE_LOCAL_NPCS, Engine, MAX_AGENTS};
 use crate::scripting::GameScript;
-use crate::types::{Input, LaunchPadPhase, RemotePlayer};
+use crate::types::{
+    CharacterEntityKey, CharacterEntityKind, CharacterMotionSample, CharacterMotionSource,
+    CharacterSupport, Input, LaunchPadPhase, Player, RemotePlayer,
+};
 use crate::ui::{UiPointerPhase, UiViewport};
 
 impl Engine {
@@ -59,6 +62,7 @@ impl Engine {
     pub fn step(&mut self, delta: f32) {
         let delta = delta.clamp(0.0, 0.05);
         self.elapsed += delta;
+        self.motion_sequence = self.motion_sequence.saturating_add(1);
         self.ui.borrow_mut().advance(delta);
         self.tick_script(delta);
         self.apply_camera_input();
@@ -97,6 +101,83 @@ impl Engine {
 
     pub(crate) fn remote_player_count(&self) -> usize {
         self.remote_players.len().min(MAX_AGENTS)
+    }
+
+    pub(crate) fn character_motion_samples(&self) -> impl Iterator<Item = CharacterMotionSample> + '_ {
+        let local = CharacterMotionSample {
+            key: CharacterEntityKey {
+                kind: CharacterEntityKind::LocalPlayer,
+                slot: 0,
+                generation: 0,
+            },
+            sequence: self.motion_sequence,
+            time: self.elapsed,
+            position: self.player.position,
+            facing_yaw: player_facing_yaw(self.player, self.view_yaw),
+            look_yaw: self.view_yaw,
+            planar_velocity: Some([self.player.velocity[0], self.player.velocity[2]]),
+            vertical_velocity: Some(self.player.velocity[1]),
+            support: player_support(self.player),
+            stride_phase: self.player.walk_cycle,
+            moving: self.player.moving,
+            sprinting: self.player.sprinting,
+            source: CharacterMotionSource::Simulation,
+        };
+        let sequence = self.motion_sequence;
+        let time = self.elapsed;
+        std::iter::once(local)
+            .chain(self.agents.iter().take(self.local_agent_count()).enumerate().map(
+                move |(slot, agent)| {
+                    let facing_yaw = (agent.target.x - agent.position[0])
+                        .atan2(agent.target.z - agent.position[2]);
+                    CharacterMotionSample {
+                        key: CharacterEntityKey {
+                            kind: CharacterEntityKind::LocalNpc,
+                            slot,
+                            generation: 0,
+                        },
+                        sequence,
+                        time,
+                        position: agent.position,
+                        facing_yaw,
+                        look_yaw: facing_yaw,
+                        planar_velocity: None,
+                        vertical_velocity: Some(agent.vertical_velocity),
+                        support: if agent.grounded {
+                            CharacterSupport::Grounded {
+                                height: agent.position[1],
+                            }
+                        } else {
+                            CharacterSupport::Airborne
+                        },
+                        stride_phase: agent.walk_cycle,
+                        moving: agent.phase != crate::types::AgentPhase::Assembled,
+                        sprinting: false,
+                        source: CharacterMotionSource::Simulation,
+                    }
+                },
+            ))
+            .chain(self.remote_players.iter().take(self.remote_player_count()).enumerate().map(
+                move |(slot, player)| CharacterMotionSample {
+                    key: CharacterEntityKey {
+                        kind: CharacterEntityKind::RemotePlayer,
+                        slot,
+                        generation: 0,
+                    },
+                    sequence,
+                    time,
+                    position: player.position,
+                    facing_yaw: player.yaw,
+                    look_yaw: player.yaw,
+                    planar_velocity: None,
+                    vertical_velocity: None,
+                    support: CharacterSupport::Unknown,
+                    stride_phase: player.walk_cycle,
+                    moving: player.moving,
+                    sprinting: player.sprinting,
+                    source: CharacterMotionSource::LegacyRemote,
+                },
+            ))
     }
 
     pub(crate) fn set_remote_player_count(&mut self, count: usize) {
@@ -266,5 +347,24 @@ impl Engine {
 
     pub(crate) fn script_loaded(&self) -> bool {
         self.script.is_some()
+    }
+}
+
+fn player_facing_yaw(player: Player, fallback: f32) -> f32 {
+    let planar_speed = player.velocity[0].hypot(player.velocity[2]);
+    if planar_speed > 0.001 {
+        (-player.velocity[0]).atan2(-player.velocity[2])
+    } else {
+        fallback
+    }
+}
+
+fn player_support(player: Player) -> CharacterSupport {
+    if player.grounded {
+        CharacterSupport::Grounded {
+            height: player.position[1],
+        }
+    } else {
+        CharacterSupport::Airborne
     }
 }

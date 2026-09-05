@@ -34,7 +34,8 @@ pub(super) struct RenderEntity {
     pub(super) position: [f32; 3],
     pub(super) yaw: f32,
     pub(super) walk_cycle: f32,
-    pub(super) assembled: f32,
+    pub(super) moving: bool,
+    pub(super) sprinting: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -195,6 +196,7 @@ pub struct Renderer {
     pub(super) active_world: usize,
     pub(super) worlds: Vec<RenderWorld>,
     pub(super) ui_frame: UiFrame,
+    rounded_mesh_cache: rounded_geometry::RoundedMeshCache,
 }
 
 fn default_player_style() -> AvatarStyle {
@@ -223,4 +225,3 @@ fn default_npc_styles() -> Vec<AvatarStyle> {
     })
     .to_vec()
 }
-

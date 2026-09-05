@@ -2,6 +2,7 @@
 pub(crate) mod capture;
 mod device;
 mod draw;
+mod rounded_geometry;
 mod scene;
 mod ui;
 

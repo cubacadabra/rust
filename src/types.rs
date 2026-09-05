@@ -30,6 +30,55 @@ pub(crate) struct RemotePlayer {
     pub(crate) walk_cycle: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CharacterEntityKind {
+    LocalPlayer,
+    LocalNpc,
+    RemotePlayer,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CharacterEntityKey {
+    pub(crate) kind: CharacterEntityKind,
+    pub(crate) slot: usize,
+    /// Zero is the legacy slot generation until a host supplies a spawn
+    /// generation. The motion source identifies that fallback explicitly.
+    pub(crate) generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CharacterMotionSource {
+    Simulation,
+    LegacyRemote,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum CharacterSupport {
+    Grounded { height: f32 },
+    Airborne,
+    Unknown,
+}
+
+/// Typed presentation input for characters. This is deliberately separate
+/// from the public eight-float snapshot, whose suffix has entity-specific
+/// meanings and remains a compatibility ABI.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CharacterMotionSample {
+    pub(crate) key: CharacterEntityKey,
+    pub(crate) sequence: u64,
+    pub(crate) time: f32,
+    pub(crate) position: [f32; 3],
+    pub(crate) facing_yaw: f32,
+    pub(crate) look_yaw: f32,
+    pub(crate) planar_velocity: Option<[f32; 2]>,
+    pub(crate) vertical_velocity: Option<f32>,
+    pub(crate) support: CharacterSupport,
+    pub(crate) stride_phase: f32,
+    pub(crate) moving: bool,
+    pub(crate) sprinting: bool,
+    pub(crate) source: CharacterMotionSource,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct BuildBlock {
     pub(crate) position: [f32; 3],
