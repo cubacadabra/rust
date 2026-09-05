@@ -4,7 +4,7 @@ use super::character_material::Material;
 #[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
 use crate::character::Pose;
 use crate::character::{
-    BodyId, BodyPart, BodyRecipe, FaceParameters, FacePreset, JointId, body_recipe,
+    BodyId, BodyPart, BodyRecipe, FaceParameters, FacePreset, JointId, OutfitId, body_recipe,
 };
 use glam::{Mat4, Quat, Vec3};
 
@@ -39,6 +39,9 @@ pub(super) enum Tint {
     Shoes,
     Face,
     Detail,
+    Outer,
+    Armor,
+    Fuzz,
     Seam,
 }
 impl Tint {
@@ -55,6 +58,24 @@ impl Tint {
                 style.shirt[2] * 0.55,
                 1.0,
             ],
+            Self::Outer => [
+                style.shirt[0] * 0.82,
+                style.shirt[1] * 0.82,
+                style.shirt[2] * 0.82,
+                1.0,
+            ],
+            Self::Armor => [
+                (style.pants[0] * 1.12).min(1.0),
+                (style.pants[1] * 1.12).min(1.0),
+                (style.pants[2] * 1.12).min(1.0),
+                1.0,
+            ],
+            Self::Fuzz => [
+                (style.shirt[0] * 1.08).min(1.0),
+                (style.shirt[1] * 1.08).min(1.0),
+                (style.shirt[2] * 1.08).min(1.0),
+                1.0,
+            ],
             Self::Seam => SEAM_COLOR,
         }
     }
@@ -65,6 +86,9 @@ impl Tint {
             Self::Pants => Material::Denim,
             Self::Shoes => Material::Rubber,
             Self::Face => Material::Face,
+            Self::Outer => Material::Coat,
+            Self::Armor => Material::SoftMetal,
+            Self::Fuzz => Material::Fuzz,
             Self::Seam => Material::Seam,
         }
     }
@@ -101,7 +125,7 @@ pub(super) fn camera_anchor(body: BodyId) -> Vec3 {
 pub(super) fn camera_target(body: BodyId) -> Vec3 {
     camera_anchors(body).1
 }
-pub(super) fn parts(recipe: &BodyRecipe) -> Vec<Part> {
+fn base_parts(recipe: &BodyRecipe) -> Vec<Part> {
     let mut vertices = Vec::with_capacity(48);
     let vertices = &mut vertices;
     let root = Anchor::new(JointId::Root);
@@ -177,6 +201,240 @@ pub(super) fn parts(recipe: &BodyRecipe) -> Vec<Part> {
     add_species_parts(vertices, root, Anchor::new(JointId::Head), &recipe);
     add_seam_cores(vertices, recipe);
     std::mem::take(vertices)
+}
+
+pub(super) fn parts_for(recipe: &BodyRecipe, outfit: OutfitId) -> Vec<Part> {
+    let mut vertices = base_parts(recipe);
+    // Keeping this as a finite authored catalog prevents arbitrary runtime
+    // geometry keys from entering the GPU cache.
+    apply_outfit(&mut vertices, recipe, outfit);
+    vertices
+}
+
+fn apply_outfit(vertices: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId) {
+    let scale_joint = |vertices: &mut Vec<Part>, joint: JointId, scale: Vec3| {
+        for part in vertices.iter_mut().filter(|part| {
+            part.anchor.joint == joint
+                && matches!(part.tint, Tint::Shirt | Tint::Pants | Tint::Shoes)
+        }) {
+            part.spec.size *= scale;
+        }
+    };
+    let add_box =
+        |vertices: &mut Vec<Part>, anchor: Anchor, size: Vec3, radius: f32, tint: Tint| {
+            vertices.push(Part {
+                anchor,
+                spec: BodyPart::new(size, radius),
+                tint,
+                feature: Feature::None,
+            });
+        };
+    let torso = Anchor::new(JointId::Torso);
+    match outfit {
+        OutfitId::EverydayHoodie => {
+            scale_joint(vertices, JointId::Torso, Vec3::new(1.10, 1.08, 1.04));
+            scale_joint(vertices, JointId::LeftUpperArm, Vec3::new(1.12, 1.08, 1.08));
+            scale_joint(
+                vertices,
+                JointId::RightUpperArm,
+                Vec3::new(1.12, 1.08, 1.08),
+            );
+            scale_joint(vertices, JointId::LeftLowerArm, Vec3::new(1.14, 1.06, 1.10));
+            scale_joint(
+                vertices,
+                JointId::RightLowerArm,
+                Vec3::new(1.14, 1.06, 1.10),
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, -0.22, -0.39)),
+                Vec3::new(0.48, 0.22, 0.035),
+                0.02,
+                Tint::Detail,
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, 0.39, -0.12)),
+                Vec3::new(0.08, 0.24, 0.035),
+                0.015,
+                Tint::Detail,
+            );
+        }
+        OutfitId::PufferExplorer => {
+            scale_joint(vertices, JointId::Torso, Vec3::new(1.23, 1.12, 1.16));
+            scale_joint(vertices, JointId::LeftUpperArm, Vec3::new(1.24, 1.08, 1.20));
+            scale_joint(
+                vertices,
+                JointId::RightUpperArm,
+                Vec3::new(1.24, 1.08, 1.20),
+            );
+            scale_joint(vertices, JointId::LeftLowerArm, Vec3::new(1.17, 1.06, 1.12));
+            scale_joint(
+                vertices,
+                JointId::RightLowerArm,
+                Vec3::new(1.17, 1.06, 1.12),
+            );
+            scale_joint(vertices, JointId::LeftFoot, Vec3::new(1.20, 1.16, 1.22));
+            scale_joint(vertices, JointId::RightFoot, Vec3::new(1.20, 1.16, 1.22));
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, 0.48, -0.02)),
+                Vec3::new(0.82, 0.18, 0.86),
+                0.08,
+                Tint::Outer,
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, 0.02, -0.43)),
+                Vec3::new(0.06, 0.66, 0.035),
+                0.015,
+                Tint::Detail,
+            );
+        }
+        OutfitId::GlossyRaincoat => {
+            scale_joint(vertices, JointId::Torso, Vec3::new(1.20, 1.22, 1.08));
+            scale_joint(vertices, JointId::LeftUpperArm, Vec3::new(1.14, 1.12, 1.08));
+            scale_joint(
+                vertices,
+                JointId::RightUpperArm,
+                Vec3::new(1.14, 1.12, 1.08),
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, -0.35, 0.0)),
+                Vec3::new(1.26, 0.20, 0.86),
+                0.09,
+                Tint::Outer,
+            );
+            add_box(
+                vertices,
+                Anchor::new(JointId::Head) * Mat4::from_translation(Vec3::new(0.0, 0.38, 0.11)),
+                Vec3::new(1.18, 0.18, 0.94),
+                0.10,
+                Tint::Outer,
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, 0.42, -0.42)),
+                Vec3::new(0.72, 0.045, 0.035),
+                0.01,
+                Tint::Detail,
+            );
+        }
+        OutfitId::StarWizard => {
+            scale_joint(vertices, JointId::Torso, Vec3::new(1.34, 1.28, 1.08));
+            scale_joint(vertices, JointId::LeftLowerLeg, Vec3::new(1.14, 1.05, 1.10));
+            scale_joint(
+                vertices,
+                JointId::RightLowerLeg,
+                Vec3::new(1.14, 1.05, 1.10),
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, -0.42, 0.03)),
+                Vec3::new(1.46, 0.26, 0.96),
+                0.12,
+                Tint::Outer,
+            );
+            add_box(
+                vertices,
+                Anchor::new(JointId::Head) * Mat4::from_translation(Vec3::new(0.0, 0.60, 0.04)),
+                Vec3::new(0.55, 0.92, 0.55),
+                0.16,
+                Tint::Outer,
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, 0.18, -0.48)),
+                Vec3::new(0.18, 0.18, 0.035),
+                0.01,
+                Tint::Detail,
+            );
+        }
+        OutfitId::ToyKnight => {
+            scale_joint(vertices, JointId::Torso, Vec3::new(1.18, 1.10, 1.12));
+            scale_joint(vertices, JointId::LeftFoot, Vec3::new(1.20, 1.18, 1.16));
+            scale_joint(vertices, JointId::RightFoot, Vec3::new(1.20, 1.18, 1.16));
+            add_box(
+                vertices,
+                Anchor::new(JointId::LeftUpperArm)
+                    * Mat4::from_translation(Vec3::new(0.0, 0.10, 0.0)),
+                Vec3::new(0.52, 0.34, 0.54),
+                0.10,
+                Tint::Armor,
+            );
+            add_box(
+                vertices,
+                Anchor::new(JointId::RightUpperArm)
+                    * Mat4::from_translation(Vec3::new(0.0, 0.10, 0.0)),
+                Vec3::new(0.52, 0.34, 0.54),
+                0.10,
+                Tint::Armor,
+            );
+            add_box(
+                vertices,
+                Anchor::new(JointId::LeftLowerArm)
+                    * Mat4::from_translation(Vec3::new(0.0, -0.02, 0.0)),
+                Vec3::new(0.42, 0.48, 0.46),
+                0.08,
+                Tint::Armor,
+            );
+            add_box(
+                vertices,
+                Anchor::new(JointId::RightLowerArm)
+                    * Mat4::from_translation(Vec3::new(0.0, -0.02, 0.0)),
+                Vec3::new(0.42, 0.48, 0.46),
+                0.08,
+                Tint::Armor,
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, 0.02, -0.43)),
+                Vec3::new(0.56, 0.48, 0.045),
+                0.015,
+                Tint::Detail,
+            );
+        }
+        OutfitId::FuzzyPajamas => {
+            scale_joint(vertices, JointId::Torso, Vec3::new(1.10, 1.08, 1.04));
+            scale_joint(vertices, JointId::LeftUpperLeg, Vec3::new(1.16, 1.10, 1.12));
+            scale_joint(
+                vertices,
+                JointId::RightUpperLeg,
+                Vec3::new(1.16, 1.10, 1.12),
+            );
+            scale_joint(vertices, JointId::LeftLowerLeg, Vec3::new(1.16, 1.08, 1.10));
+            scale_joint(
+                vertices,
+                JointId::RightLowerLeg,
+                Vec3::new(1.16, 1.08, 1.10),
+            );
+            add_box(
+                vertices,
+                torso * Mat4::from_translation(Vec3::new(0.0, -0.30, 0.0)),
+                Vec3::new(1.10, 0.15, 0.78),
+                0.07,
+                Tint::Fuzz,
+            );
+            add_box(
+                vertices,
+                Anchor::new(JointId::LeftFoot)
+                    * Mat4::from_translation(Vec3::new(0.0, -0.04, -0.05)),
+                Vec3::new(0.72, 0.20, 0.92),
+                0.08,
+                Tint::Fuzz,
+            );
+            add_box(
+                vertices,
+                Anchor::new(JointId::RightFoot)
+                    * Mat4::from_translation(Vec3::new(0.0, -0.04, -0.05)),
+                Vec3::new(0.72, 0.20, 0.92),
+                0.08,
+                Tint::Fuzz,
+            );
+        }
+    }
+    let _ = recipe;
 }
 
 fn add_part(vertices: &mut Vec<Part>, anchor: Anchor, spec: BodyPart, tint: Tint) {
@@ -380,6 +638,27 @@ pub(super) fn add_character(
     face_color: [f32; 4],
     cache: &mut super::rounded_geometry::RoundedMeshCache,
 ) {
+    add_character_with_outfit(
+        vertices,
+        entity,
+        body,
+        OutfitId::EverydayHoodie,
+        style,
+        face_color,
+        cache,
+    );
+}
+
+#[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
+pub(super) fn add_character_with_outfit(
+    vertices: &mut Vec<super::Vertex>,
+    entity: super::RenderEntity,
+    body: BodyId,
+    outfit: OutfitId,
+    style: AvatarStyle,
+    face_color: [f32; 4],
+    cache: &mut super::rounded_geometry::RoundedMeshCache,
+) {
     let recipe = body_recipe(body);
     let pose = Pose::locomotion(
         &recipe.rig,
@@ -392,7 +671,7 @@ pub(super) fn add_character(
         Quat::from_rotation_y(entity.yaw),
         Vec3::from_array(entity.position),
     );
-    for part in parts(&recipe) {
+    for part in parts_for(&recipe, outfit) {
         let transform = root * joints[part.anchor.joint.index()] * part.anchor.local;
         let mesh = cache
             .get_or_build(mesh_recipe(part.spec))
@@ -438,7 +717,7 @@ mod tests {
     #[test]
     fn compiled_parts_preserve_face_hand_and_foot_anchors() {
         for body in BodyId::ALL {
-            let parts = parts(&body_recipe(body));
+            let parts = parts_for(&body_recipe(body), OutfitId::EverydayHoodie);
             assert!(parts.len() <= 48);
             assert_eq!(
                 parts
@@ -466,5 +745,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn outfits_change_part_count_or_silhouette_recipe() {
+        let recipe = body_recipe(BodyId::Dragon);
+        let hoodie = parts_for(&recipe, OutfitId::EverydayHoodie);
+        let wizard = parts_for(&recipe, OutfitId::StarWizard);
+        let knight = parts_for(&recipe, OutfitId::ToyKnight);
+        assert_ne!(hoodie.len(), wizard.len());
+        assert_ne!(wizard.len(), knight.len());
+        assert!(wizard.iter().any(|part| matches!(part.tint, Tint::Outer)));
+        assert!(knight.iter().any(|part| matches!(part.tint, Tint::Armor)));
     }
 }

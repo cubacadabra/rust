@@ -41,6 +41,7 @@ pub(super) struct RenderEntity {
     #[allow(dead_code)]
     pub(super) legacy_assembled: bool,
     pub(super) body: crate::character::BodyId,
+    pub(super) outfit: crate::character::OutfitId,
     pub(super) pose: crate::character::Pose,
     pub(super) face: crate::character::FaceParameters,
     pub(super) secondary: crate::character::SecondaryMotion,
@@ -53,6 +54,9 @@ pub(super) struct AvatarStyle {
     pub(super) shirt: [f32; 4],
     pub(super) pants: [f32; 4],
     pub(super) shoes: [f32; 4],
+    pub(super) body: crate::character::BodyId,
+    pub(super) outfit: crate::character::OutfitId,
+    pub(super) face: crate::character::FacePreset,
 }
 
 #[derive(Clone, Copy)]
@@ -224,6 +228,9 @@ fn default_player_style() -> AvatarStyle {
         shirt: color(0x2d6663),
         pants: color(0x536a90),
         shoes: color(0x293a43),
+        body: crate::character::BodyId::Person,
+        outfit: crate::character::OutfitId::EverydayHoodie,
+        face: crate::character::FacePreset::Happy,
     }
 }
 
@@ -236,11 +243,16 @@ fn default_npc_styles() -> Vec<AvatarStyle> {
         (0xe4a77b, 0xb276a9, 0x4b5e80),
         (0xf1c29b, 0x3f8884, 0x414b5b),
     ]
-    .map(|(skin, shirt, pants)| AvatarStyle {
+    .into_iter()
+    .enumerate()
+    .map(|(index, (skin, shirt, pants))| AvatarStyle {
         skin: color(skin),
         shirt: color(shirt),
         pants: color(pants),
         shoes: color(0x293a43),
+        body: crate::character::BodyId::ALL[index % crate::character::BodyId::ALL.len()],
+        outfit: crate::character::OutfitId::EverydayHoodie,
+        face: crate::character::FacePreset::Happy,
     })
-    .to_vec()
+    .collect()
 }

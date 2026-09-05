@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "description": "Deterministic Phase 5 appearance and fit review inputs.",
+  "appearances": [
+    {"body": "cuba:person.v1", "outfit": "cuba:everyday-hoodie.v1", "label": "person hoodie"},
+    {"body": "cuba:cat.v1", "outfit": "cuba:puffer-explorer.v1", "label": "cat puffer"},
+    {"body": "cuba:cat.v1", "outfit": "cuba:glossy-raincoat.v1", "label": "cat raincoat"},
+    {"body": "cuba:dragon.v1", "outfit": "cuba:star-wizard.v1", "label": "dragon wizard"},
+    {"body": "cuba:dragon.v1", "outfit": "cuba:toy-knight.v1", "label": "dragon knight"},
+    {"body": "cuba:person.v1", "outfit": "cuba:fuzzy-pajamas.v1", "label": "person pajamas"},
+    {"body": "cuba:person.v1", "outfit": "cuba:glossy-raincoat.v1", "label": "person common fit"},
+    {"body": "cuba:cat.v1", "outfit": "cuba:everyday-hoodie.v1", "label": "cat common fit"},
+    {"body": "cuba:dragon.v1", "outfit": "cuba:glossy-raincoat.v1", "label": "dragon common fit"},
+    {"body": "cuba:person.v1", "outfit": "cuba:toy-knight.v1", "label": "unsupported falls back to hoodie"}
+  ]
+}

@@ -27,6 +27,7 @@ pub enum CaptureAvatar {
     Legacy,
     Rounded,
     ShapeProof,
+    Wardrobe,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -151,6 +152,7 @@ enum Scenario {
         camera_yaw: f32,
         silhouette: bool,
     },
+    WardrobeLineup,
 }
 
 impl Scenario {
@@ -160,6 +162,7 @@ impl Scenario {
             Self::Raised => "raised-platform-third",
             Self::Crowd { name, .. } => name,
             Self::ShapeLineup { name, .. } => name,
+            Self::WardrobeLineup => "phase5-six-outfit-lineup",
         }
     }
 }
@@ -186,6 +189,8 @@ const PHASE2_SCENARIOS: [Scenario; 4] = [
         silhouette: true,
     },
 ];
+
+const PHASE5_SCENARIOS: [Scenario; 1] = [Scenario::WardrobeLineup];
 
 const PHASE0_SCENARIOS: [Scenario; 15] = [
     Scenario::Single {
@@ -305,6 +310,7 @@ pub fn capture_phase0_baseline(
             CaptureAvatar::Legacy => "phase-0-legacy-avatar-offscreen",
             CaptureAvatar::Rounded => "phase-1-rounded-avatar-offscreen",
             CaptureAvatar::ShapeProof => "phase-2-three-body-shape-proof",
+            CaptureAvatar::Wardrobe => "phase-5-six-outfit-procedural-review",
         }
         .to_owned(),
         config,
@@ -372,6 +378,57 @@ pub fn capture_phase2_shape_proof(
         .map_err(|error| format!("serialize Phase 2 capture report: {error}"))?;
     fs::write(output_dir.join("phase2_report.json"), report_bytes)
         .map_err(|error| format!("write Phase 2 capture report: {error}"))?;
+    Ok(report)
+}
+
+/// Render the six deterministic Phase 5 hero outfits without entering the
+/// engine or changing the production renderer's simulation capacity.
+pub fn capture_phase5_outfits(
+    output_dir: impl AsRef<Path>,
+    mut config: CaptureConfig,
+) -> Result<CaptureReport, String> {
+    crate::character::catalog::validate_catalog(include_str!(
+        "../../assets/characters/catalog.json"
+    ))
+    .map_err(|error| format!("validate Phase 5 catalog: {error}"))?;
+    let output_dir = output_dir.as_ref();
+    config.avatar = CaptureAvatar::Wardrobe;
+    fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
+    let context = HeadlessContext::new()?;
+    let adapter = AdapterRecord {
+        name: context.adapter_info.name.clone(),
+        backend: format!("{:?}", context.adapter_info.backend),
+        device_type: format!("{:?}", context.adapter_info.device_type),
+        driver: context.adapter_info.driver.clone(),
+        driver_info: context.adapter_info.driver_info.clone(),
+        gpu_timestamps: context
+            .device
+            .features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY),
+    };
+    let captures = PHASE5_SCENARIOS
+        .into_iter()
+        .map(|scenario| context.capture(output_dir, config, scenario))
+        .collect::<Result<Vec<_>, _>>()?;
+    let report = CaptureReport {
+        format_version: FORMAT_VERSION,
+        fixture: "phase-5-six-outfit-procedural-review".to_owned(),
+        config,
+        adapter,
+        captures,
+        engine_capacity_characters: 18,
+        render_only_stress_characters: 50,
+        notes: vec![
+            "The six hero outfits are rendered from the bounded procedural catalog.",
+            "Person hoodie/pajamas, cat puffer/raincoat, and dragon wizard/knight are shown together.",
+            "The fixture is render-only and does not enable local NPC simulation or alter snapshots.",
+            "Run validate_character_assets before reviewing capture output.",
+        ],
+    };
+    let report_bytes = serde_json::to_vec_pretty(&report)
+        .map_err(|error| format!("serialize Phase 5 capture report: {error}"))?;
+    fs::write(output_dir.join("phase5_report.json"), report_bytes)
+        .map_err(|error| format!("write Phase 5 capture report: {error}"))?;
     Ok(report)
 }
 
@@ -736,7 +793,7 @@ fn build_scene(
             actors = crowd_actors(count, config.seed);
         }
         Scenario::ShapeLineup { camera_yaw, .. } => {
-            distance = 9.0;
+            distance = 10.0;
             target = Vec3::new(0.0, 1.58, 0.0);
             let line_axis = Vec3::new(camera_yaw.cos(), 0.0, -camera_yaw.sin());
             actors = [
@@ -757,6 +814,47 @@ fn build_scene(
             })
             .collect();
         }
+        Scenario::WardrobeLineup => {
+            distance = 9.0;
+            target = Vec3::new(0.0, 1.62, 0.0);
+            let lineup = [
+                (
+                    crate::character::BodyId::Person,
+                    crate::character::OutfitId::EverydayHoodie,
+                ),
+                (
+                    crate::character::BodyId::Cat,
+                    crate::character::OutfitId::PufferExplorer,
+                ),
+                (
+                    crate::character::BodyId::Cat,
+                    crate::character::OutfitId::GlossyRaincoat,
+                ),
+                (
+                    crate::character::BodyId::Dragon,
+                    crate::character::OutfitId::StarWizard,
+                ),
+                (
+                    crate::character::BodyId::Dragon,
+                    crate::character::OutfitId::ToyKnight,
+                ),
+                (
+                    crate::character::BodyId::Person,
+                    crate::character::OutfitId::FuzzyPajamas,
+                ),
+            ];
+            actors = lineup
+                .into_iter()
+                .enumerate()
+                .map(|(index, (body, outfit))| RenderEntity {
+                    position: [index as f32 * 1.4 - 3.5, 0.0, 0.0],
+                    yaw: 0.0,
+                    body,
+                    outfit,
+                    ..Default::default()
+                })
+                .collect();
+        }
     }
     if raised {
         add_cuboid(
@@ -766,7 +864,13 @@ fn build_scene(
             palette.platform,
         );
     }
-    let shape_silhouette = matches!(scenario, Scenario::ShapeLineup { silhouette: true, .. });
+    let shape_silhouette = matches!(
+        scenario,
+        Scenario::ShapeLineup {
+            silhouette: true,
+            ..
+        }
+    );
     for actor in &actors {
         match config.avatar {
             CaptureAvatar::Legacy => {
@@ -786,6 +890,7 @@ fn build_scene(
                         shirt: color(0x10242b),
                         pants: color(0x10242b),
                         shoes: color(0x10242b),
+                        ..super::default_player_style()
                     }
                 } else {
                     match actor.body {
@@ -795,12 +900,14 @@ fn build_scene(
                             shirt: color(0x5f8f78),
                             pants: color(0x536a90),
                             shoes: color(0x293a43),
+                            ..super::default_player_style()
                         },
                         crate::character::BodyId::Dragon => super::AvatarStyle {
                             skin: color(0x82b78f),
                             shirt: color(0x694c88),
                             pants: color(0x536a90),
                             shoes: color(0x293a43),
+                            ..super::default_player_style()
                         },
                     }
                 };
@@ -809,7 +916,25 @@ fn build_scene(
                     *actor,
                     actor.body,
                     style,
-                    if shape_silhouette { style.skin } else { palette.ink },
+                    if shape_silhouette {
+                        style.skin
+                    } else {
+                        palette.ink
+                    },
+                    &mut rounded_mesh_cache,
+                );
+            }
+            CaptureAvatar::Wardrobe => {
+                let mut style = palette.avatar;
+                style.body = actor.body;
+                style.outfit = actor.outfit;
+                super::character::add_character_with_outfit(
+                    &mut vertices,
+                    *actor,
+                    actor.body,
+                    actor.outfit,
+                    style,
+                    palette.ink,
                     &mut rounded_mesh_cache,
                 );
             }
@@ -828,7 +953,11 @@ fn build_scene(
                 _ => 0.0,
             };
             let position = target
-                + Vec3::new(camera_yaw.sin() * distance, vertical, camera_yaw.cos() * distance);
+                + Vec3::new(
+                    camera_yaw.sin() * distance,
+                    vertical,
+                    camera_yaw.cos() * distance,
+                );
             (position, target)
         }
     };
@@ -862,6 +991,7 @@ fn capture_palette(palette: CapturePalette) -> CaptureColors {
                 shirt: color(0x176b87),
                 pants: color(0x313a72),
                 shoes: color(0x141c2b),
+                ..super::default_player_style()
             },
             sky: color(0xd9edf0),
             ground: color(0xc2d6a5),

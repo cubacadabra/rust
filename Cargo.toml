@@ -19,6 +19,11 @@ name = "magic_characters_capture"
 path = "src/bin/magic_characters_capture.rs"
 required-features = ["dev-showcase"]
 
+[[bin]]
+name = "validate_character_assets"
+path = "src/bin/validate_character_assets.rs"
+required-features = ["dev-showcase"]
+
 [dependencies]
 fontdue = "0.9"
 log = "0.4"

@@ -23,3 +23,22 @@ cargo run --features dev-showcase --bin magic_characters_capture -- \
 The resulting front, side, back and black-silhouette PNGs are review evidence;
 they are not a replacement for gameplay captures.
 
+## Phase 5 wardrobe catalog
+
+The six official outfits are finite procedural recipes in the renderer and
+their fit/material/LOD/provenance contract is recorded in `catalog.json`.
+`phase5_fixture.json` is the deterministic supported/unsupported combination
+matrix used by the resolver tests. There are no external texture downloads in
+this slice; `textureBytes: 0` is intentional until authored filtered textures
+are added.
+
+Validate the catalog offline before checking in an asset change:
+
+```sh
+cargo run --features dev-showcase --bin validate_character_assets
+```
+
+The validator enforces the six outfit IDs, declared body fits, non-empty
+coverage/material/LOD metadata, provenance records, and the 8 MiB compressed
+character payload ceiling. An unsupported body/outfit request falls back to
+the bundled everyday hoodie atomically; it never partially equips a recipe.

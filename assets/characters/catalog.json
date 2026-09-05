@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "contentVersion": "phase5-2026-09-05",
+  "outfits": [
+    {
+      "id": "cuba:everyday-hoodie.v1",
+      "supportedBodies": ["cuba:person.v1", "cuba:cat.v1", "cuba:dragon.v1"],
+      "occupiedSlots": ["shirt", "pants", "shoes"],
+      "coverage": ["torso", "upper-arms", "lower-arms"],
+      "conflicts": ["dress", "jacket", "full-boots"],
+      "materials": ["cloth", "denim", "rubber"],
+      "lod": {"near": 8000, "mid": 3000, "far": 800},
+      "textureBytes": 0
+    },
+    {
+      "id": "cuba:puffer-explorer.v1",
+      "supportedBodies": ["cuba:cat.v1"],
+      "occupiedSlots": ["shirt", "jacket", "pants", "shoes"],
+      "coverage": ["torso", "upper-arms", "lower-arms", "feet"],
+      "conflicts": ["dress", "raincoat", "full-boots"],
+      "materials": ["quilted-cloth", "rubber"],
+      "lod": {"near": 7600, "mid": 2800, "far": 760},
+      "textureBytes": 0
+    },
+    {
+      "id": "cuba:glossy-raincoat.v1",
+      "supportedBodies": ["cuba:person.v1", "cuba:cat.v1", "cuba:dragon.v1"],
+      "occupiedSlots": ["jacket", "hat", "pants", "shoes"],
+      "coverage": ["torso", "upper-arms", "head"],
+      "conflicts": ["dress", "hoodie", "hair", "horn-accessory"],
+      "materials": ["waterproof-gloss", "rubber"],
+      "lod": {"near": 7800, "mid": 2900, "far": 780},
+      "textureBytes": 0
+    },
+    {
+      "id": "cuba:star-wizard.v1",
+      "supportedBodies": ["cuba:dragon.v1"],
+      "occupiedSlots": ["dress", "hat", "back"],
+      "coverage": ["torso", "legs", "head"],
+      "conflicts": ["pants", "jacket", "horn-accessory", "wings"],
+      "materials": ["cloth", "trim", "emission"],
+      "lod": {"near": 8000, "mid": 3000, "far": 800},
+      "textureBytes": 0
+    },
+    {
+      "id": "cuba:toy-knight.v1",
+      "supportedBodies": ["cuba:dragon.v1"],
+      "occupiedSlots": ["jacket", "left-hand", "right-hand", "shoes"],
+      "coverage": ["torso", "upper-arms", "lower-arms", "feet"],
+      "conflicts": ["dress", "raincoat", "full-boots"],
+      "materials": ["soft-metal", "padded-cloth", "rubber"],
+      "lod": {"near": 8200, "mid": 3000, "far": 800},
+      "textureBytes": 0
+    },
+    {
+      "id": "cuba:fuzzy-pajamas.v1",
+      "supportedBodies": ["cuba:person.v1"],
+      "occupiedSlots": ["shirt", "pants", "shoes"],
+      "coverage": ["torso", "arms", "legs", "feet"],
+      "conflicts": ["dress", "jacket", "full-boots"],
+      "materials": ["fuzz", "cloth", "rubber"],
+      "lod": {"near": 7200, "mid": 2600, "far": 700},
+      "textureBytes": 0
+    }
+  ],
+  "materials": [
+    {"id": "cloth", "texture": null},
+    {"id": "denim", "texture": null},
+    {"id": "rubber", "texture": null},
+    {"id": "quilted-cloth", "texture": null},
+    {"id": "waterproof-gloss", "texture": null},
+    {"id": "trim", "texture": null},
+    {"id": "emission", "texture": null},
+    {"id": "soft-metal", "texture": null},
+    {"id": "padded-cloth", "texture": null},
+    {"id": "fuzz", "texture": null}
+  ],
+  "licenses": [
+    {"id": "cuba:everyday-hoodie.v1", "source": "procedural recipe", "license": "Cubacadabra official"},
+    {"id": "cuba:puffer-explorer.v1", "source": "procedural recipe", "license": "Cubacadabra official"},
+    {"id": "cuba:glossy-raincoat.v1", "source": "procedural recipe", "license": "Cubacadabra official"},
+    {"id": "cuba:star-wizard.v1", "source": "procedural recipe", "license": "Cubacadabra official"},
+    {"id": "cuba:toy-knight.v1", "source": "procedural recipe", "license": "Cubacadabra official"},
+    {"id": "cuba:fuzzy-pajamas.v1", "source": "procedural recipe", "license": "Cubacadabra official"}
+  ]
+}

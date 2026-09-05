@@ -1,11 +1,11 @@
+use crate::character::{AnimationOutput, CharacterPresentationState};
+use crate::character::{AppearanceInput, BodyId, CharacterColors, OutfitId, resolve_appearance};
 use crate::engine::Engine;
-use crate::character::BodyId;
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
 use crate::types::{CharacterEntityKind, CharacterMotionSample};
-use crate::character::{AnimationOutput, CharacterPresentationState};
-use std::collections::HashSet;
 #[cfg(target_os = "ios")]
 use crate::ui::UiFrame;
+use std::collections::HashSet;
 
 #[cfg(target_os = "ios")]
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -98,26 +98,41 @@ impl Renderer {
         let mut active_keys = HashSet::with_capacity(samples.len());
         for sample in samples {
             active_keys.insert(sample.key);
-            let body = body_for_sample(sample);
+            let style = match sample.key.kind {
+                CharacterEntityKind::LocalNpc => self
+                    .scene
+                    .npc_styles
+                    .get(sample.key.slot % self.scene.npc_styles.len().max(1))
+                    .copied()
+                    .unwrap_or(self.scene.player_style),
+                CharacterEntityKind::LocalPlayer | CharacterEntityKind::RemotePlayer => {
+                    self.scene.player_style
+                }
+            };
+            let body = style.body;
             let reduced_effects = self.scene.reduced_effects;
-            let animation = self
+            let presentation = self
                 .scene
                 .presentation
                 .entry(sample.key)
-                .or_insert_with(|| CharacterPresentationState::new(sample.key, body))
-                .evaluate(sample, body, reduced_effects);
+                .or_insert_with(|| CharacterPresentationState::new(sample.key, body));
+            presentation.set_expression(style.face);
+            let animation = presentation.evaluate(sample, body, reduced_effects);
             match sample.key.kind {
                 CharacterEntityKind::LocalPlayer => {
-                    self.scene.player = render_entity(sample, body, animation)
+                    self.scene.player = render_entity(sample, body, style.outfit, animation)
                 }
                 CharacterEntityKind::LocalNpc => {
-                    self.scene.agents.push(render_entity(sample, body, animation))
-                }
-                CharacterEntityKind::RemotePlayer => {
                     self.scene
-                        .remote_players
-                        .push(render_entity(sample, body, animation))
+                        .agents
+                        .push(render_entity(sample, body, style.outfit, animation))
                 }
+                CharacterEntityKind::RemotePlayer => self.scene.remote_players.push(render_entity(
+                    sample,
+                    body,
+                    style.outfit,
+                    animation,
+                )),
             }
         }
         self.scene
@@ -147,14 +162,12 @@ impl Renderer {
     }
 }
 
-fn body_for_sample(sample: CharacterMotionSample) -> BodyId {
-    match sample.key.kind {
-        CharacterEntityKind::LocalNpc => BodyId::ALL[sample.key.slot % BodyId::ALL.len()],
-        CharacterEntityKind::LocalPlayer | CharacterEntityKind::RemotePlayer => BodyId::Person,
-    }
-}
-
-fn render_entity(sample: CharacterMotionSample, body: BodyId, animation: AnimationOutput) -> RenderEntity {
+fn render_entity(
+    sample: CharacterMotionSample,
+    body: BodyId,
+    outfit: crate::character::OutfitId,
+    animation: AnimationOutput,
+) -> RenderEntity {
     RenderEntity {
         position: sample.position,
         yaw: sample.facing_yaw,
@@ -163,6 +176,7 @@ fn render_entity(sample: CharacterMotionSample, body: BodyId, animation: Animati
         sprinting: sample.sprinting,
         legacy_assembled: false,
         body,
+        outfit,
         pose: animation.pose,
         face: animation.face,
         secondary: animation.secondary,
@@ -262,27 +276,68 @@ fn resolve_avatar_styles(package: &GamePackageDefinition) -> (AvatarStyle, Vec<A
 }
 
 fn resolve_avatar_style(definition: &AvatarDefinition, fallback: AvatarStyle) -> AvatarStyle {
-    AvatarStyle {
+    let legacy = CharacterColors {
         skin: definition
             .skin
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(fallback.skin),
-        shirt: definition
+        primary: definition
             .shirt
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(fallback.shirt),
-        pants: definition
+        secondary: definition
             .pants
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(fallback.pants),
-        shoes: definition
+        sole: definition
             .shoes
             .as_deref()
             .and_then(parse_hex_color)
             .unwrap_or(fallback.shoes),
+    };
+    let resolution = definition.character.as_ref().map(|character| {
+        let _bounded = character.bounded();
+        resolve_appearance(AppearanceInput {
+            version: character.version,
+            body: character.body.as_deref(),
+            face: character.face.as_deref(),
+            outfit: character.outfit.as_deref(),
+            equipment: &character.equipment,
+            colors: &character.colors,
+            legacy_colors: legacy,
+            revision: character.revision,
+        })
+    });
+    let appearance = resolution
+        .map(|resolution| resolution.appearance)
+        .unwrap_or_else(|| {
+            resolve_appearance(AppearanceInput {
+                version: Some(1),
+                body: Some(fallback.body.stable_id()),
+                face: Some(fallback.face.stable_id()),
+                outfit: Some(fallback.outfit.stable_id()),
+                equipment: &std::collections::BTreeMap::new(),
+                colors: &std::collections::BTreeMap::new(),
+                legacy_colors: legacy,
+                revision: 0,
+            })
+            .appearance
+        });
+    AvatarStyle {
+        skin: appearance.colors.skin,
+        shirt: appearance.colors.primary,
+        pants: appearance.colors.secondary,
+        shoes: appearance.colors.sole,
+        body: appearance.body,
+        outfit: if appearance.outfit.supported_by(appearance.body) {
+            appearance.outfit
+        } else {
+            OutfitId::fallback()
+        },
+        face: appearance.face,
     }
 }
 

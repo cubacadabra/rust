@@ -364,6 +364,63 @@ pub(crate) struct AvatarDefinition {
     pub(crate) shirt: Option<String>,
     pub(crate) pants: Option<String>,
     pub(crate) shoes: Option<String>,
+    #[serde(default)]
+    pub(crate) character: Option<CharacterDefinition>,
+}
+
+/// Additive Phase 5 appearance data. The four legacy color strings remain
+/// siblings of this object so old packages keep their original shape.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CharacterDefinition {
+    #[serde(default)]
+    pub(crate) version: Option<u16>,
+    #[serde(default)]
+    pub(crate) body: Option<String>,
+    #[serde(default)]
+    pub(crate) face: Option<String>,
+    #[serde(default)]
+    pub(crate) outfit: Option<String>,
+    #[serde(default)]
+    pub(crate) equipment: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(crate) colors: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(crate) revision: u32,
+}
+
+impl CharacterDefinition {
+    pub(crate) fn bounded(&self) -> bool {
+        self.asset_strings().all(|value| {
+            value.len() <= 96
+                && value.is_ascii()
+                && value.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric()
+                        || matches!(byte, b':' | b'.' | b'-' | b'_' | b'/' | b'#')
+                })
+        }) && self.equipment.len() <= 32
+            && self.colors.len() <= 16
+            && self.estimated_size() <= 4096
+    }
+
+    fn asset_strings(&self) -> impl Iterator<Item = &str> {
+        self.body
+            .iter()
+            .chain(self.face.iter())
+            .chain(self.outfit.iter())
+            .chain(self.equipment.keys())
+            .chain(self.equipment.values())
+            .chain(self.colors.keys())
+            .chain(self.colors.values())
+            .map(String::as_str)
+    }
+
+    fn estimated_size(&self) -> usize {
+        self.asset_strings().map(str::len).sum::<usize>()
+            + self.equipment.len() * 8
+            + self.colors.len() * 8
+            + 32
+    }
 }
 
 #[cfg(test)]
@@ -407,5 +464,49 @@ mod tests {
         assert_eq!(lobby.world.clouds[0].position(), [4.0, 5.0, 6.0]);
         assert_eq!(lobby.launch_pads[0].label, "SUN COURT");
         assert!(!lobby.blocks[0].outline);
+    }
+
+    #[test]
+    fn phase5_character_member_is_additive_and_bounded() {
+        let package = GamePackageDefinition::parse(
+            r##"{
+                "avatars": {
+                    "player": {
+                        "skin": "#e8ae86",
+                        "shirt": "#2d6663",
+                        "character": {
+                            "version": 1,
+                            "body": "cuba:person.v1",
+                            "face": "happy",
+                            "outfit": "cuba:everyday-hoodie.v1",
+                            "equipment": {"hat": "cuba:star-cap.v1"},
+                            "colors": {"sole": "#f6f1e7"}
+                        }
+                    }
+                }
+            }"##,
+        )
+        .expect("phase 5 appearance should parse");
+        let character = package
+            .avatars
+            .player
+            .as_ref()
+            .and_then(|avatar| avatar.character.as_ref())
+            .expect("character member");
+        assert_eq!(character.body.as_deref(), Some("cuba:person.v1"));
+        assert_eq!(
+            character.equipment.get("hat").map(String::as_str),
+            Some("cuba:star-cap.v1")
+        );
+        assert!(character.bounded());
+    }
+
+    #[test]
+    fn old_avatar_shape_still_parses_without_character_data() {
+        let package = GamePackageDefinition::parse(
+            r##"{"avatars":{"player":{"skin":"#ffffff","shirt":"#000000"}}}"##,
+        )
+        .expect("legacy avatar should parse");
+        assert!(package.avatars.player.unwrap().character.is_none());
     }
 }

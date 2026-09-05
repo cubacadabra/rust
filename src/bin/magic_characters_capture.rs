@@ -1,7 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use cubacadabra_engine::dev_showcase::{
     CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, capture_phase0_baseline,
-    capture_phase2_shape_proof, capture_phase3,
+    capture_phase2_shape_proof, capture_phase3, capture_phase5_outfits,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::env;
@@ -61,6 +61,8 @@ fn main() {
     let output = output.unwrap_or_else(|| {
         PathBuf::from(if phase == 3 {
             "docs/baselines/magic-characters/phase3/native".to_owned()
+        } else if phase == 5 {
+            "docs/baselines/magic-characters/phase5".to_owned()
         } else {
             format!("docs/baselines/magic-characters/phase{phase}")
         })
@@ -81,8 +83,24 @@ fn main() {
         }
         return;
     }
+    if phase == 5 {
+        match capture_phase5_outfits(&output, config) {
+            Ok(report) => println!(
+                "wrote {} outfit capture(s) to {} (adapter={} backend={})",
+                report.captures.len(),
+                output.display(),
+                report.adapter.name,
+                report.adapter.backend
+            ),
+            Err(error) => {
+                eprintln!("Phase 5: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     if phase != 0 && phase != 2 {
-        usage("supported phases are 0, 2 and 3");
+        usage("supported phases are 0, 2, 3 and 5");
     }
     let result = if phase == 2 {
         capture_phase2_shape_proof(&output, config)
@@ -144,7 +162,7 @@ fn usage(error: &str) -> ! {
         eprintln!("error: {error}");
     }
     eprintln!(
-        "usage: magic_characters_capture [--phase 0|2|3] [--output DIR] [--seed N] [--pose-time SECONDS] \
+        "usage: magic_characters_capture [--phase 0|2|3|5] [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
          [--quality full|half] [--palette current|high-contrast] \
          [--avatar legacy|rounded|shape-proof]"

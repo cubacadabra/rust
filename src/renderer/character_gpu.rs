@@ -6,13 +6,13 @@ use super::{
     character_material::{self, CharacterInstance, CharacterPass, CharacterVertex, Material},
     rounded_geometry::RoundedMeshCache,
 };
-use crate::character::{BodyId, BodyRecipe, body_recipe};
+use crate::character::{BodyId, BodyRecipe, OutfitId, body_recipe};
 use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 
 pub(super) const MAX_CHARACTERS: usize = 50;
 const MAX_PARTS: usize = 48;
-const MAX_MESHES: usize = 64;
+const MAX_MESHES: usize = 256;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
 
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
@@ -30,11 +30,7 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
         }
         Feature::Mouth => {
             local = local
-                * Mat4::from_translation(glam::Vec3::new(
-                    0.0,
-                    face.mouth_curve * 0.025,
-                    0.0,
-                ))
+                * Mat4::from_translation(glam::Vec3::new(0.0, face.mouth_curve * 0.025, 0.0))
                 * Mat4::from_quat(Quat::from_rotation_z(face.mouth_curve * 0.18))
                 * Mat4::from_scale(glam::Vec3::new(
                     1.0 + face.mouth_opening * 0.22,
@@ -43,10 +39,8 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 ));
         }
         Feature::Ear(side) => {
-            local = local
-                * Mat4::from_quat(Quat::from_rotation_z(
-                    side * entity.secondary.ear_tilt,
-                ));
+            local =
+                local * Mat4::from_quat(Quat::from_rotation_z(side * entity.secondary.ear_tilt));
         }
         Feature::Tail(progress) => {
             local = local
@@ -55,10 +49,8 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 ));
         }
         Feature::Wing(side) => {
-            local = local
-                * Mat4::from_quat(Quat::from_rotation_z(
-                    side * entity.secondary.wing_flap,
-                ));
+            local =
+                local * Mat4::from_quat(Quat::from_rotation_z(side * entity.secondary.wing_flap));
         }
     }
     if matches!(part.tint, character::Tint::Seam) {
@@ -74,6 +66,8 @@ struct Mesh {
     index_count: u32,
 }
 struct CompiledBody {
+    body: BodyId,
+    outfit: OutfitId,
     recipe: BodyRecipe,
     parts: Vec<(Part, usize)>,
 }
@@ -121,65 +115,74 @@ impl CharacterRenderer {
         let mut mesh_bytes = 0;
         let mut cache = RoundedMeshCache::new(MAX_MESHES);
         for body in BodyId::ALL {
-            let recipe = body_recipe(body);
-            recipe.rig.validate().expect("bundled rig");
-            let pieces = character::parts(&recipe);
-            assert!(pieces.len() <= MAX_PARTS);
-            let mut parts = Vec::with_capacity(pieces.len());
-            for part in pieces {
-                let mesh_recipe = character::mesh_recipe(part.spec);
-                let mesh_index = recipes
-                    .iter()
-                    .position(|key| *key == mesh_recipe)
-                    .unwrap_or_else(|| {
-                        assert!(meshes.len() < MAX_MESHES);
-                        let mesh = cache.get_or_build(mesh_recipe).expect("bundled mesh");
-                        let vertices: Vec<_> = mesh
-                            .vertices
-                            .iter()
-                            .map(|v| CharacterVertex {
-                                position: v.position.to_array(),
-                                normal: v.normal.to_array(),
-                                uv: v.uv,
-                            })
-                            .collect();
-                        mesh_bytes +=
-                            size_of_val(vertices.as_slice()) + size_of_val(mesh.indices.as_slice());
-                        assert!(mesh_bytes < MAX_RESIDENCY);
-                        meshes.push(Mesh {
-                            vertices: device.create_buffer_init(
-                                &wgpu::util::BufferInitDescriptor {
-                                    label: Some("immutable character vertices"),
-                                    contents: bytemuck::cast_slice(&vertices),
-                                    usage: wgpu::BufferUsages::VERTEX,
-                                },
-                            ),
-                            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                                label: Some("immutable character indices"),
-                                contents: bytemuck::cast_slice(&mesh.indices),
-                                usage: wgpu::BufferUsages::INDEX,
-                            }),
-                            index_count: mesh.indices.len() as u32,
+            for outfit in OutfitId::ALL {
+                let recipe = body_recipe(body);
+                recipe.rig.validate().expect("bundled rig");
+                let pieces = character::parts_for(&recipe, outfit);
+                assert!(pieces.len() <= MAX_PARTS);
+                let mut parts = Vec::with_capacity(pieces.len());
+                for part in pieces {
+                    let mesh_recipe = character::mesh_recipe(part.spec);
+                    let mesh_index = recipes
+                        .iter()
+                        .position(|key| *key == mesh_recipe)
+                        .unwrap_or_else(|| {
+                            assert!(meshes.len() < MAX_MESHES);
+                            let mesh = cache.get_or_build(mesh_recipe).expect("bundled mesh");
+                            let vertices: Vec<_> = mesh
+                                .vertices
+                                .iter()
+                                .map(|v| CharacterVertex {
+                                    position: v.position.to_array(),
+                                    normal: v.normal.to_array(),
+                                    uv: v.uv,
+                                })
+                                .collect();
+                            mesh_bytes += size_of_val(vertices.as_slice())
+                                + size_of_val(mesh.indices.as_slice());
+                            assert!(mesh_bytes < MAX_RESIDENCY);
+                            meshes.push(Mesh {
+                                vertices: device.create_buffer_init(
+                                    &wgpu::util::BufferInitDescriptor {
+                                        label: Some("immutable character vertices"),
+                                        contents: bytemuck::cast_slice(&vertices),
+                                        usage: wgpu::BufferUsages::VERTEX,
+                                    },
+                                ),
+                                indices: device.create_buffer_init(
+                                    &wgpu::util::BufferInitDescriptor {
+                                        label: Some("immutable character indices"),
+                                        contents: bytemuck::cast_slice(&mesh.indices),
+                                        usage: wgpu::BufferUsages::INDEX,
+                                    },
+                                ),
+                                index_count: mesh.indices.len() as u32,
+                            });
+                            recipes.push(mesh_recipe);
+                            meshes.len() - 1
                         });
-                        recipes.push(mesh_recipe);
-                        meshes.len() - 1
-                    });
-                let material = part.tint.material();
-                let batch = batches
-                    .iter()
-                    .position(|b| b.mesh == mesh_index && b.material == material)
-                    .unwrap_or_else(|| {
-                        batches.push(Batch {
-                            mesh: mesh_index,
-                            material,
-                            instances: Vec::new(),
-                            start: 0,
+                    let material = part.tint.material();
+                    let batch = batches
+                        .iter()
+                        .position(|b| b.mesh == mesh_index && b.material == material)
+                        .unwrap_or_else(|| {
+                            batches.push(Batch {
+                                mesh: mesh_index,
+                                material,
+                                instances: Vec::new(),
+                                start: 0,
+                            });
+                            batches.len() - 1
                         });
-                        batches.len() - 1
-                    });
-                parts.push((part, batch));
+                    parts.push((part, batch));
+                }
+                bodies.push(CompiledBody {
+                    body,
+                    outfit,
+                    recipe,
+                    parts,
+                });
             }
-            bodies.push(CompiledBody { recipe, parts });
         }
         // Reserve each batch for the worst single-body crowd, not for an
         // arbitrary float recipe or unbounded stream of appearance changes.
@@ -258,10 +261,12 @@ impl CharacterRenderer {
         {
             return;
         }
-        let body = &self.bodies[BodyId::ALL
+        let body = self
+            .bodies
             .iter()
-            .position(|b| *b == entity.body)
-            .unwrap_or(0)];
+            .find(|candidate| candidate.body == entity.body && candidate.outfit == entity.outfit)
+            .or_else(|| self.bodies.first())
+            .expect("bundled character catalog");
         let pose = entity.pose;
         let joints = body.recipe.rig.world_matrices(&pose.transforms);
         let root = Mat4::from_rotation_translation(
@@ -270,9 +275,8 @@ impl CharacterRenderer {
         );
         for (part, index) in &body.parts {
             let batch = &mut self.batches[*index];
-            let transform = root
-                * joints[part.anchor.joint.index()]
-                * feature_transform(*part, entity);
+            let transform =
+                root * joints[part.anchor.joint.index()] * feature_transform(*part, entity);
             let mut tint = part.tint.color(style, face).map(|v| {
                 if v.is_finite() {
                     v.clamp(0.0, 1.0)
@@ -327,7 +331,7 @@ impl CharacterRenderer {
             Mat4::from_scale_rotation_translation(
                 Vec3::splat(4.0),
                 Quat::IDENTITY,
-                Vec3::new(0.0, 2.84, -0.9),
+                Vec3::new(0.0, 1.72, -0.9),
             ),
             [0.28, 0.95, 0.87, 1.0],
             Material::Seam,
