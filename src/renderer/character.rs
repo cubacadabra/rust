@@ -74,6 +74,17 @@ pub(super) struct Part {
     pub anchor: Anchor,
     pub spec: BodyPart,
     pub tint: Tint,
+    pub feature: Feature,
+}
+#[derive(Clone, Copy)]
+pub(super) enum Feature {
+    None,
+    Eye(f32),
+    Brow(f32),
+    Mouth,
+    Ear(f32),
+    Tail(f32),
+    Wing(f32),
 }
 fn camera_anchors(body: BodyId) -> (Vec3, Vec3) {
     static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 3]> = std::sync::OnceLock::new();
@@ -93,7 +104,6 @@ pub(super) fn camera_target(body: BodyId) -> Vec3 {
 pub(super) fn parts(recipe: &BodyRecipe) -> Vec<Part> {
     let mut vertices = Vec::with_capacity(48);
     let vertices = &mut vertices;
-    let body = recipe.id;
     let root = Anchor::new(JointId::Root);
     let part = |vertices: &mut Vec<Part>, joint: JointId, spec: BodyPart, color: Tint| {
         add_part(vertices, Anchor::new(joint), spec, color);
@@ -153,11 +163,10 @@ pub(super) fn parts(recipe: &BodyRecipe) -> Vec<Part> {
     part(vertices, JointId::LeftFoot, recipe.foot, Tint::Shoes);
     part(vertices, JointId::RightFoot, recipe.foot, Tint::Shoes);
 
-    let face = match body {
-        BodyId::Person => FaceParameters::preset(FacePreset::Happy),
-        BodyId::Cat => FaceParameters::preset(FacePreset::Happy),
-        BodyId::Dragon => FaceParameters::preset(FacePreset::Determined),
-    };
+    // Facial proportions are authored once in a neutral state. Expression
+    // parameters scale/offset these same pieces at presentation time, so
+    // twenty expressions do not multiply body geometry.
+    let face = FaceParameters::preset(FacePreset::Neutral);
     add_face(
         vertices,
         Anchor::new(JointId::Head),
@@ -171,7 +180,12 @@ pub(super) fn parts(recipe: &BodyRecipe) -> Vec<Part> {
 }
 
 fn add_part(vertices: &mut Vec<Part>, anchor: Anchor, spec: BodyPart, tint: Tint) {
-    vertices.push(Part { anchor, spec, tint });
+    vertices.push(Part {
+        anchor,
+        spec,
+        tint,
+        feature: Feature::None,
+    });
 }
 
 fn add_face(
@@ -190,6 +204,7 @@ fn add_face(
             eye_y,
             anchors.face_z,
         ));
+        let part_start = vertices.len();
         add_part(
             vertices,
             head * eye,
@@ -198,17 +213,20 @@ fn add_face(
             BodyPart::new(Vec3::new(0.15, 0.21 * parameters.eye_opening, 0.055), 0.0),
             face_color,
         );
+        vertices[part_start].feature = Feature::Eye(side);
         let brow = Mat4::from_translation(Vec3::new(
             side * anchors.eye_x,
             anchors.brow_y,
             anchors.face_z - 0.012,
         )) * Mat4::from_quat(Quat::from_rotation_z(side * parameters.brow_tilt));
+        let part_start = vertices.len();
         add_part(
             vertices,
             head * brow,
             BodyPart::new(Vec3::new(0.21, 0.045, 0.035), 0.0),
             face_color,
         );
+        vertices[part_start].feature = Feature::Brow(side);
     }
 
     let mouth_width = 0.24 + parameters.mouth_opening * 0.06;
@@ -217,6 +235,7 @@ fn add_face(
         anchors.mouth_y + parameters.mouth_curve * 0.025,
         anchors.face_z - 0.018,
     )) * Mat4::from_quat(Quat::from_rotation_z(parameters.mouth_curve * 0.18));
+    let part_start = vertices.len();
     add_part(
         vertices,
         head * mouth,
@@ -226,6 +245,7 @@ fn add_face(
         ),
         face_color,
     );
+    vertices[part_start].feature = Feature::Mouth;
 }
 
 fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recipe: &BodyRecipe) {
@@ -234,12 +254,14 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
         for side in [-1.0, 1.0] {
             let ear = Mat4::from_translation(Vec3::new(side * 0.30, 0.46, 0.01))
                 * Mat4::from_quat(Quat::from_rotation_z(-side * 0.22));
+            let part_start = vertices.len();
             add_part(
                 vertices,
                 head * ear,
                 BodyPart::new(ear_size, 0.07),
                 Tint::Skin,
             );
+            vertices[part_start].feature = Feature::Ear(side);
             let inner = Mat4::from_translation(Vec3::new(side * 0.30, 0.47, -0.145))
                 * Mat4::from_quat(Quat::from_rotation_z(-side * 0.22));
             add_part(
@@ -280,12 +302,14 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
         for side in [-1.0, 1.0] {
             let wing = Mat4::from_translation(Vec3::new(side * 0.56, 1.72, 0.30))
                 * Mat4::from_quat(Quat::from_rotation_z(side * 0.18));
+            let part_start = vertices.len();
             add_part(
                 vertices,
                 root * wing,
                 BodyPart::new(Vec3::new(0.16, 0.72, 0.42), 0.07),
                 Tint::Shirt,
             );
+            vertices[part_start].feature = Feature::Wing(side);
         }
     }
     if recipe.extras.tail_segments > 0 {
@@ -306,12 +330,14 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
             } else {
                 Vec3::new(0.34 - progress * 0.13, 0.36, 0.42 - progress * 0.15)
             };
+            let part_start = vertices.len();
             add_part(
                 vertices,
                 root * tail,
                 BodyPart::new(size, 0.07),
                 Tint::Pants,
             );
+            vertices[part_start].feature = Feature::Tail(progress);
         }
     }
 }

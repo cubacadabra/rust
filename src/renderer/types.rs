@@ -41,6 +41,10 @@ pub(super) struct RenderEntity {
     #[allow(dead_code)]
     pub(super) legacy_assembled: bool,
     pub(super) body: crate::character::BodyId,
+    pub(super) pose: crate::character::Pose,
+    pub(super) face: crate::character::FaceParameters,
+    pub(super) secondary: crate::character::SecondaryMotion,
+    pub(super) support: crate::types::CharacterSupport,
 }
 
 #[derive(Clone, Copy)]
@@ -156,6 +160,8 @@ pub(super) struct Scene {
     pub(super) elapsed: f32,
     pub(super) username: String,
     pub(super) build_blocks: Vec<BuildBlock>,
+    pub(super) presentation: std::collections::HashMap<crate::types::CharacterEntityKey, crate::character::CharacterPresentationState>,
+    pub(super) reduced_effects: bool,
 }
 
 impl Default for Scene {
@@ -172,6 +178,8 @@ impl Default for Scene {
             elapsed: 0.0,
             username: "PLAYER".to_owned(),
             build_blocks: Vec::new(),
+            presentation: std::collections::HashMap::new(),
+            reduced_effects: false,
         }
     }
 }

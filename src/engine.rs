@@ -11,7 +11,7 @@ mod tests;
 use crate::game_package::GamePackageDefinition;
 use crate::math::Random;
 use crate::scripting::GameScript;
-use crate::types::{Agent, BuildBlock, Input, Player, RemotePlayer};
+use crate::types::{Agent, BuildBlock, CharacterMotionEvent, Input, Player, RemotePlayer};
 use crate::ui::UiRuntime;
 use crate::world::{Aabb, LaunchPad, RuntimeWorld};
 use std::cell::RefCell;
@@ -64,6 +64,11 @@ pub struct Engine {
     pub(crate) random: Random,
     pub(crate) snapshot: Vec<f32>,
     pub(crate) motion_sequence: u64,
+    pub(crate) remote_generation: u32,
+    pub(crate) player_motion_event: CharacterMotionEvent,
+    /// Presentation-only preference. It never changes simulation, snapshots,
+    /// collision, or the public host ABI.
+    pub(crate) reduced_effects: bool,
     pub(crate) launch_event_id: u32,
     pub(crate) last_launch_pad: usize,
     pub(crate) last_launch_occupants: usize,

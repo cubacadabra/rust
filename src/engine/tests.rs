@@ -41,6 +41,60 @@ fn jump_returns_to_ground() {
 }
 
 #[test]
+fn typed_motion_reports_takeoff_and_landing_events() {
+    let mut engine = Engine::new();
+    engine.set_input(Input {
+        jump: true,
+        ..Input::default()
+    });
+    engine.step(1.0 / 60.0);
+    assert_eq!(
+        engine
+            .character_motion_samples()
+            .next()
+            .expect("local sample")
+            .event,
+        crate::types::CharacterMotionEvent::Takeoff
+    );
+
+    let mut landing_seen = false;
+    for _ in 0..120 {
+        engine.set_input(Input::default());
+        engine.step(1.0 / 60.0);
+        if engine
+            .character_motion_samples()
+            .next()
+            .is_some_and(|sample| sample.event == crate::types::CharacterMotionEvent::Landing)
+        {
+            landing_seen = true;
+            break;
+        }
+    }
+    assert!(landing_seen);
+}
+
+#[test]
+fn legacy_remote_slot_generation_changes_at_replacement_boundary() {
+    let mut engine = Engine::new();
+    engine.set_remote_player_count(1);
+    let first = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("remote sample")
+        .key
+        .generation;
+    engine.set_remote_player_count(0);
+    engine.set_remote_player_count(1);
+    let replacement = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("replacement sample")
+        .key
+        .generation;
+    assert_ne!(first, replacement);
+}
+
+#[test]
 fn local_npcs_are_disabled_until_authoritative() {
     let mut engine = Engine::new();
     for _ in 0..181 {

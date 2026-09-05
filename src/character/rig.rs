@@ -145,6 +145,14 @@ pub(crate) struct Pose {
     pub(crate) transforms: [JointTransform; 15],
 }
 
+impl Default for Pose {
+    fn default() -> Self {
+        Self {
+            transforms: [JointTransform::new(Vec3::ZERO); 15],
+        }
+    }
+}
+
 impl Pose {
     pub(crate) fn rest(rig: &RigDefinition) -> Self {
         let mut transforms = [JointTransform::new(Vec3::ZERO); 15];

@@ -30,6 +30,17 @@ pub unsafe extern "C" fn engine_set_input(
     }
 }
 
+/// Toggles cosmetic secondary effects. This does not change simulation,
+/// collision, snapshots, or the core character silhouette.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_set_reduced_effects(engine: *mut Engine, reduced: u8) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_reduced_effects(reduced != 0);
+    }
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.

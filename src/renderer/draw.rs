@@ -2,7 +2,7 @@ use super::character_material::CharacterPass;
 use glam::{Mat4, Vec3};
 
 use super::{
-    Globals, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline, add_launch_pad,
+    Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline, add_cylinder, add_launch_pad,
     add_pixel_text, add_spawn_pad, faded,
 };
 
@@ -47,6 +47,7 @@ impl Renderer {
             fog_color: self.scene.world.palette.sky,
         };
         let dynamic_vertices = self.build_dynamic_vertices();
+        let shadow_vertices = self.build_support_shadows();
         self.opaque_vertices.clear();
         self.translucent_vertices.clear();
         self.translucent_vertices
@@ -57,7 +58,9 @@ impl Renderer {
             &mut self.translucent_vertices,
         );
         sort_translucent(&mut self.translucent_vertices, camera_position, target);
-        let dynamic_count = self.opaque_vertices.len() + self.translucent_vertices.len();
+        let dynamic_count = self.opaque_vertices.len()
+            + shadow_vertices.len()
+            + self.translucent_vertices.len();
         self.characters.begin();
         // Local player first gives deterministic priority if a development
         // caller supplies more than the bounded render-only crowd capacity.
@@ -96,10 +99,18 @@ impl Renderer {
                 bytemuck::cast_slice(&self.opaque_vertices),
             );
         }
-        if !self.translucent_vertices.is_empty() {
+        if !shadow_vertices.is_empty() {
             self.queue.write_buffer(
                 &self.dynamic_vertex_buffer,
                 size_of_val(self.opaque_vertices.as_slice()) as u64,
+                bytemuck::cast_slice(&shadow_vertices),
+            );
+        }
+        if !self.translucent_vertices.is_empty() {
+            self.queue.write_buffer(
+                &self.dynamic_vertex_buffer,
+                (size_of_val(self.opaque_vertices.as_slice())
+                    + size_of_val(shadow_vertices.as_slice())) as u64,
                 bytemuck::cast_slice(&self.translucent_vertices),
             );
         }
@@ -171,16 +182,23 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
                 pass.draw(0..self.opaque_vertices.len() as u32, 0..1);
             }
+            if !shadow_vertices.is_empty() {
+                pass.set_pipeline(&self.translucent_pipeline);
+                let start = size_of_val(self.opaque_vertices.as_slice()) as u64;
+                let end = start + size_of_val(shadow_vertices.as_slice()) as u64;
+                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(start..end));
+                pass.draw(0..shadow_vertices.len() as u32, 0..1);
+            }
             self.characters.draw(&mut pass, CharacterPass::Opaque);
             self.characters.draw(&mut pass, CharacterPass::Face);
             self.characters.draw(&mut pass, CharacterPass::Effect);
             if !self.translucent_vertices.is_empty() {
                 pass.set_pipeline(&self.translucent_pipeline);
-                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
-                pass.draw(
-                    self.opaque_vertices.len() as u32..dynamic_count as u32,
-                    0..1,
-                );
+                let start = (size_of_val(self.opaque_vertices.as_slice())
+                    + size_of_val(shadow_vertices.as_slice())) as u64;
+                let end = start + size_of_val(self.translucent_vertices.as_slice()) as u64;
+                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(start..end));
+                pass.draw(0..self.translucent_vertices.len() as u32, 0..1);
             }
         }
         if !ui_vertices.is_empty() {
@@ -208,9 +226,9 @@ impl Renderer {
         self.presenter.draw(&mut encoder, &self.targets, &view);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
-    }
+}
 
-    /// Keep the 3D world in its normal landscape composition when a window
+/// Keep the 3D world in its normal landscape composition when a window
     /// becomes portrait-ish. The UI pass still covers the full scene so touch
     /// controls can adapt to the actual window dimensions.
     fn world_viewport(&self) -> (f32, f32, f32, f32) {
@@ -353,6 +371,48 @@ impl Renderer {
         mesh
     }
 
+    fn build_support_shadows(&self) -> Vec<Vertex> {
+        let mut shadows = Vec::with_capacity(24 * (1 + self.scene.agents.len() + self.scene.remote_players.len()));
+        let mut add = |entity: RenderEntity| {
+            if !entity.position.iter().all(|value| value.is_finite()) {
+                return;
+            }
+            let Some((height, mut alpha)) = support_receiver(&self.scene.world, entity) else {
+                return;
+            };
+            let mut radius: f32 = 0.72;
+            if let Some(block) = self.scene.world.blocks.iter().find(|block| {
+                let [x, _, z] = block.position;
+                let [sx, _, sz] = block.size;
+                (entity.position[0] - x).abs() <= sx * 0.5
+                    && (entity.position[2] - z).abs() <= sz * 0.5
+                    && (height - (block.position[1] + block.size[1] * 0.5)).abs() < 0.08
+            }) {
+                let edge_x = (block.size[0] * 0.5 - (entity.position[0] - block.position[0]).abs()).max(0.04);
+                let edge_z = (block.size[2] * 0.5 - (entity.position[2] - block.position[2]).abs()).max(0.04);
+                radius = radius.min(edge_x.min(edge_z) * 0.88);
+            }
+            alpha *= (radius / 0.72).clamp(0.15, 1.0);
+            add_cylinder(
+                &mut shadows,
+                Vec3::new(entity.position[0], height + 0.012, entity.position[2]),
+                radius,
+                0.012,
+                super::faded(self.scene.world.palette.ink, alpha),
+            );
+        };
+        if self.scene.camera[2] > 0.75 {
+            add(self.scene.player);
+        }
+        for entity in &self.scene.remote_players {
+            add(*entity);
+        }
+        for entity in &self.scene.agents {
+            add(*entity);
+        }
+        shadows
+    }
+
     pub(super) fn rebuild_static_vertices(&mut self) {
         let all = self.build_static_vertices();
         let mut vertices = Vec::with_capacity(all.len());
@@ -394,6 +454,24 @@ impl Renderer {
         self.ui_vertex_capacity = required.next_power_of_two();
         self.ui_vertex_buffer =
             super::device::create_vertex_buffer(&self.device, self.ui_vertex_capacity);
+    }
+}
+
+fn support_receiver(
+    _world: &super::RenderWorld,
+    entity: RenderEntity,
+) -> Option<(f32, f32)> {
+    match entity.support {
+        crate::types::CharacterSupport::Grounded { height } if height.is_finite() => {
+            Some((height, 0.18))
+        }
+        crate::types::CharacterSupport::Unknown
+            if entity.position[1].is_finite() && entity.position[1].abs() <= 0.08 => {
+            // Legacy remotes do not report support. The ground fallback is
+            // intentionally faint and is omitted at any raised height.
+            Some((0.0, 0.08))
+        }
+        _ => None,
     }
 }
 
@@ -449,5 +527,17 @@ mod tests {
         assert_eq!(opaque.len(), 3);
         assert_eq!(alpha.len(), 6);
         assert_eq!(alpha[0].position[2], -5.0);
+    }
+
+    #[test]
+    fn support_shadow_fallback_is_conservative() {
+        let mut entity = RenderEntity::default();
+        entity.support = crate::types::CharacterSupport::Grounded { height: 2.0 };
+        assert_eq!(support_receiver(&crate::renderer::RenderWorld::default(), entity), Some((2.0, 0.18)));
+        entity.support = crate::types::CharacterSupport::Airborne;
+        assert_eq!(support_receiver(&crate::renderer::RenderWorld::default(), entity), None);
+        entity.support = crate::types::CharacterSupport::Unknown;
+        entity.position[1] = 2.0;
+        assert_eq!(support_receiver(&crate::renderer::RenderWorld::default(), entity), None);
     }
 }

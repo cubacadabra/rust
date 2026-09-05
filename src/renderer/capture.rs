@@ -713,6 +713,7 @@ fn build_scene(
                     sprinting: matches!(pose, Pose::Sprint),
                     legacy_assembled: matches!(pose, Pose::Sprint) && !remote,
                     body: crate::character::BodyId::Person,
+                    ..Default::default()
                 });
             }
         }
@@ -727,6 +728,7 @@ fn build_scene(
                 sprinting: false,
                 legacy_assembled: false,
                 body: crate::character::BodyId::Person,
+                ..Default::default()
             });
         }
         Scenario::Crowd { count, .. } => {
@@ -751,6 +753,7 @@ fn build_scene(
                 sprinting: false,
                 legacy_assembled: false,
                 body,
+                ..Default::default()
             })
             .collect();
         }
@@ -924,6 +927,7 @@ fn crowd_actors(count: usize, seed: u64) -> Vec<RenderEntity> {
                 sprinting: false,
                 legacy_assembled: false,
                 body: crate::character::BodyId::ALL[index % crate::character::BodyId::ALL.len()],
+                ..Default::default()
             }
         })
         .collect()

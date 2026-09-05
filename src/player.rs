@@ -7,6 +7,7 @@ use crate::world::overlaps_obstacle;
 
 impl Engine {
     pub(crate) fn update_player(&mut self, delta: f32) {
+        let was_grounded = self.player.grounded;
         let mut forward = self.input.forward.clamp(-1.0, 1.0);
         let mut strafe = self.input.strafe.clamp(-1.0, 1.0);
         let input_length = (forward * forward + strafe * strafe).sqrt();
@@ -44,7 +45,8 @@ impl Engine {
         self.player.velocity[0] = damp(self.player.velocity[0], target_x, acceleration, delta);
         self.player.velocity[2] = damp(self.player.velocity[2], target_z, acceleration, delta);
 
-        if self.input.jump && self.player.grounded {
+        let takeoff = self.input.jump && self.player.grounded;
+        if takeoff {
             self.player.velocity[1] = JUMP_VELOCITY;
             self.player.grounded = false;
         }
@@ -53,12 +55,23 @@ impl Engine {
         self.input.look_y = 0.0;
         self.input.zoom_delta = 0.0;
 
-        if moving {
-            self.player.walk_cycle += delta * if sprinting { 14.0 } else { 10.0 };
-        }
         self.move_player_horizontally(delta);
+        // The stride phase follows distance actually travelled. If an input
+        // is held against a wall, collision zeros the velocity and the feet
+        // stop cycling instead of running on a treadmill.
+        let travelled = self.player.velocity[0].hypot(self.player.velocity[2]) * delta;
+        if travelled > 0.0 {
+            self.player.walk_cycle += travelled / 2.65 * std::f32::consts::TAU;
+        }
         self.player.velocity[1] -= GRAVITY * delta;
         self.move_player_vertically(delta);
+        self.player_motion_event = if !was_grounded && self.player.grounded {
+            crate::types::CharacterMotionEvent::Landing
+        } else if takeoff {
+            crate::types::CharacterMotionEvent::Takeoff
+        } else {
+            crate::types::CharacterMotionEvent::None
+        };
     }
 
     fn move_player_horizontally(&mut self, delta: f32) {

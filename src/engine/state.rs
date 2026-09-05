@@ -2,7 +2,7 @@ use crate::engine::{ENABLE_LOCAL_NPCS, Engine, MAX_AGENTS};
 use crate::scripting::GameScript;
 use crate::types::{
     CharacterEntityKey, CharacterEntityKind, CharacterMotionSample, CharacterMotionSource,
-    CharacterSupport, Input, LaunchPadPhase, Player, RemotePlayer,
+    CharacterMotionEvent, CharacterSupport, Input, LaunchPadPhase, Player, RemotePlayer,
 };
 use crate::ui::{UiPointerPhase, UiViewport};
 
@@ -63,6 +63,7 @@ impl Engine {
         let delta = delta.clamp(0.0, 0.05);
         self.elapsed += delta;
         self.motion_sequence = self.motion_sequence.saturating_add(1);
+        self.player_motion_event = CharacterMotionEvent::None;
         self.ui.borrow_mut().advance(delta);
         self.tick_script(delta);
         self.apply_camera_input();
@@ -87,6 +88,14 @@ impl Engine {
 
     pub fn snapshot(&self) -> &[f32] {
         &self.snapshot
+    }
+
+    pub fn set_reduced_effects(&mut self, reduced: bool) {
+        self.reduced_effects = reduced;
+    }
+
+    pub(crate) fn reduced_effects(&self) -> bool {
+        self.reduced_effects
     }
 
     pub(crate) fn agent_count(&self) -> usize {
@@ -124,6 +133,8 @@ impl Engine {
             moving: self.player.moving,
             sprinting: self.player.sprinting,
             source: CharacterMotionSource::Simulation,
+            event: self.player_motion_event,
+            emote: crate::types::CharacterEmote::None,
         };
         let sequence = self.motion_sequence;
         let time = self.elapsed;
@@ -160,6 +171,8 @@ impl Engine {
                             moving: agent.phase != crate::types::AgentPhase::Assembled,
                             sprinting: false,
                             source: CharacterMotionSource::Simulation,
+                            event: CharacterMotionEvent::None,
+                            emote: crate::types::CharacterEmote::None,
                         }
                     }),
             )
@@ -172,7 +185,7 @@ impl Engine {
                         key: CharacterEntityKey {
                             kind: CharacterEntityKind::RemotePlayer,
                             slot,
-                            generation: 0,
+                            generation: self.remote_generation,
                         },
                         sequence,
                         time,
@@ -186,13 +199,21 @@ impl Engine {
                         moving: player.moving,
                         sprinting: player.sprinting,
                         source: CharacterMotionSource::LegacyRemote,
+                        event: CharacterMotionEvent::None,
+                        emote: crate::types::CharacterEmote::None,
                     }),
             )
     }
 
     pub(crate) fn set_remote_player_count(&mut self, count: usize) {
+        let count = count.min(MAX_AGENTS);
+        if self.remote_players.len() != count {
+            // The legacy setter carries no identity. Treat a count boundary
+            // as a conservative slot replacement signal for presentation.
+            self.remote_generation = self.remote_generation.wrapping_add(1);
+        }
         self.remote_players
-            .resize(count.min(MAX_AGENTS), RemotePlayer::default());
+            .resize(count, RemotePlayer::default());
         self.write_snapshot();
     }
 

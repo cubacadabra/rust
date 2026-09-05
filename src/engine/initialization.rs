@@ -1,6 +1,6 @@
 use crate::engine::{DEFAULT_LAUNCH_COUNTDOWN, Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 use crate::math::Random;
-use crate::types::{Input, Player};
+use crate::types::{CharacterMotionEvent, Input, Player};
 use crate::ui::UiRuntime;
 use crate::world::{LaunchPad, block_bounds};
 use std::cell::RefCell;
@@ -38,6 +38,9 @@ impl Engine {
             random: Random::new(0xC0BA_CAFE),
             snapshot: vec![0.0; (MAX_AGENTS + 1) * SNAPSHOT_STRIDE],
             motion_sequence: 0,
+            remote_generation: 0,
+            player_motion_event: CharacterMotionEvent::None,
+            reduced_effects: false,
             launch_event_id: 0,
             last_launch_pad: 0,
             last_launch_occupants: 0,

@@ -30,14 +30,14 @@ pub(crate) struct RemotePlayer {
     pub(crate) walk_cycle: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum CharacterEntityKind {
     LocalPlayer,
     LocalNpc,
     RemotePlayer,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct CharacterEntityKey {
     pub(crate) kind: CharacterEntityKind,
     pub(crate) slot: usize,
@@ -52,10 +52,26 @@ pub(crate) enum CharacterMotionSource {
     LegacyRemote,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum CharacterMotionEvent {
+    #[default]
+    None,
+    Takeoff,
+    Landing,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum CharacterEmote {
+    #[default]
+    None,
+    Wave,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) enum CharacterSupport {
     Grounded { height: f32 },
     Airborne,
+    #[default]
     Unknown,
 }
 
@@ -77,6 +93,8 @@ pub(crate) struct CharacterMotionSample {
     pub(crate) moving: bool,
     pub(crate) sprinting: bool,
     pub(crate) source: CharacterMotionSource,
+    pub(crate) event: CharacterMotionEvent,
+    pub(crate) emote: CharacterEmote,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

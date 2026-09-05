@@ -2,11 +2,11 @@
 //! uploaded before first use; changing colors/worlds cannot grow this cache.
 use super::{
     AvatarStyle, RenderEntity,
-    character::{self, Part},
+    character::{self, Feature, Part},
     character_material::{self, CharacterInstance, CharacterPass, CharacterVertex, Material},
     rounded_geometry::RoundedMeshCache,
 };
-use crate::character::{BodyId, BodyRecipe, Pose, body_recipe};
+use crate::character::{BodyId, BodyRecipe, body_recipe};
 use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 
@@ -14,6 +14,59 @@ pub(super) const MAX_CHARACTERS: usize = 50;
 const MAX_PARTS: usize = 48;
 const MAX_MESHES: usize = 64;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
+
+fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
+    let face = entity.face.clamped();
+    let mut local = part.anchor.local;
+    match part.feature {
+        Feature::None => {}
+        Feature::Eye(_side) => {
+            local = local
+                * Mat4::from_translation(glam::Vec3::new(face.look.x, face.look.y, 0.0))
+                * Mat4::from_scale(glam::Vec3::new(1.0, face.eye_opening, 1.0));
+        }
+        Feature::Brow(side) => {
+            local = local * Mat4::from_quat(Quat::from_rotation_z(side * face.brow_tilt));
+        }
+        Feature::Mouth => {
+            local = local
+                * Mat4::from_translation(glam::Vec3::new(
+                    0.0,
+                    face.mouth_curve * 0.025,
+                    0.0,
+                ))
+                * Mat4::from_quat(Quat::from_rotation_z(face.mouth_curve * 0.18))
+                * Mat4::from_scale(glam::Vec3::new(
+                    1.0 + face.mouth_opening * 0.22,
+                    1.0 + face.mouth_opening * 1.6,
+                    1.0,
+                ));
+        }
+        Feature::Ear(side) => {
+            local = local
+                * Mat4::from_quat(Quat::from_rotation_z(
+                    side * entity.secondary.ear_tilt,
+                ));
+        }
+        Feature::Tail(progress) => {
+            local = local
+                * Mat4::from_quat(Quat::from_rotation_y(
+                    entity.secondary.tail_sway * (0.55 + progress * 0.8),
+                ));
+        }
+        Feature::Wing(side) => {
+            local = local
+                * Mat4::from_quat(Quat::from_rotation_z(
+                    side * entity.secondary.wing_flap,
+                ));
+        }
+    }
+    if matches!(part.tint, character::Tint::Seam) {
+        let gap = 1.0 + entity.secondary.gap_expansion.clamp(0.0, 0.72) * 0.35;
+        local = local * Mat4::from_scale(Vec3::splat(gap));
+    }
+    local
+}
 
 struct Mesh {
     vertices: wgpu::Buffer,
@@ -188,6 +241,20 @@ impl CharacterRenderer {
             || !Vec3::from_array(entity.position).is_finite()
             || !entity.yaw.is_finite()
             || !entity.walk_cycle.is_finite()
+            || ![
+                entity.face.eye_opening,
+                entity.face.look.x,
+                entity.face.look.y,
+                entity.face.brow_tilt,
+                entity.face.mouth_curve,
+                entity.face.mouth_opening,
+                entity.secondary.tail_sway,
+                entity.secondary.ear_tilt,
+                entity.secondary.wing_flap,
+                entity.secondary.gap_expansion,
+            ]
+            .iter()
+            .all(|value| value.is_finite())
         {
             return;
         }
@@ -195,12 +262,7 @@ impl CharacterRenderer {
             .iter()
             .position(|b| *b == entity.body)
             .unwrap_or(0)];
-        let pose = Pose::locomotion(
-            &body.recipe.rig,
-            entity.walk_cycle,
-            entity.moving,
-            entity.sprinting,
-        );
+        let pose = entity.pose;
         let joints = body.recipe.rig.world_matrices(&pose.transforms);
         let root = Mat4::from_rotation_translation(
             Quat::from_rotation_y(entity.yaw),
@@ -208,7 +270,9 @@ impl CharacterRenderer {
         );
         for (part, index) in &body.parts {
             let batch = &mut self.batches[*index];
-            let transform = root * joints[part.anchor.joint.index()] * part.anchor.local;
+            let transform = root
+                * joints[part.anchor.joint.index()]
+                * feature_transform(*part, entity);
             let mut tint = part.tint.color(style, face).map(|v| {
                 if v.is_finite() {
                     v.clamp(0.0, 1.0)

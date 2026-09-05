@@ -2,6 +2,8 @@ use crate::engine::Engine;
 use crate::character::BodyId;
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
 use crate::types::{CharacterEntityKind, CharacterMotionSample};
+use crate::character::{AnimationOutput, CharacterPresentationState};
+use std::collections::HashSet;
 #[cfg(target_os = "ios")]
 use crate::ui::UiFrame;
 
@@ -74,6 +76,7 @@ impl Renderer {
         if self.active_world != engine.active_world
             && let Some(world) = self.worlds.get(engine.active_world).cloned()
         {
+            self.scene.presentation.clear();
             self.active_world = engine.active_world;
             self.scene.world = world;
             self.rebuild_static_vertices();
@@ -82,15 +85,44 @@ impl Renderer {
         self.scene.player = RenderEntity::default();
         self.scene.agents.clear();
         self.scene.remote_players.clear();
-        for sample in engine.character_motion_samples() {
+        let reduced_effects = engine.reduced_effects();
+        if self.scene.reduced_effects != reduced_effects {
+            // A quality preference is presentation state, but changing it
+            // must affect the next sync even when the simulation tick is
+            // unchanged. Rebuilding from the current sample cannot replay
+            // an event because no sample history is inferred on first use.
+            self.scene.presentation.clear();
+            self.scene.reduced_effects = reduced_effects;
+        }
+        let samples: Vec<_> = engine.character_motion_samples().collect();
+        let mut active_keys = HashSet::with_capacity(samples.len());
+        for sample in samples {
+            active_keys.insert(sample.key);
+            let body = body_for_sample(sample);
+            let reduced_effects = self.scene.reduced_effects;
+            let animation = self
+                .scene
+                .presentation
+                .entry(sample.key)
+                .or_insert_with(|| CharacterPresentationState::new(sample.key, body))
+                .evaluate(sample, body, reduced_effects);
             match sample.key.kind {
-                CharacterEntityKind::LocalPlayer => self.scene.player = render_entity(sample),
-                CharacterEntityKind::LocalNpc => self.scene.agents.push(render_entity(sample)),
+                CharacterEntityKind::LocalPlayer => {
+                    self.scene.player = render_entity(sample, body, animation)
+                }
+                CharacterEntityKind::LocalNpc => {
+                    self.scene.agents.push(render_entity(sample, body, animation))
+                }
                 CharacterEntityKind::RemotePlayer => {
-                    self.scene.remote_players.push(render_entity(sample))
+                    self.scene
+                        .remote_players
+                        .push(render_entity(sample, body, animation))
                 }
             }
         }
+        self.scene
+            .presentation
+            .retain(|key, _| active_keys.contains(key));
         self.scene.pad_seconds.clear();
         self.scene
             .pad_seconds
@@ -115,7 +147,14 @@ impl Renderer {
     }
 }
 
-fn render_entity(sample: CharacterMotionSample) -> RenderEntity {
+fn body_for_sample(sample: CharacterMotionSample) -> BodyId {
+    match sample.key.kind {
+        CharacterEntityKind::LocalNpc => BodyId::ALL[sample.key.slot % BodyId::ALL.len()],
+        CharacterEntityKind::LocalPlayer | CharacterEntityKind::RemotePlayer => BodyId::Person,
+    }
+}
+
+fn render_entity(sample: CharacterMotionSample, body: BodyId, animation: AnimationOutput) -> RenderEntity {
     RenderEntity {
         position: sample.position,
         yaw: sample.facing_yaw,
@@ -123,12 +162,11 @@ fn render_entity(sample: CharacterMotionSample) -> RenderEntity {
         moving: sample.moving,
         sprinting: sample.sprinting,
         legacy_assembled: false,
-        body: match sample.key.kind {
-            CharacterEntityKind::LocalNpc => BodyId::ALL[sample.key.slot % BodyId::ALL.len()],
-            CharacterEntityKind::LocalPlayer | CharacterEntityKind::RemotePlayer => {
-                BodyId::Person
-            }
-        },
+        body,
+        pose: animation.pose,
+        face: animation.face,
+        secondary: animation.secondary,
+        support: sample.support,
     }
 }
 

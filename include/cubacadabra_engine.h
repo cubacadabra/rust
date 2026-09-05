@@ -22,6 +22,8 @@ void engine_set_input(
     float look_y,
     float zoom_delta
 );
+/* Reduces cosmetic springs and decorative effects without changing gameplay. */
+void engine_set_reduced_effects(CubacadabraEngine *engine, uint8_t reduced);
 void engine_set_ui_viewport(
     CubacadabraEngine *engine,
     float width,
