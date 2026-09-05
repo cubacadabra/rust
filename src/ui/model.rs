@@ -350,6 +350,7 @@ struct UiHitRegion {
 #[derive(Clone, Debug)]
 struct UiCapture {
     region: UiHitRegion,
+    joystick_origin: Option<(f32, f32)>,
 }
 
 pub(crate) struct UiRuntime {
@@ -367,5 +368,5 @@ pub(crate) struct UiRuntime {
     shared_modal_progress: f32,
     shared_modal_target: f32,
     shared_modal_tab: usize,
+    joystick_gesture_rect: UiRect,
 }
-

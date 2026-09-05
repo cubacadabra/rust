@@ -15,6 +15,7 @@ impl Default for UiRuntime {
             shared_modal_progress: 0.0,
             shared_modal_target: 0.0,
             shared_modal_tab: 0,
+            joystick_gesture_rect: UiRect::default(),
         }
     }
 }
@@ -126,9 +127,8 @@ impl UiRuntime {
 
     pub(crate) fn is_interactive_at(&mut self, x: f32, y: f32) -> bool {
         self.rebuild_if_needed();
-        self.hit_regions.iter().rev().any(|region| {
+        let is_interactive = |region: &UiHitRegion| {
             !region.disabled
-                && region.rect.contains(x, y)
                 && (matches!(
                     region.kind,
                     UiNodeKind::Button
@@ -136,7 +136,14 @@ impl UiRuntime {
                         | UiNodeKind::Slider
                         | UiNodeKind::Joystick
                 ) || !region.action.is_empty())
-        })
+        };
+        self.hit_regions
+            .iter()
+            .rev()
+            .any(|region| is_interactive(region) && region.rect.contains(x, y))
+            || self.hit_regions.iter().rev().any(|region| {
+                is_interactive(region) && self.joystick_gesture_contains(region, x, y)
+            })
     }
 
     pub(crate) fn is_external_link_at(&mut self, x: f32, y: f32) -> bool {
@@ -177,11 +184,23 @@ impl UiRuntime {
                     .iter()
                     .rev()
                     .find(|region| !region.disabled && region.rect.contains(x, y))
+                    .or_else(|| {
+                        self.hit_regions.iter().rev().find(|region| {
+                            !region.disabled && self.joystick_gesture_contains(region, x, y)
+                        })
+                    })
                     .cloned()
                 else {
                     return false;
                 };
-                self.captures.insert(pointer_id, UiCapture { region });
+                let joystick_origin = (region.kind == UiNodeKind::Joystick).then_some((x, y));
+                self.captures.insert(
+                    pointer_id,
+                    UiCapture {
+                        region,
+                        joystick_origin,
+                    },
+                );
                 self.update_pointer_control(pointer_id, x, y, "change");
                 self.dirty = true;
                 true
@@ -252,6 +271,10 @@ impl UiRuntime {
                 - self.viewport.safe_area.top
                 - self.viewport.safe_area.bottom)
                 .max(0.0),
+        };
+        self.joystick_gesture_rect = UiRect {
+            width: safe.width * 0.5,
+            ..safe
         };
         let pressed = self
             .captures
@@ -489,13 +512,25 @@ impl UiRuntime {
         self.dirty = false;
     }
 
+    fn joystick_gesture_contains(&self, region: &UiHitRegion, x: f32, y: f32) -> bool {
+        region.id == "player-joystick"
+            && region.kind == UiNodeKind::Joystick
+            && self.joystick_gesture_rect.contains(x, y)
+    }
+
     fn update_pointer_control(&mut self, pointer_id: u64, x: f32, y: f32, phase: &str) {
         let Some(capture) = self.captures.get(&pointer_id).cloned() else {
             return;
         };
         match capture.region.kind {
             UiNodeKind::Slider => self.update_slider(&capture.region, x, phase),
-            UiNodeKind::Joystick => self.update_joystick(&capture.region, x, y, phase),
+            UiNodeKind::Joystick => self.update_joystick(
+                &capture.region,
+                x,
+                y,
+                phase,
+                capture.joystick_origin,
+            ),
             _ => {}
         }
     }
@@ -520,12 +555,21 @@ impl UiRuntime {
         });
     }
 
-    fn update_joystick(&mut self, region: &UiHitRegion, x: f32, y: f32, phase: &str) {
+    fn update_joystick(
+        &mut self,
+        region: &UiHitRegion,
+        x: f32,
+        y: f32,
+        phase: &str,
+        origin: Option<(f32, f32)>,
+    ) {
         let radius = region.rect.width.min(region.rect.height).max(1.0) * 0.5;
-        let center_x = region.rect.x + region.rect.width * 0.5;
-        let center_y = region.rect.y + region.rect.height * 0.5;
-        let mut value_x = (x - center_x) / radius;
-        let mut value_y = (y - center_y) / radius;
+        let (origin_x, origin_y) = origin.unwrap_or((
+            region.rect.x + region.rect.width * 0.5,
+            region.rect.y + region.rect.height * 0.5,
+        ));
+        let mut value_x = (x - origin_x) / radius;
+        let mut value_y = (y - origin_y) / radius;
         let length = value_x.hypot(value_y);
         if length > 1.0 {
             value_x /= length;

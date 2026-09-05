@@ -123,7 +123,9 @@ modal scrim should set `blocksInput = true` and use an action such as
 `children` and each ID must be unique. Joystick events contain normalized `x`
 and `y` values and emit a zero vector on release or cancellation, allowing the
 shared UI to own mobile movement controls safely with multiple simultaneous
-pointers.
+pointers. The engine-owned `player-joystick` also accepts pointer-down anywhere
+in the left half of the safe play area; its visible control remains anchored in
+the lower-left, and movement is derived from the gesture displacement.
 
 Nodes are visible in every world by default. Set `visibleIn` to a list of
 manifest world IDs when a node (including an entire container subtree) should

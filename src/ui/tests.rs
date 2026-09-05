@@ -509,3 +509,23 @@
             event.phase == "release" && event.x == Some(0.0) && event.y == Some(0.0)
         }));
     }
+
+    #[test]
+    fn player_joystick_accepts_gestures_across_the_left_play_area() {
+        let mut runtime = runtime(
+            r##"{"nodes":[{"id":"player-joystick","kind":"joystick","action":"player.move","layout":{"anchor":"bottomLeft","width":120,"height":120,"offset":[20,-24]}}]}"##,
+            390.0,
+            844.0,
+        );
+
+        assert!(runtime.pointer(8, UiPointerPhase::Down, 30.0, 200.0));
+        assert!(runtime.pointer(8, UiPointerPhase::Move, 90.0, 200.0));
+        let stick = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "player-joystick")
+            .unwrap();
+        assert_eq!((stick.value_x, stick.value_y), (1.0, 0.0));
+        assert!(runtime.pointer(8, UiPointerPhase::Up, 90.0, 200.0));
+    }
