@@ -379,10 +379,10 @@ Exit: sphere-versus-cube/bevel comparisons accepted; correct lighting under rota
 
 ### Phase 2 — Shape proof: three related bodies
 
-- [ ] Author the proportion sheet, common rest rig and person/cat/dragon recipes.
-- [ ] Add mitten hands, articulated chunky legs/feet, expressive base faces and authored gap clearances.
-- [ ] Add minimal depth-tested seam cores; keep sparks simple until the dedicated effects pass lands.
-- [ ] Add body-defined camera anchors, first-person hiding and silhouette captures beside the legacy avatar.
+- [x] Author the proportion sheet, common rest rig and person/cat/dragon recipes.
+- [x] Add mitten hands, articulated chunky legs/feet, expressive base faces and authored gap clearances.
+- [x] Add minimal depth-tested seam cores; keep sparks simple until the dedicated effects pass lands.
+- [x] Add body-defined camera anchors, first-person hiding and silhouette captures beside the legacy avatar.
 
 Primary files: character definitions/rig/face, `renderer/character.rs`, `renderer/draw.rs`, `assets/characters/`.
 

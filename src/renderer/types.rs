@@ -38,7 +38,9 @@ pub(super) struct RenderEntity {
     pub(super) sprinting: bool,
     /// Only used by the committed Phase 0 before-image. Production motion
     /// never reads the legacy snapshot suffix as an assembled flag.
+    #[allow(dead_code)]
     pub(super) legacy_assembled: bool,
+    pub(super) body: crate::character::BodyId,
 }
 
 #[derive(Clone, Copy)]

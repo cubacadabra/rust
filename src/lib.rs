@@ -1,4 +1,5 @@
 mod engine;
+mod character;
 mod ffi;
 mod game_package;
 mod math;
@@ -10,7 +11,7 @@ mod renderer;
 pub mod dev_showcase {
     pub use crate::renderer::capture::{
         CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, CaptureReport,
-        capture_phase0_baseline,
+        capture_phase0_baseline, capture_phase2_shape_proof,
     };
 }
 mod scripting;

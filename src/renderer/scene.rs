@@ -1,4 +1,5 @@
 use crate::engine::Engine;
+use crate::character::BodyId;
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
 use crate::types::{CharacterEntityKind, CharacterMotionSample};
 #[cfg(target_os = "ios")]
@@ -122,6 +123,12 @@ fn render_entity(sample: CharacterMotionSample) -> RenderEntity {
         moving: sample.moving,
         sprinting: sample.sprinting,
         legacy_assembled: false,
+        body: match sample.key.kind {
+            CharacterEntityKind::LocalNpc => BodyId::ALL[sample.key.slot % BodyId::ALL.len()],
+            CharacterEntityKind::LocalPlayer | CharacterEntityKind::RemotePlayer => {
+                BodyId::Person
+            }
+        },
     }
 }
 

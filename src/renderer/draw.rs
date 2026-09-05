@@ -1,7 +1,7 @@
 use glam::{Mat4, Vec3};
 
 use super::{
-    Globals, Renderer, Vertex, add_avatar, add_cloud, add_cuboid, add_cuboid_outline,
+    Globals, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline,
     add_launch_pad, add_pixel_text, add_spawn_pad, faded,
 };
 
@@ -9,8 +9,9 @@ impl Renderer {
     pub fn draw(&mut self) {
         let player = Vec3::from_array(self.scene.player.position);
         let [yaw, pitch, distance] = self.scene.camera;
+        let body = self.scene.player.body;
         let (camera_position, target) = if distance <= 0.75 {
-            let camera_position = player + Vec3::new(0.0, 3.4, 0.0);
+            let camera_position = player + super::character::camera_anchor(body);
             let look_direction = Vec3::new(
                 yaw.sin() * pitch.cos(),
                 pitch.sin(),
@@ -18,7 +19,7 @@ impl Renderer {
             );
             (camera_position, camera_position + look_direction)
         } else {
-            let target = player + Vec3::new(0.0, 1.78, 0.0);
+            let target = player + super::character::camera_target(body);
             let horizontal_distance = distance * pitch.cos();
             let camera_position = target
                 + Vec3::new(
@@ -298,19 +299,35 @@ impl Renderer {
                 faded(world.palette.paper, 0.3),
             );
         }
+        for (index, agent) in self.scene.agents.iter().enumerate() {
+            super::character::add_character(
+                &mut mesh,
+                *agent,
+                agent.body,
+                self.scene
+                    .npc_styles
+                    .get(index % self.scene.npc_styles.len().max(1))
+                    .copied()
+                    .unwrap_or(self.scene.player_style),
+                world.palette.ink,
+                &mut self.rounded_mesh_cache,
+            );
+        }
         for player in &self.scene.remote_players {
-            add_avatar(
+            super::character::add_character(
                 &mut mesh,
                 *player,
+                player.body,
                 self.scene.player_style,
                 world.palette.ink,
                 &mut self.rounded_mesh_cache,
             );
         }
         if self.scene.camera[2] > 0.75 {
-            add_avatar(
+            super::character::add_character(
                 &mut mesh,
                 self.scene.player,
+                self.scene.player.body,
                 self.scene.player_style,
                 world.palette.ink,
                 &mut self.rounded_mesh_cache,

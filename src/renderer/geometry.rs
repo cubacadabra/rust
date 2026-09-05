@@ -131,6 +131,7 @@ fn add_transformed_cuboid(
     );
 }
 
+#[allow(dead_code)]
 fn add_avatar(
     vertices: &mut Vec<Vertex>,
     agent: RenderEntity,
@@ -154,6 +155,7 @@ fn add_legacy_avatar(
     add_avatar_inner(vertices, agent, style, face_color, None);
 }
 
+#[allow(dead_code)]
 fn add_avatar_inner(
     vertices: &mut Vec<Vertex>,
     agent: RenderEntity,
@@ -262,6 +264,7 @@ fn add_avatar_inner(
     );
 }
 
+#[allow(dead_code)]
 fn add_rounded_transformed_cuboid(
     vertices: &mut Vec<Vertex>,
     cache: &mut rounded_geometry::RoundedMeshCache,

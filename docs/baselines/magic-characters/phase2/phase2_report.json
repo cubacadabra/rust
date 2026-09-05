@@ -1,0 +1,113 @@
+{
+  "format_version": 2,
+  "fixture": "phase-2-three-body-shape-proof",
+  "config": {
+    "seed": 3233467134,
+    "pose_time": 0.35,
+    "width": 640,
+    "height": 360,
+    "portrait_width": 390,
+    "portrait_height": 844,
+    "quality": "Full",
+    "palette": "Current",
+    "avatar": "ShapeProof"
+  },
+  "adapter": {
+    "name": "Apple M4 Max",
+    "backend": "Metal",
+    "device_type": "IntegratedGpu",
+    "driver": "",
+    "driver_info": "",
+    "gpu_timestamps": false
+  },
+  "captures": [
+    {
+      "name": "shape-lineup-front",
+      "image": "shape-lineup-front.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 3,
+      "vertex_count": 34416,
+      "triangle_count": 11472,
+      "estimated_vertex_upload_bytes": 1789632,
+      "estimated_resource_bytes": 4554432,
+      "cpu_build_ms": 14.37075,
+      "gpu_submit_and_readback_ms": 15.368208,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "shape-lineup-side",
+      "image": "shape-lineup-side.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 3,
+      "vertex_count": 34416,
+      "triangle_count": 11472,
+      "estimated_vertex_upload_bytes": 1789632,
+      "estimated_resource_bytes": 4554432,
+      "cpu_build_ms": 9.064959,
+      "gpu_submit_and_readback_ms": 1.6914580000000001,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "shape-lineup-back",
+      "image": "shape-lineup-back.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 3,
+      "vertex_count": 34416,
+      "triangle_count": 11472,
+      "estimated_vertex_upload_bytes": 1789632,
+      "estimated_resource_bytes": 4554432,
+      "cpu_build_ms": 8.787916,
+      "gpu_submit_and_readback_ms": 1.6442080000000001,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "shape-lineup-silhouette",
+      "image": "shape-lineup-silhouette.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 3,
+      "vertex_count": 34416,
+      "triangle_count": 11472,
+      "estimated_vertex_upload_bytes": 1789632,
+      "estimated_resource_bytes": 4554432,
+      "cpu_build_ms": 8.790792,
+      "gpu_submit_and_readback_ms": 1.522958,
+      "gpu_timestamp_ms": null
+    }
+  ],
+  "engine_capacity_characters": 18,
+  "render_only_stress_characters": 50,
+  "notes": [
+    "The lineup contains person, cat and dragon recipes on the shared rigid-piece rig.",
+    "Front, side, back and black-silhouette captures are deterministic review artifacts.",
+    "The fixture is render-only and does not enable local NPC simulation or alter snapshots.",
+    "Phase 0 legacy and Phase 1 rounded captures remain the before-images for comparison."
+  ]
+}

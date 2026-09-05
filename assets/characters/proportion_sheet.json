@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "engineHeight": 3.2,
+  "unit": "engine-units",
+  "rig": {
+    "jointCount": 15,
+    "maximumDepth": 4,
+    "restClearanceRange": [0.025, 0.045]
+  },
+  "common": {
+    "headHeight": 0.86,
+    "torsoHeight": 1.02,
+    "footHeight": 0.30,
+    "footForwardProjection": 0.84,
+    "faceDirection": "-Z",
+    "firstPersonAnchor": [0.0, 2.88, -0.03],
+    "thirdPersonTarget": [0.0, 1.62, 0.0]
+  },
+  "bodies": [
+    { "id": "cuba:person.v1", "ears": false, "tailSegments": 0, "horns": false, "wings": false },
+    { "id": "cuba:cat.v1", "ears": true, "tailSegments": 3, "horns": false, "wings": false },
+    { "id": "cuba:dragon.v1", "ears": false, "tailSegments": 4, "horns": true, "wings": true }
+  ],
+  "review": {
+    "cameraViews": ["front", "side", "back", "black-silhouette"],
+    "legacyComparison": "docs/baselines/magic-characters/phase0",
+    "captureCommand": "cargo run --features dev-showcase --bin magic_characters_capture -- --phase 2"
+  }
+}

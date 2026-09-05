@@ -26,6 +26,7 @@ const DEFAULT_HEIGHT: u32 = 360;
 pub enum CaptureAvatar {
     Legacy,
     Rounded,
+    ShapeProof,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -145,6 +146,11 @@ enum Scenario {
         count: usize,
         portrait: bool,
     },
+    ShapeLineup {
+        name: &'static str,
+        camera_yaw: f32,
+        silhouette: bool,
+    },
 }
 
 impl Scenario {
@@ -153,9 +159,33 @@ impl Scenario {
             Self::Single { name, .. } => name,
             Self::Raised => "raised-platform-third",
             Self::Crowd { name, .. } => name,
+            Self::ShapeLineup { name, .. } => name,
         }
     }
 }
+
+const PHASE2_SCENARIOS: [Scenario; 4] = [
+    Scenario::ShapeLineup {
+        name: "shape-lineup-front",
+        camera_yaw: std::f32::consts::PI,
+        silhouette: false,
+    },
+    Scenario::ShapeLineup {
+        name: "shape-lineup-side",
+        camera_yaw: std::f32::consts::FRAC_PI_2,
+        silhouette: false,
+    },
+    Scenario::ShapeLineup {
+        name: "shape-lineup-back",
+        camera_yaw: 0.0,
+        silhouette: false,
+    },
+    Scenario::ShapeLineup {
+        name: "shape-lineup-silhouette",
+        camera_yaw: std::f32::consts::PI,
+        silhouette: true,
+    },
+];
 
 const PHASE0_SCENARIOS: [Scenario; 15] = [
     Scenario::Single {
@@ -274,6 +304,7 @@ pub fn capture_phase0_baseline(
         fixture: match config.avatar {
             CaptureAvatar::Legacy => "phase-0-legacy-avatar-offscreen",
             CaptureAvatar::Rounded => "phase-1-rounded-avatar-offscreen",
+            CaptureAvatar::ShapeProof => "phase-2-three-body-shape-proof",
         }
         .to_owned(),
         config,
@@ -293,6 +324,54 @@ pub fn capture_phase0_baseline(
         .map_err(|error| format!("serialize capture report: {error}"))?;
     fs::write(output_dir.join("phase0_report.json"), report_bytes)
         .map_err(|error| format!("write capture report: {error}"))?;
+    Ok(report)
+}
+
+/// Render the Phase 2 shape-proof review sheet. The lineup is isolated from
+/// Engine simulation and the public snapshot, just like the Phase 0 stress
+/// fixture.
+pub fn capture_phase2_shape_proof(
+    output_dir: impl AsRef<Path>,
+    mut config: CaptureConfig,
+) -> Result<CaptureReport, String> {
+    let output_dir = output_dir.as_ref();
+    config.avatar = CaptureAvatar::ShapeProof;
+    fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
+    let context = HeadlessContext::new()?;
+    let adapter = AdapterRecord {
+        name: context.adapter_info.name.clone(),
+        backend: format!("{:?}", context.adapter_info.backend),
+        device_type: format!("{:?}", context.adapter_info.device_type),
+        driver: context.adapter_info.driver.clone(),
+        driver_info: context.adapter_info.driver_info.clone(),
+        gpu_timestamps: context
+            .device
+            .features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY),
+    };
+    let mut captures = Vec::with_capacity(PHASE2_SCENARIOS.len());
+    for scenario in PHASE2_SCENARIOS {
+        captures.push(context.capture(output_dir, config, scenario)?);
+    }
+    let report = CaptureReport {
+        format_version: FORMAT_VERSION,
+        fixture: "phase-2-three-body-shape-proof".to_owned(),
+        config,
+        adapter,
+        captures,
+        engine_capacity_characters: 18,
+        render_only_stress_characters: 50,
+        notes: vec![
+            "The lineup contains person, cat and dragon recipes on the shared rigid-piece rig.",
+            "Front, side, back and black-silhouette captures are deterministic review artifacts.",
+            "The fixture is render-only and does not enable local NPC simulation or alter snapshots.",
+            "Phase 0 legacy and Phase 1 rounded captures remain the before-images for comparison.",
+        ],
+    };
+    let report_bytes = serde_json::to_vec_pretty(&report)
+        .map_err(|error| format!("serialize Phase 2 capture report: {error}"))?;
+    fs::write(output_dir.join("phase2_report.json"), report_bytes)
+        .map_err(|error| format!("write Phase 2 capture report: {error}"))?;
     Ok(report)
 }
 
@@ -633,6 +712,7 @@ fn build_scene(
                     moving: !matches!(pose, Pose::Idle),
                     sprinting: matches!(pose, Pose::Sprint),
                     legacy_assembled: matches!(pose, Pose::Sprint) && !remote,
+                    body: crate::character::BodyId::Person,
                 });
             }
         }
@@ -646,11 +726,33 @@ fn build_scene(
                 moving: true,
                 sprinting: false,
                 legacy_assembled: false,
+                body: crate::character::BodyId::Person,
             });
         }
         Scenario::Crowd { count, .. } => {
             distance = 18.0;
             actors = crowd_actors(count, config.seed);
+        }
+        Scenario::ShapeLineup { camera_yaw, .. } => {
+            distance = 9.0;
+            target = Vec3::new(0.0, 1.58, 0.0);
+            let line_axis = Vec3::new(camera_yaw.cos(), 0.0, -camera_yaw.sin());
+            actors = [
+                (crate::character::BodyId::Person, -2.2),
+                (crate::character::BodyId::Cat, 0.0),
+                (crate::character::BodyId::Dragon, 2.2),
+            ]
+            .into_iter()
+            .map(|(body, x)| RenderEntity {
+                position: (line_axis * x).to_array(),
+                yaw: 0.0,
+                walk_cycle: 0.0,
+                moving: false,
+                sprinting: false,
+                legacy_assembled: false,
+                body,
+            })
+            .collect();
         }
     }
     if raised {
@@ -661,6 +763,7 @@ fn build_scene(
             palette.platform,
         );
     }
+    let shape_silhouette = matches!(scenario, Scenario::ShapeLineup { silhouette: true, .. });
     for actor in &actors {
         match config.avatar {
             CaptureAvatar::Legacy => {
@@ -673,6 +776,40 @@ fn build_scene(
                 palette.ink,
                 &mut rounded_mesh_cache,
             ),
+            CaptureAvatar::ShapeProof => {
+                let style = if shape_silhouette {
+                    super::AvatarStyle {
+                        skin: color(0x10242b),
+                        shirt: color(0x10242b),
+                        pants: color(0x10242b),
+                        shoes: color(0x10242b),
+                    }
+                } else {
+                    match actor.body {
+                        crate::character::BodyId::Person => palette.avatar,
+                        crate::character::BodyId::Cat => super::AvatarStyle {
+                            skin: color(0xc98464),
+                            shirt: color(0x5f8f78),
+                            pants: color(0x536a90),
+                            shoes: color(0x293a43),
+                        },
+                        crate::character::BodyId::Dragon => super::AvatarStyle {
+                            skin: color(0x82b78f),
+                            shirt: color(0x694c88),
+                            pants: color(0x536a90),
+                            shoes: color(0x293a43),
+                        },
+                    }
+                };
+                super::character::add_character(
+                    &mut vertices,
+                    *actor,
+                    actor.body,
+                    style,
+                    if shape_silhouette { style.skin } else { palette.ink },
+                    &mut rounded_mesh_cache,
+                );
+            }
         }
     }
 
@@ -683,7 +820,12 @@ fn build_scene(
         }
         Camera::Third => {
             let vertical = (distance * (-0.095_f32).sin()).clamp(-2.0, distance);
-            let position = target + Vec3::new(0.0, vertical, distance);
+            let camera_yaw = match scenario {
+                Scenario::ShapeLineup { camera_yaw, .. } => camera_yaw,
+                _ => 0.0,
+            };
+            let position = target
+                + Vec3::new(camera_yaw.sin() * distance, vertical, camera_yaw.cos() * distance);
             (position, target)
         }
     };
@@ -781,6 +923,7 @@ fn crowd_actors(count: usize, seed: u64) -> Vec<RenderEntity> {
                 moving: true,
                 sprinting: false,
                 legacy_assembled: false,
+                body: crate::character::BodyId::ALL[index % crate::character::BodyId::ALL.len()],
             }
         })
         .collect()
@@ -889,5 +1032,21 @@ mod tests {
         let (legacy, ..) = build_scene(CaptureConfig::default(), PHASE0_SCENARIOS[0], 640, 360);
         let (rounded, ..) = build_scene(rounded_config, PHASE0_SCENARIOS[0], 640, 360);
         assert!(rounded.len() > legacy.len());
+    }
+
+    #[test]
+    fn phase2_shape_fixture_has_three_rooted_bodies() {
+        let config = CaptureConfig::default();
+        let (vertices, actors, ..) = build_scene(
+            CaptureConfig {
+                avatar: CaptureAvatar::ShapeProof,
+                ..config
+            },
+            PHASE2_SCENARIOS[0],
+            640,
+            360,
+        );
+        assert_eq!(actors, 3);
+        assert!(vertices.len() > 3 * 15 * 36);
     }
 }
