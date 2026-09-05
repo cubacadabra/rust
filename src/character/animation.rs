@@ -50,6 +50,7 @@ pub(crate) struct CharacterPresentationState {
     blink_count: u32,
     next_blink: f32,
     wave_until: f32,
+    last_emote_sequence: u64,
     output: Option<AnimationOutput>,
 }
 
@@ -74,6 +75,7 @@ impl CharacterPresentationState {
             blink_count: 0,
             next_blink: next_blink(seed, 0),
             wave_until: 0.0,
+            last_emote_sequence: 0,
             output: None,
         }
     }
@@ -347,8 +349,12 @@ impl CharacterPresentationState {
             );
         }
 
-        if sample.emote == CharacterEmote::Wave {
-            self.wave_until = time + 0.85;
+        let new_emote = sample.emote_sequence > self.last_emote_sequence;
+        if new_emote {
+            self.last_emote_sequence = sample.emote_sequence;
+            if sample.emote == CharacterEmote::Wave {
+                self.wave_until = time + 0.85;
+            }
         }
         let waving = time < self.wave_until;
         if waving {
@@ -499,6 +505,7 @@ mod tests {
                 kind: CharacterEntityKind::LocalPlayer,
                 slot: 0,
                 generation: 1,
+                identity: 0,
             },
             sequence,
             time,
@@ -514,6 +521,8 @@ mod tests {
             source: CharacterMotionSource::Simulation,
             event: CharacterMotionEvent::None,
             emote: CharacterEmote::None,
+            emote_sequence: 0,
+            appearance_revision: 0,
         }
     }
 

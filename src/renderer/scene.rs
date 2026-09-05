@@ -1,5 +1,7 @@
 use crate::character::{AnimationOutput, CharacterPresentationState};
-use crate::character::{AppearanceInput, BodyId, CharacterColors, OutfitId, resolve_appearance};
+use crate::character::{
+    AppearanceInput, BodyId, CharacterAppearance, CharacterColors, OutfitId, resolve_appearance,
+};
 use crate::engine::Engine;
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
 use crate::types::{CharacterEntityKind, CharacterMotionSample};
@@ -86,6 +88,10 @@ impl Renderer {
         self.scene.player = RenderEntity::default();
         self.scene.agents.clear();
         self.scene.remote_players.clear();
+        self.scene.player_style = style_from_appearance(
+            engine.player_appearance(),
+            self.scene.player_style,
+        );
         let reduced_effects = engine.reduced_effects();
         if self.scene.reduced_effects != reduced_effects {
             // A quality preference is presentation state, but changing it
@@ -107,9 +113,11 @@ impl Renderer {
                     .get(sample.key.slot % self.scene.npc_styles.len().max(1))
                     .copied()
                     .unwrap_or(self.scene.player_style),
-                CharacterEntityKind::LocalPlayer | CharacterEntityKind::RemotePlayer => {
-                    self.scene.player_style
-                }
+                CharacterEntityKind::LocalPlayer => self.scene.player_style,
+                CharacterEntityKind::RemotePlayer => engine
+                    .remote_appearance(sample.key)
+                    .map(|appearance| style_from_appearance(appearance, self.scene.player_style))
+                    .unwrap_or(self.scene.player_style),
             };
             let body = style.body;
             let reduced_effects = self.scene.reduced_effects;
@@ -341,6 +349,19 @@ fn resolve_avatar_style(definition: &AvatarDefinition, fallback: AvatarStyle) ->
         } else {
             OutfitId::fallback()
         },
+        face: appearance.face,
+    }
+}
+
+fn style_from_appearance(appearance: &CharacterAppearance, fallback: AvatarStyle) -> AvatarStyle {
+    let outfit = appearance.outfit.supported_by(appearance.body);
+    AvatarStyle {
+        skin: appearance.colors.skin,
+        shirt: appearance.colors.primary,
+        pants: appearance.colors.secondary,
+        shoes: appearance.colors.sole,
+        body: appearance.body,
+        outfit: outfit.then_some(appearance.outfit).unwrap_or(fallback.outfit),
         face: appearance.face,
     }
 }

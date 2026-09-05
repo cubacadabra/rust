@@ -21,13 +21,24 @@ pub(crate) struct Player {
     pub(crate) walk_cycle: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(crate) struct RemotePlayer {
     pub(crate) position: [f32; 3],
     pub(crate) yaw: f32,
+    pub(crate) look_yaw: f32,
+    pub(crate) planar_velocity: Option<[f32; 2]>,
+    pub(crate) vertical_velocity: Option<f32>,
+    pub(crate) support: CharacterSupport,
     pub(crate) moving: bool,
     pub(crate) sprinting: bool,
     pub(crate) walk_cycle: f32,
+    pub(crate) stable_id: String,
+    pub(crate) identity: u64,
+    pub(crate) generation: u32,
+    pub(crate) motion_sequence: u64,
+    pub(crate) emote: CharacterEmote,
+    pub(crate) emote_sequence: u64,
+    pub(crate) appearance: crate::character::definition::CharacterAppearance,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -44,6 +55,10 @@ pub(crate) struct CharacterEntityKey {
     /// Zero is the legacy slot generation until a host supplies a spawn
     /// generation. The motion source identifies that fallback explicitly.
     pub(crate) generation: u32,
+    /// Stable account/entity hash used to keep presentation state attached
+    /// when a host reorders its remote roster. Legacy slots use a deterministic
+    /// slot hash and therefore retain the old conservative semantics.
+    pub(crate) identity: u64,
 }
 
 impl Default for CharacterEntityKey {
@@ -52,6 +67,7 @@ impl Default for CharacterEntityKey {
             kind: CharacterEntityKind::LocalPlayer,
             slot: 0,
             generation: 0,
+            identity: 0,
         }
     }
 }
@@ -60,6 +76,7 @@ impl Default for CharacterEntityKey {
 pub(crate) enum CharacterMotionSource {
     Simulation,
     LegacyRemote,
+    VersionedRemote,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -105,6 +122,31 @@ pub(crate) struct CharacterMotionSample {
     pub(crate) source: CharacterMotionSource,
     pub(crate) event: CharacterMotionEvent,
     pub(crate) emote: CharacterEmote,
+    pub(crate) emote_sequence: u64,
+    pub(crate) appearance_revision: u32,
+}
+
+impl Default for RemotePlayer {
+    fn default() -> Self {
+        Self {
+            position: [0.0; 3],
+            yaw: 0.0,
+            look_yaw: 0.0,
+            planar_velocity: None,
+            vertical_velocity: None,
+            support: CharacterSupport::Unknown,
+            moving: false,
+            sprinting: false,
+            walk_cycle: 0.0,
+            stable_id: String::new(),
+            identity: 0,
+            generation: 0,
+            motion_sequence: 0,
+            emote: CharacterEmote::None,
+            emote_sequence: 0,
+            appearance: crate::character::definition::CharacterAppearance::default(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]

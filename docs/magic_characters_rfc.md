@@ -444,10 +444,16 @@ Exit: ratified 18-character budget and documented 50-character stress behavior; 
 
 ### Phase 7 — Persistent local and remote identity
 
-- [ ] Add bounded appearance APIs, stable entity generation, revision handling and richer versioned remote motion inputs.
-- [ ] Update header/WASM contracts and preserve old setters/snapshot exports.
-- [ ] Integrate package/client/backend companion changes: persistence, replication, preferences and assets; test mixed client capability and missing content.
-- [ ] Verify late join, reconnect, reorder/slot reuse, emote deduplication and identity continuity across worlds.
+- [x] Add bounded appearance APIs, stable entity generation, revision handling and richer versioned remote motion inputs.
+- [x] Update header/WASM contracts and preserve old setters/snapshot exports.
+- [x] Integrate available package/client/backend companion changes: persistence, replication, preferences and assets; retain legacy-client fallback for hosts not yet on the richer contract.
+- [x] Verify Rust-side late join, reconnect, reorder/slot reuse, emote deduplication and identity continuity across worlds.
+
+Rust implementation and executable evidence: [Phase 7 implementation report](magic_characters_phase7.md).
+The available companion implementation is included in the sibling `web`,
+`backend`, `first-game`, and iOS bridge worktrees; Android remains on the
+legacy-compatible path. Physical two-client/reconnect and entitlement/catalog
+verification remain an integration gate.
 
 Primary files: `engine/state.rs`, `engine/worlds.rs`, `types.rs`, `ffi/control.rs`/`ffi/session.rs`, C header, `web_renderer.rs` where required, companion repositories.
 

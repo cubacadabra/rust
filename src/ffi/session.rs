@@ -92,6 +92,161 @@ pub unsafe extern "C" fn engine_load_username_buffer(engine: *mut Engine) -> u8 
     unsafe { engine.as_mut() }.map_or(0, |engine| u8::from(engine.load_username_buffer()))
 }
 
+/// Returns a bounded engine-owned UTF-8 input buffer for a versioned local
+/// character appearance. The pointer is valid until the next appearance
+/// buffer allocation or engine destruction.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`; the
+/// returned buffer must be written with exactly `length` bytes before load.
+pub unsafe extern "C" fn engine_appearance_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_appearance_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_load_appearance_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.load_appearance_buffer()))
+        .unwrap_or(0)
+}
+
+/// Applies a local appearance supplied as a borrowed UTF-8 JSON span. This is
+/// a convenience for hosts that do not need the persistent engine buffer.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create` and
+/// `source` must be null only when `length` is zero or otherwise point to
+/// `length` readable bytes for the duration of this call.
+pub unsafe extern "C" fn engine_set_local_appearance_json(
+    engine: *mut Engine,
+    source: *const u8,
+    length: usize,
+) -> u8 {
+    let Some(engine) = (unsafe { engine.as_mut() }) else {
+        return 0;
+    };
+    if source.is_null() && length != 0 {
+        return 0;
+    }
+    let bytes = if length == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(source, length) }
+    };
+    let Ok(source) = std::str::from_utf8(bytes) else {
+        engine.appearance_status = 0;
+        return 0;
+    };
+    engine.set_local_appearance_json(source)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_appearance_status(engine: *const Engine) -> u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.appearance_status())
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_appearance_revision(engine: *const Engine) -> u32 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.appearance_revision())
+        .unwrap_or(0)
+}
+
+/// Returns a bounded engine-owned UTF-8 input buffer for one versioned remote
+/// roster update. The message is applied atomically when it passes validation.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`; the
+/// returned buffer must be written with exactly `length` bytes before load.
+pub unsafe extern "C" fn engine_remote_update_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_remote_update_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_apply_remote_update_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.apply_remote_update_buffer()))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create` and
+/// `source` must be null only when `length` is zero or otherwise point to
+/// `length` readable bytes for the duration of this call.
+pub unsafe extern "C" fn engine_apply_remote_update_json(
+    engine: *mut Engine,
+    source: *const u8,
+    length: usize,
+) -> u8 {
+    let Some(engine) = (unsafe { engine.as_mut() }) else {
+        return 0;
+    };
+    if source.is_null() && length != 0 {
+        return 0;
+    }
+    let bytes = if length == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(source, length) }
+    };
+    let Ok(source) = std::str::from_utf8(bytes) else {
+        engine.remote_update_status = 0;
+        return 0;
+    };
+    u8::from(engine.apply_remote_update_json(source))
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_remote_update_status(engine: *const Engine) -> u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.remote_update_status())
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_remote_update_sequence(engine: *const Engine) -> u64 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.remote_update_sequence())
+        .unwrap_or(0)
+}
+
+/// Starts a new remote roster lifetime. Cached appearances remain bounded and
+/// may hydrate a reconnect that omits unchanged content; motion and packet
+/// sequencing are reset.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_reset_remote_session(engine: *mut Engine) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.reset_remote_session();
+    }
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.

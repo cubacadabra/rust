@@ -1,4 +1,5 @@
 mod camera;
+mod identity;
 mod initialization;
 mod simulation;
 mod snapshot;
@@ -11,7 +12,9 @@ mod tests;
 use crate::game_package::GamePackageDefinition;
 use crate::math::Random;
 use crate::scripting::GameScript;
+use crate::character::definition::CharacterAppearance;
 use crate::types::{Agent, BuildBlock, CharacterMotionEvent, Input, Player, RemotePlayer};
+use std::collections::BTreeMap;
 use crate::ui::UiRuntime;
 use crate::world::{Aabb, LaunchPad, RuntimeWorld};
 use std::cell::RefCell;
@@ -65,6 +68,16 @@ pub struct Engine {
     pub(crate) snapshot: Vec<f32>,
     pub(crate) motion_sequence: u64,
     pub(crate) remote_generation: u32,
+    pub(crate) remote_packet_sequence: u64,
+    pub(crate) remote_world_id: Option<String>,
+    pub(crate) remote_identity_cache: BTreeMap<String, CharacterAppearance>,
+    pub(crate) player_appearance: CharacterAppearance,
+    pub(crate) player_appearance_persistent: bool,
+    pub(crate) appearance_generation: u32,
+    pub(crate) appearance_buffer: Vec<u8>,
+    pub(crate) appearance_status: u8,
+    pub(crate) remote_update_buffer: Vec<u8>,
+    pub(crate) remote_update_status: u8,
     pub(crate) player_motion_event: CharacterMotionEvent,
     /// Presentation-only preference. It never changes simulation, snapshots,
     /// collision, or the public host ABI.

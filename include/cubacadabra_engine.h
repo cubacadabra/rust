@@ -10,6 +10,13 @@ typedef struct CubacadabraRenderer CubacadabraRenderer;
 #define CUBACADABRA_UI_POINTER_MOVE 1
 #define CUBACADABRA_UI_POINTER_UP 2
 #define CUBACADABRA_UI_POINTER_CANCEL 3
+#define CUBACADABRA_MAX_APPEARANCE_BYTES 4096
+#define CUBACADABRA_MAX_REMOTE_UPDATE_BYTES 65536
+#define CUBACADABRA_IDENTITY_INVALID 0
+#define CUBACADABRA_IDENTITY_APPLIED 1
+#define CUBACADABRA_IDENTITY_STALE 2
+#define CUBACADABRA_IDENTITY_FALLBACK 3
+#define CUBACADABRA_IDENTITY_DUPLICATE 4
 
 CubacadabraEngine *engine_create(void);
 void engine_set_input(
@@ -159,6 +166,28 @@ uint8_t *engine_package_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_package_buffer(CubacadabraEngine *engine);
 uint8_t *engine_username_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_username_buffer(CubacadabraEngine *engine);
+/* The returned buffers are engine-owned and remain valid until the next
+ * allocation of the same kind or engine destruction. Hosts write exactly the
+ * requested UTF-8 byte length, then call the matching load/apply function. */
+uint8_t *engine_appearance_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_load_appearance_buffer(CubacadabraEngine *engine);
+uint8_t engine_set_local_appearance_json(
+    CubacadabraEngine *engine,
+    const uint8_t *source,
+    uintptr_t length
+);
+uint8_t engine_appearance_status(const CubacadabraEngine *engine);
+uint32_t engine_appearance_revision(const CubacadabraEngine *engine);
+uint8_t *engine_remote_update_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_apply_remote_update_buffer(CubacadabraEngine *engine);
+uint8_t engine_apply_remote_update_json(
+    CubacadabraEngine *engine,
+    const uint8_t *source,
+    uintptr_t length
+);
+uint8_t engine_remote_update_status(const CubacadabraEngine *engine);
+uint64_t engine_remote_update_sequence(const CubacadabraEngine *engine);
+void engine_reset_remote_session(CubacadabraEngine *engine);
 uint8_t engine_script_loaded(const CubacadabraEngine *engine);
 const float *engine_snapshot_ptr(const CubacadabraEngine *engine);
 uintptr_t engine_snapshot_len(void);

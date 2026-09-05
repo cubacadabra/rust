@@ -299,6 +299,7 @@ impl Engine {
             return false;
         };
 
+        self.apply_package_default_appearance(&package);
         self.worlds = worlds;
         self.world_ids = entries.into_iter().map(|(id, _)| id).collect();
         self.package = Some(package);

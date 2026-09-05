@@ -1,5 +1,7 @@
 use crate::engine::{DEFAULT_LAUNCH_COUNTDOWN, Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 use crate::math::Random;
+use crate::character::definition::CharacterAppearance;
+use crate::engine::identity::{STATUS_APPLIED, STATUS_INVALID};
 use crate::types::{CharacterMotionEvent, Input, Player};
 use crate::ui::UiRuntime;
 use crate::world::{LaunchPad, block_bounds};
@@ -39,6 +41,16 @@ impl Engine {
             snapshot: vec![0.0; (MAX_AGENTS + 1) * SNAPSHOT_STRIDE],
             motion_sequence: 0,
             remote_generation: 0,
+            remote_packet_sequence: 0,
+            remote_world_id: None,
+            remote_identity_cache: std::collections::BTreeMap::new(),
+            player_appearance: CharacterAppearance::default(),
+            player_appearance_persistent: false,
+            appearance_generation: 0,
+            appearance_buffer: Vec::new(),
+            appearance_status: STATUS_APPLIED,
+            remote_update_buffer: Vec::new(),
+            remote_update_status: STATUS_INVALID,
             player_motion_event: CharacterMotionEvent::None,
             reduced_effects: false,
             launch_event_id: 0,
