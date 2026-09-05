@@ -90,6 +90,21 @@
         let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
         assert_eq!(event["action"], "shared.about.open");
 
+        let sign_in = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_modal_sign_in")
+            .expect("Home tab should expose its sign-in button")
+            .rect;
+        assert!(sign_in.x > about_link.x + about_link.width);
+        let sign_in_x = sign_in.x + sign_in.width * 0.5;
+        let sign_in_y = sign_in.y + sign_in.height * 0.5;
+        assert!(runtime.pointer(4, UiPointerPhase::Down, sign_in_x, sign_in_y));
+        assert!(runtime.pointer(4, UiPointerPhase::Up, sign_in_x, sign_in_y));
+        assert!(runtime.poll_event());
+        let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
+        assert_eq!(event["action"], "shared.sign_in");
+
         // The scrim is above the header, so tapping the logo while open is
         // the same dismiss gesture as tapping anywhere outside the panel.
         assert!(runtime.pointer(3, UiPointerPhase::Down, logo_x, logo_y));

@@ -268,11 +268,22 @@ fn shared_modal_nodes(
     });
 
     if selected_tab == 0 {
-        let link = UiRect {
+        let action_gap = if compact { 8.0 } else { 12.0 };
+        let action_row = UiRect {
             x: body.x + tab_padding,
             y: body.y + tab_padding,
-            width: body.width.min(if compact { 280.0 } else { 320.0 }),
+            width: (body.width - tab_padding * 2.0).max(0.0),
             height: if compact { 50.0 } else { 56.0 },
+        };
+        let action_width = ((action_row.width - action_gap) * 0.5).max(0.0);
+        let link = UiRect {
+            width: action_width,
+            ..action_row
+        };
+        let sign_in = UiRect {
+            x: action_row.x + action_width + action_gap,
+            width: action_width,
+            ..action_row
         };
         let mut link_node = modal_node(
             "__shared_modal_about_link",
@@ -282,7 +293,9 @@ fn shared_modal_nodes(
             Some([0.58, 0.80, 0.88, 0.68]),
             if compact { 14.0 } else { 16.0 },
         );
-        link_node.text = if cfg!(debug_assertions) {
+        link_node.text = if compact {
+            "About"
+        } else if cfg!(debug_assertions) {
             "http://localhost:5173/about/"
         } else {
             "https://cubacadabra.com/about/"
@@ -296,6 +309,26 @@ fn shared_modal_nodes(
             action: "shared.about.open".to_owned(),
             kind: UiNodeKind::Button,
             rect: link,
+            disabled: false,
+        });
+
+        let mut sign_in_node = modal_node(
+            "__shared_modal_sign_in",
+            UiNodeKind::Button,
+            sign_in,
+            Some([0.38, 0.23, 0.60, 0.96]),
+            Some([0.78, 0.66, 0.96, 0.72]),
+            if compact { 14.0 } else { 16.0 },
+        );
+        sign_in_node.text = "Sign In".to_owned();
+        sign_in_node.font_size = if compact { 13.0 } else { 15.0 };
+        sign_in_node.text_align = UiAlignment::Center;
+        nodes.push(sign_in_node);
+        hit_regions.push(UiHitRegion {
+            id: "__shared_modal_sign_in".to_owned(),
+            action: "shared.sign_in".to_owned(),
+            kind: UiNodeKind::Button,
+            rect: sign_in,
             disabled: false,
         });
     }
