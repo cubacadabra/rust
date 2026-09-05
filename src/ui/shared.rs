@@ -329,14 +329,14 @@ fn shared_modal_nodes(
             }),
             if compact { 14.0 } else { 16.0 },
         );
-        sign_in_node.text = if authenticated { "Sign Out" } else { "Sign In" }.to_owned();
+        sign_in_node.text = if authenticated { "Leave Game" } else { "Sign In" }.to_owned();
         sign_in_node.font_size = if compact { 13.0 } else { 15.0 };
         sign_in_node.text_align = UiAlignment::Center;
         nodes.push(sign_in_node);
         hit_regions.push(UiHitRegion {
             id: "__shared_modal_sign_in".to_owned(),
             action: if authenticated {
-                "shared.sign_out"
+                "shared.leave_game"
             } else {
                 "shared.sign_in"
             }

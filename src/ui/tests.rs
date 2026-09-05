@@ -119,7 +119,7 @@
     }
 
     #[test]
-    fn authenticated_home_action_is_red_sign_out() {
+    fn authenticated_home_action_is_red_leave_game() {
         let mut runtime = runtime(r##"{"nodes":[]}"##, 390.0, 844.0);
         runtime.set_authenticated(true);
         let logo = runtime
@@ -140,8 +140,8 @@
             .nodes
             .iter()
             .find(|node| node.id == "__shared_modal_sign_in")
-            .expect("Home tab should expose its sign-out button");
-        assert_eq!(auth_button.text, "Sign Out");
+            .expect("Home tab should expose its leave-game button");
+        assert_eq!(auth_button.text, "Leave Game");
         assert!(auth_button.background.unwrap()[0] > auth_button.background.unwrap()[1] * 3.0);
         let auth_x = auth_button.rect.x + auth_button.rect.width * 0.5;
         let auth_y = auth_button.rect.y + auth_button.rect.height * 0.5;
@@ -149,7 +149,7 @@
         assert!(runtime.pointer(2, UiPointerPhase::Up, auth_x, auth_y));
         assert!(runtime.poll_event());
         let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
-        assert_eq!(event["action"], "shared.sign_out");
+        assert_eq!(event["action"], "shared.leave_game");
     }
 
     #[test]
