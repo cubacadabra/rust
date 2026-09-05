@@ -23,7 +23,7 @@ impl Renderer {
             let camera_position = target
                 + Vec3::new(
                     yaw.sin() * horizontal_distance,
-                    (distance * pitch.sin()).clamp(-2.0, 7.0),
+                    (distance * pitch.sin()).clamp(-2.0, distance),
                     yaw.cos() * horizontal_distance,
                 );
             (camera_position, target)

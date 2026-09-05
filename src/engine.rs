@@ -38,7 +38,9 @@ pub(crate) const WORLD_LIMIT: f32 = 57.5;
 pub(crate) const DEFAULT_LAUNCH_COUNTDOWN: f32 = 8.0;
 
 const LOOK_SENSITIVITY: f32 = 0.0062;
-const MAX_PITCH: f32 = 1.1;
+// Let the classic third-person camera orbit to an almost overhead view while
+// staying just short of the look-at singularity.
+const MAX_PITCH: f32 = 1.45;
 const MAX_CAMERA_DISTANCE: f32 = 16.0;
 
 pub struct Engine {
