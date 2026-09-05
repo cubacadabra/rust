@@ -1,8 +1,9 @@
+use super::character_material::CharacterPass;
 use glam::{Mat4, Vec3};
 
 use super::{
-    Globals, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline,
-    add_launch_pad, add_pixel_text, add_spawn_pad, faded,
+    Globals, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline, add_launch_pad,
+    add_pixel_text, add_spawn_pad, faded,
 };
 
 impl Renderer {
@@ -46,14 +47,60 @@ impl Renderer {
             fog_color: self.scene.world.palette.sky,
         };
         let dynamic_vertices = self.build_dynamic_vertices();
+        self.opaque_vertices.clear();
+        self.translucent_vertices.clear();
+        self.translucent_vertices
+            .extend_from_slice(&self.static_translucent_vertices);
+        split_world_vertices(
+            &dynamic_vertices,
+            &mut self.opaque_vertices,
+            &mut self.translucent_vertices,
+        );
+        sort_translucent(&mut self.translucent_vertices, camera_position, target);
+        let dynamic_count = self.opaque_vertices.len() + self.translucent_vertices.len();
+        self.characters.begin();
+        // Local player first gives deterministic priority if a development
+        // caller supplies more than the bounded render-only crowd capacity.
+        if self.scene.camera[2] > 0.75 {
+            self.characters.add(
+                self.scene.player,
+                self.scene.player_style,
+                self.scene.world.palette.ink,
+            );
+        }
+        for player in &self.scene.remote_players {
+            self.characters.add(
+                *player,
+                self.scene.player_style,
+                self.scene.world.palette.ink,
+            );
+        }
+        for (index, agent) in self.scene.agents.iter().enumerate() {
+            let style = self
+                .scene
+                .npc_styles
+                .get(index % self.scene.npc_styles.len().max(1))
+                .copied()
+                .unwrap_or(self.scene.player_style);
+            self.characters
+                .add(*agent, style, self.scene.world.palette.ink);
+        }
+        self.characters.upload(&self.queue);
         let ui_vertices = super::ui::build_ui_vertices(&self.ui_frame);
-        self.ensure_dynamic_vertex_capacity(dynamic_vertices.len());
+        self.ensure_dynamic_vertex_capacity(dynamic_count);
         self.ensure_ui_vertex_capacity(ui_vertices.len());
-        if !dynamic_vertices.is_empty() {
+        if !self.opaque_vertices.is_empty() {
             self.queue.write_buffer(
                 &self.dynamic_vertex_buffer,
                 0,
-                bytemuck::cast_slice(&dynamic_vertices),
+                bytemuck::cast_slice(&self.opaque_vertices),
+            );
+        }
+        if !self.translucent_vertices.is_empty() {
+            self.queue.write_buffer(
+                &self.dynamic_vertex_buffer,
+                size_of_val(self.opaque_vertices.as_slice()) as u64,
+                bytemuck::cast_slice(&self.translucent_vertices),
             );
         }
         if !ui_vertices.is_empty() {
@@ -70,7 +117,7 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface.configure(&self.device, &self.config);
+                self.resize(self.width, self.height);
                 return;
             }
             wgpu::CurrentSurfaceTexture::Timeout
@@ -88,22 +135,14 @@ impl Renderer {
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra world pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: self.scene.world.palette.sky[0] as f64,
-                            g: self.scene.world.palette.sky[1] as f64,
-                            b: self.scene.world.palette.sky[2] as f64,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
+                color_attachments: &[Some(self.targets.attachment(wgpu::Color {
+                    r: self.scene.world.palette.sky[0] as f64,
+                    g: self.scene.world.palette.sky[1] as f64,
+                    b: self.scene.world.palette.sky[2] as f64,
+                    a: 1.0,
+                }))],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth_view,
+                    view: &self.targets.depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
                         store: wgpu::StoreOp::Store,
@@ -128,16 +167,27 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
                 pass.draw(0..self.static_vertex_count as u32, 0..1);
             }
-            if !dynamic_vertices.is_empty() {
+            if !self.opaque_vertices.is_empty() {
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
-                pass.draw(0..dynamic_vertices.len() as u32, 0..1);
+                pass.draw(0..self.opaque_vertices.len() as u32, 0..1);
+            }
+            self.characters.draw(&mut pass, CharacterPass::Opaque);
+            self.characters.draw(&mut pass, CharacterPass::Face);
+            self.characters.draw(&mut pass, CharacterPass::Effect);
+            if !self.translucent_vertices.is_empty() {
+                pass.set_pipeline(&self.translucent_pipeline);
+                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
+                pass.draw(
+                    self.opaque_vertices.len() as u32..dynamic_count as u32,
+                    0..1,
+                );
             }
         }
         if !ui_vertices.is_empty() {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra UI pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: &self.targets.color,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -155,6 +205,7 @@ impl Renderer {
             pass.set_vertex_buffer(0, self.ui_vertex_buffer.slice(..));
             pass.draw(0..ui_vertices.len() as u32, 0..1);
         }
+        self.presenter.draw(&mut encoder, &self.targets, &view);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
     }
@@ -299,45 +350,14 @@ impl Renderer {
                 faded(world.palette.paper, 0.3),
             );
         }
-        for (index, agent) in self.scene.agents.iter().enumerate() {
-            super::character::add_character(
-                &mut mesh,
-                *agent,
-                agent.body,
-                self.scene
-                    .npc_styles
-                    .get(index % self.scene.npc_styles.len().max(1))
-                    .copied()
-                    .unwrap_or(self.scene.player_style),
-                world.palette.ink,
-                &mut self.rounded_mesh_cache,
-            );
-        }
-        for player in &self.scene.remote_players {
-            super::character::add_character(
-                &mut mesh,
-                *player,
-                player.body,
-                self.scene.player_style,
-                world.palette.ink,
-                &mut self.rounded_mesh_cache,
-            );
-        }
-        if self.scene.camera[2] > 0.75 {
-            super::character::add_character(
-                &mut mesh,
-                self.scene.player,
-                self.scene.player.body,
-                self.scene.player_style,
-                world.palette.ink,
-                &mut self.rounded_mesh_cache,
-            );
-        }
         mesh
     }
 
     pub(super) fn rebuild_static_vertices(&mut self) {
-        let vertices = self.build_static_vertices();
+        let all = self.build_static_vertices();
+        let mut vertices = Vec::with_capacity(all.len());
+        self.static_translucent_vertices.clear();
+        split_world_vertices(&all, &mut vertices, &mut self.static_translucent_vertices);
         self.ensure_static_vertex_capacity(vertices.len());
         self.static_vertex_count = vertices.len();
         if !vertices.is_empty() {
@@ -374,5 +394,60 @@ impl Renderer {
         self.ui_vertex_capacity = required.next_power_of_two();
         self.ui_vertex_buffer =
             super::device::create_vertex_buffer(&self.device, self.ui_vertex_capacity);
+    }
+}
+
+pub(super) fn split_world_vertices(
+    source: &[Vertex],
+    opaque: &mut Vec<Vertex>,
+    translucent: &mut Vec<Vertex>,
+) {
+    for triangle in source.chunks_exact(3) {
+        if triangle.iter().all(|vertex| vertex.color[3] >= 1.0) {
+            opaque.extend_from_slice(triangle);
+        } else {
+            translucent.extend_from_slice(triangle);
+        }
+    }
+}
+
+pub(super) fn sort_translucent(vertices: &mut [Vertex], camera: Vec3, target: Vec3) {
+    let forward = (target - camera).normalize_or_zero();
+    let depth = |triangle: &[Vertex; 3]| {
+        triangle
+            .iter()
+            .map(|v| (Vec3::from_array(v.position) - camera).dot(forward))
+            .sum::<f32>()
+    };
+    vertices
+        .as_chunks_mut::<3>()
+        .0
+        .sort_unstable_by(|a, b| depth(b).total_cmp(&depth(a)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn world_alpha_is_separated_and_sorted_back_to_front() {
+        let triangle = |z, alpha| {
+            [Vertex {
+                position: [0.0, 0.0, z],
+                normal: [0.0, 1.0, 0.0],
+                color: [1.0, 1.0, 1.0, alpha],
+                tex_coords: [0.0; 2],
+                image_invert: 0.0,
+            }; 3]
+        };
+        let mut source = Vec::new();
+        source.extend(triangle(-2.0, 0.4));
+        source.extend(triangle(-1.0, 1.0));
+        source.extend(triangle(-5.0, 0.5));
+        let (mut opaque, mut alpha) = (Vec::new(), Vec::new());
+        split_world_vertices(&source, &mut opaque, &mut alpha);
+        sort_translucent(&mut alpha, Vec3::ZERO, -Vec3::Z);
+        assert_eq!(opaque.len(), 3);
+        assert_eq!(alpha.len(), 6);
+        assert_eq!(alpha[0].position[2], -5.0);
     }
 }

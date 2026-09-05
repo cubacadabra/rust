@@ -127,17 +127,9 @@ impl RigDefinition {
         Ok(())
     }
 
-    pub(crate) fn rest_transforms(&self) -> Vec<JointTransform> {
-        let mut transforms = vec![JointTransform::new(Vec3::ZERO); JointId::ALL.len()];
-        for joint in &self.joints {
-            transforms[joint.id.index()] = joint.rest;
-        }
-        transforms
-    }
-
-    pub(crate) fn world_matrices(&self, local: &[JointTransform]) -> Vec<Mat4> {
+    pub(crate) fn world_matrices(&self, local: &[JointTransform]) -> [Mat4; 15] {
         assert_eq!(local.len(), self.joints.len());
-        let mut world = vec![Mat4::IDENTITY; self.joints.len()];
+        let mut world = [Mat4::IDENTITY; 15];
         for joint in &self.joints {
             world[joint.id.index()] = joint
                 .parent
@@ -156,8 +148,8 @@ pub(crate) struct Pose {
 impl Pose {
     pub(crate) fn rest(rig: &RigDefinition) -> Self {
         let mut transforms = [JointTransform::new(Vec3::ZERO); 15];
-        for transform in rig.rest_transforms().into_iter().enumerate() {
-            transforms[transform.0] = transform.1;
+        for joint in &rig.joints {
+            transforms[joint.id.index()] = joint.rest;
         }
         Self { transforms }
     }
@@ -233,4 +225,3 @@ mod tests {
         assert!(head.x.abs() > 0.01);
     }
 }
-

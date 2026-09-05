@@ -1,19 +1,26 @@
+#[cfg(not(target_arch = "wasm32"))]
 use cubacadabra_engine::dev_showcase::{
     CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, capture_phase0_baseline,
-    capture_phase2_shape_proof,
+    capture_phase2_shape_proof, capture_phase3,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use std::env;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
+#[cfg(target_arch = "wasm32")]
+fn main() {}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let mut config = CaptureConfig::default();
-    let mut output = PathBuf::from("docs/baselines/magic-characters/phase0");
+    let mut output = None;
     let mut phase = 0_u8;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
             "--phase" => phase = parse_value(&mut arguments, "--phase"),
-            "--output" => output = PathBuf::from(next_value(&mut arguments, "--output")),
+            "--output" => output = Some(PathBuf::from(next_value(&mut arguments, "--output"))),
             "--seed" => config.seed = parse_value(&mut arguments, "--seed"),
             "--pose-time" => config.pose_time = parse_value(&mut arguments, "--pose-time"),
             "--width" => config.width = parse_value(&mut arguments, "--width"),
@@ -51,6 +58,32 @@ fn main() {
         }
     }
 
+    let output = output.unwrap_or_else(|| {
+        PathBuf::from(if phase == 3 {
+            "docs/baselines/magic-characters/phase3/native".to_owned()
+        } else {
+            format!("docs/baselines/magic-characters/phase{phase}")
+        })
+    });
+    if phase == 3 {
+        match capture_phase3(&output) {
+            Ok(report) => println!(
+                "Phase 3 verified on {} ({}) with {} measurements; report={}",
+                report.adapter,
+                report.backend,
+                report.measurements.len(),
+                output.join("phase3_report.json").display()
+            ),
+            Err(error) => {
+                eprintln!("Phase 3: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    if phase != 0 && phase != 2 {
+        usage("supported phases are 0, 2 and 3");
+    }
     let result = if phase == 2 {
         capture_phase2_shape_proof(&output, config)
     } else {
@@ -87,12 +120,14 @@ fn main() {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn next_value(arguments: &mut impl Iterator<Item = String>, flag: &str) -> String {
     arguments
         .next()
         .unwrap_or_else(|| usage(&format!("missing value for {flag}")))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn parse_value<T: std::str::FromStr>(
     arguments: &mut impl Iterator<Item = String>,
     flag: &str,
@@ -103,12 +138,13 @@ fn parse_value<T: std::str::FromStr>(
         .unwrap_or_else(|_| usage(&format!("invalid value {value:?} for {flag}")))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn usage(error: &str) -> ! {
     if !error.is_empty() {
         eprintln!("error: {error}");
     }
     eprintln!(
-        "usage: magic_characters_capture [--phase 0|2] [--output DIR] [--seed N] [--pose-time SECONDS] \
+        "usage: magic_characters_capture [--phase 0|2|3] [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
          [--quality full|half] [--palette current|high-contrast] \
          [--avatar legacy|rounded|shape-proof]"

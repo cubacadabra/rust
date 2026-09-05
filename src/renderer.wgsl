@@ -75,7 +75,9 @@ fn fs_ui(input: UiVertexOutput) -> @location(0) vec4<f32> {
     if input.tex_coords.x < 0.0 {
         return input.color;
     }
-    var image = textureSample(ui_texture, ui_sampler, input.tex_coords);
+    // The atlas has one mip. Explicit LOD is equivalent here and remains
+    // valid after the non-uniform solid-color branch on browser WebGPU.
+    var image = textureSampleLevel(ui_texture, ui_sampler, input.tex_coords, 0.0);
     if input.image_invert > 0.5 {
         image = vec4<f32>(vec3<f32>(1.0) - image.rgb, image.a);
     }

@@ -390,10 +390,12 @@ Exit: front/side/back/black silhouettes and three-body lineup read as one toy fa
 
 ### Phase 3 — Production character submission and base materials
 
-- [ ] Add dedicated character vertex/instance layouts, cached indexed buffers, batched draws and bounded resource lifetime.
-- [ ] Add character shader/material parameters, face rendering and correct opaque/translucent/effect depth behavior.
-- [ ] Establish the cross-platform color contract and protect UI appearance.
-- [ ] Add capability-selected MSAA and a working 1x fallback; use correct resize/resolve behavior.
+- [x] Add dedicated character vertex/instance layouts, cached indexed buffers, batched draws and bounded resource lifetime.
+- [x] Add character shader/material parameters, face rendering and correct opaque/translucent/effect depth behavior.
+- [x] Establish the cross-platform color contract and protect UI appearance.
+- [x] Add capability-selected MSAA and a working 1x fallback; use correct resize/resolve behavior.
+
+Implementation and executable native/WebGPU/GL evidence: [Phase 3 submission report](magic_characters_phase3.md). The measured development baseline meets the submission/CPU budgets; platform-owner ratification and physical mobile-device performance remain explicit review gates.
 
 Primary files: `renderer/types.rs`, `renderer/device.rs`, `renderer/draw.rs`, new character renderer/material/shader modules.
 

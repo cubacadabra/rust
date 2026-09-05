@@ -181,6 +181,7 @@ pub struct Renderer {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
     pub(super) pipeline: wgpu::RenderPipeline,
+    pub(super) translucent_pipeline: wgpu::RenderPipeline,
     pub(super) globals_buffer: wgpu::Buffer,
     pub(super) globals_bind_group: wgpu::BindGroup,
     pub(super) static_vertex_buffer: wgpu::Buffer,
@@ -193,7 +194,13 @@ pub struct Renderer {
     pub(super) ui_vertex_buffer: wgpu::Buffer,
     pub(super) ui_vertex_capacity: usize,
     pub(super) config: wgpu::SurfaceConfiguration,
-    pub(super) depth_view: wgpu::TextureView,
+    targets: targets::SceneTargets,
+    presenter: targets::Presenter,
+    pub(super) sample_count: u32,
+    characters: character_gpu::CharacterRenderer,
+    pub(super) translucent_vertices: Vec<Vertex>,
+    pub(super) opaque_vertices: Vec<Vertex>,
+    pub(super) static_translucent_vertices: Vec<Vertex>,
     pub(super) width: f32,
     pub(super) height: f32,
     pub(super) scene: Scene,
@@ -201,7 +208,6 @@ pub struct Renderer {
     pub(super) active_world: usize,
     pub(super) worlds: Vec<RenderWorld>,
     pub(super) ui_frame: UiFrame,
-    rounded_mesh_cache: rounded_geometry::RoundedMeshCache,
 }
 
 fn default_player_style() -> AvatarStyle {

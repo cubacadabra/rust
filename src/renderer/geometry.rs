@@ -145,7 +145,7 @@ fn add_avatar(
 /// The Phase 0 capture deliberately keeps a hard-cuboid copy of the old
 /// avatar path so committed before-images do not silently change when the
 /// production comparison path advances.
-#[cfg(feature = "dev-showcase")]
+#[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
 fn add_legacy_avatar(
     vertices: &mut Vec<Vertex>,
     agent: RenderEntity,
