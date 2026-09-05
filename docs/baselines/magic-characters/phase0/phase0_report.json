@@ -1,0 +1,333 @@
+{
+  "format_version": 1,
+  "fixture": "phase-0-legacy-avatar-offscreen",
+  "config": {
+    "seed": 3233467134,
+    "pose_time": 0.35,
+    "width": 640,
+    "height": 360,
+    "portrait_width": 390,
+    "portrait_height": 844,
+    "quality": "Full",
+    "palette": "Current"
+  },
+  "adapter": {
+    "name": "Apple M4 Max",
+    "backend": "Metal",
+    "device_type": "IntegratedGpu",
+    "driver": "",
+    "driver_info": "",
+    "gpu_timestamps": false
+  },
+  "captures": [
+    {
+      "name": "local-idle-third",
+      "image": "local-idle-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.104708,
+      "gpu_submit_and_readback_ms": 12.765042000000001,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "remote-idle-third",
+      "image": "remote-idle-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.060292,
+      "gpu_submit_and_readback_ms": 1.788959,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "local-walk-third",
+      "image": "local-walk-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.053542000000000006,
+      "gpu_submit_and_readback_ms": 1.609834,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "remote-walk-third",
+      "image": "remote-walk-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.052167,
+      "gpu_submit_and_readback_ms": 1.599,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "local-sprint-third",
+      "image": "local-sprint-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.051165999999999996,
+      "gpu_submit_and_readback_ms": 1.5703749999999999,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "remote-sprint-third",
+      "image": "remote-sprint-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.055041,
+      "gpu_submit_and_readback_ms": 1.650166,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "local-jump-third",
+      "image": "local-jump-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.052583,
+      "gpu_submit_and_readback_ms": 1.631167,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "remote-jump-third",
+      "image": "remote-jump-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.049792,
+      "gpu_submit_and_readback_ms": 1.59325,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "local-idle-first",
+      "image": "local-idle-first.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 0,
+      "vertex_count": 36,
+      "triangle_count": 12,
+      "estimated_vertex_upload_bytes": 1872,
+      "estimated_resource_bytes": 2766672,
+      "cpu_build_ms": 0.004417,
+      "gpu_submit_and_readback_ms": 1.566875,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "remote-idle-first",
+      "image": "remote-idle-first.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 612,
+      "triangle_count": 204,
+      "estimated_vertex_upload_bytes": 31824,
+      "estimated_resource_bytes": 2796624,
+      "cpu_build_ms": 0.05175,
+      "gpu_submit_and_readback_ms": 1.564541,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "raised-platform-third",
+      "image": "raised-platform-third.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 1,
+      "vertex_count": 648,
+      "triangle_count": 216,
+      "estimated_vertex_upload_bytes": 33696,
+      "estimated_resource_bytes": 2798496,
+      "cpu_build_ms": 0.053833,
+      "gpu_submit_and_readback_ms": 1.549459,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "crowd-18-landscape",
+      "image": "crowd-18-landscape.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 18,
+      "vertex_count": 10404,
+      "triangle_count": 3468,
+      "estimated_vertex_upload_bytes": 541008,
+      "estimated_resource_bytes": 3305808,
+      "cpu_build_ms": 0.864,
+      "gpu_submit_and_readback_ms": 1.553292,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "crowd-50-landscape",
+      "image": "crowd-50-landscape.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 50,
+      "vertex_count": 28836,
+      "triangle_count": 9612,
+      "estimated_vertex_upload_bytes": 1499472,
+      "estimated_resource_bytes": 4264272,
+      "cpu_build_ms": 2.401916,
+      "gpu_submit_and_readback_ms": 1.6444999999999999,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "crowd-18-portrait-letterboxed",
+      "image": "crowd-18-portrait-letterboxed.png",
+      "width": 390,
+      "height": 844,
+      "world_viewport": [
+        0,
+        312,
+        390,
+        219
+      ],
+      "actor_count": 18,
+      "vertex_count": 10404,
+      "triangle_count": 3468,
+      "estimated_vertex_upload_bytes": 541008,
+      "estimated_resource_bytes": 4686736,
+      "cpu_build_ms": 0.848792,
+      "gpu_submit_and_readback_ms": 27.020084,
+      "gpu_timestamp_ms": null
+    },
+    {
+      "name": "crowd-50-portrait-letterboxed",
+      "image": "crowd-50-portrait-letterboxed.png",
+      "width": 390,
+      "height": 844,
+      "world_viewport": [
+        0,
+        312,
+        390,
+        219
+      ],
+      "actor_count": 50,
+      "vertex_count": 28836,
+      "triangle_count": 9612,
+      "estimated_vertex_upload_bytes": 1499472,
+      "estimated_resource_bytes": 5645200,
+      "cpu_build_ms": 2.353375,
+      "gpu_submit_and_readback_ms": 1.7975,
+      "gpu_timestamp_ms": null
+    }
+  ],
+  "engine_capacity_characters": 18,
+  "render_only_stress_characters": 50,
+  "notes": [
+    "This fixture uses the current legacy CPU-expanded avatar path.",
+    "The 50-character scene is render-only and never enters Engine simulation or the public snapshot.",
+    "GPU timestamp queries are not requested by the production renderer; unavailable values are null.",
+    "Portrait captures use the existing 16:9 world viewport centered inside the portrait target.",
+    "Remote and local labels describe the source fixture; both use the current shared player appearance path."
+  ]
+}

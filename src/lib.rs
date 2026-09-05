@@ -6,6 +6,12 @@ mod npc;
 mod player;
 #[cfg(any(not(target_arch = "wasm32"), feature = "web-renderer"))]
 mod renderer;
+#[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
+pub mod dev_showcase {
+    pub use crate::renderer::capture::{
+        CaptureConfig, CapturePalette, CaptureQuality, CaptureReport, capture_phase0_baseline,
+    };
+}
 mod scripting;
 mod types;
 mod ui;

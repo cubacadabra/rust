@@ -67,6 +67,67 @@ fn remote_players_are_written_to_the_snapshot() {
 }
 
 #[test]
+fn snapshot_abi_fixture_preserves_entity_suffix_meanings() {
+    let mut engine = Engine::new();
+    engine.view_yaw = 1.25;
+    engine.player.position = [2.0, 0.0, -3.0];
+    engine.player.walk_cycle = 0.75;
+    engine.player.grounded = true;
+    engine.player.moving = true;
+    engine.player.sprinting = true;
+    engine.write_snapshot();
+
+    assert_eq!(engine.snapshot.len(), 18 * SNAPSHOT_STRIDE);
+    assert_eq!(
+        &engine.snapshot[..SNAPSHOT_STRIDE],
+        &[2.0, 0.0, -3.0, 1.25, 0.75, 1.0, 1.0, 1.0]
+    );
+
+    engine.set_remote_player_count(1);
+    engine.set_remote_player(0, [4.0, 0.0, -6.0], -0.5, true, true);
+    engine.write_snapshot();
+    assert_eq!(
+        &engine.snapshot[SNAPSHOT_STRIDE..2 * SNAPSHOT_STRIDE],
+        &[4.0, 0.0, -6.0, -0.5, 0.0, 1.0, -1.0, 0.0]
+    );
+
+    let mut npc_engine = Engine::new();
+    npc_engine.agents.push(Agent {
+        position: [1.0, 0.0, 2.0],
+        target: crate::math::Vec2 { x: 1.0, z: 2.0 },
+        meeting_target: crate::math::Vec2 { x: 1.0, z: 2.0 },
+        meeting_index: 3,
+        phase: AgentPhase::Assembling,
+        spawned_at: 0.0,
+        next_decision_at: 0.0,
+        gather_at: 0.0,
+        next_jump_at: 0.0,
+        speed: 1.0,
+        walk_cycle: 0.0,
+        vertical_velocity: 0.0,
+        grounded: true,
+    });
+    npc_engine.write_snapshot();
+    assert_eq!(
+        &npc_engine.snapshot[SNAPSHOT_STRIDE..2 * SNAPSHOT_STRIDE],
+        &[1.0, 0.0, 2.0, 0.0, 0.0, 2.0, 3.0, 0.0]
+    );
+
+    engine.set_remote_player_count(50);
+    assert_eq!(engine.remote_player_count(), 17);
+    assert_eq!(engine.snapshot.len(), 18 * SNAPSHOT_STRIDE);
+}
+
+#[test]
+fn render_only_capacity_does_not_change_engine_capacity() {
+    let mut engine = Engine::new();
+    engine.set_remote_player_count(17);
+    assert_eq!(engine.remote_player_count(), 17);
+    assert_eq!(engine.agent_count(), 17);
+    assert_eq!(engine.snapshot().len(), 18 * SNAPSHOT_STRIDE);
+}
+
+#[test]
 fn occupied_launch_pad_counts_down_and_emits_event() {
     let mut engine = Engine::new();
     engine.player.position = [-10.0, 0.0, -3.0];

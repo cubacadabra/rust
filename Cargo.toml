@@ -12,6 +12,12 @@ default = ["metal"]
 metal = ["wgpu/metal"]
 android-backends = ["wgpu/vulkan", "wgpu/gles"]
 web-renderer = []
+dev-showcase = []
+
+[[bin]]
+name = "magic_characters_capture"
+path = "src/bin/magic_characters_capture.rs"
+required-features = ["dev-showcase"]
 
 [dependencies]
 fontdue = "0.9"
