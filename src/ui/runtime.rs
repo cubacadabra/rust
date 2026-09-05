@@ -11,6 +11,7 @@ impl Default for UiRuntime {
             script_events: VecDeque::new(),
             event_buffer: Vec::new(),
             dirty: false,
+            shared_authenticated: false,
             shared_modal_progress: 0.0,
             shared_modal_target: 0.0,
             shared_modal_tab: 0,
@@ -113,6 +114,14 @@ impl UiRuntime {
 
     pub(crate) fn shared_modal_visible(&self) -> bool {
         self.shared_modal_progress > 0.0 || self.shared_modal_target > 0.0
+    }
+
+    pub(crate) fn set_authenticated(&mut self, authenticated: bool) {
+        if self.shared_authenticated == authenticated {
+            return;
+        }
+        self.shared_authenticated = authenticated;
+        self.dirty = true;
     }
 
     pub(crate) fn is_interactive_at(&mut self, x: f32, y: f32) -> bool {
@@ -468,6 +477,7 @@ impl UiRuntime {
             self.shared_modal_progress,
             self.shared_modal_target,
             self.shared_modal_tab,
+            self.shared_authenticated,
         );
         nodes.extend(modal.nodes);
         hit_regions.extend(modal.hit_regions);
@@ -645,4 +655,3 @@ impl UiRuntime {
         self.dirty = true;
     }
 }
-

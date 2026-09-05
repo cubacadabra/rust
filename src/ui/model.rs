@@ -363,9 +363,9 @@ pub(crate) struct UiRuntime {
     script_events: VecDeque<UiEvent>,
     event_buffer: Vec<u8>,
     dirty: bool,
+    shared_authenticated: bool,
     shared_modal_progress: f32,
     shared_modal_target: f32,
     shared_modal_tab: usize,
 }
-
 

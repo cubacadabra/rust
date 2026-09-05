@@ -58,6 +58,18 @@ pub unsafe extern "C" fn engine_set_ui_viewport(
     }
 }
 
+/// Sets the authentication state used by the shared logo modal. The platform
+/// host owns authentication and must provide its own session state here.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_set_authenticated(engine: *mut Engine, authenticated: u8) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_authenticated(authenticated != 0);
+    }
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.

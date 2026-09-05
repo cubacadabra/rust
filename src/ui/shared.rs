@@ -128,6 +128,7 @@ fn shared_modal_nodes(
     progress: f32,
     target: f32,
     selected_tab: usize,
+    authenticated: bool,
 ) -> SharedModalGeometry {
     if viewport.width <= 0.0
         || viewport.height <= 0.0
@@ -316,17 +317,30 @@ fn shared_modal_nodes(
             "__shared_modal_sign_in",
             UiNodeKind::Button,
             sign_in,
-            Some([0.38, 0.23, 0.60, 0.96]),
-            Some([0.78, 0.66, 0.96, 0.72]),
+            Some(if authenticated {
+                [0.72, 0.12, 0.10, 0.96]
+            } else {
+                [0.38, 0.23, 0.60, 0.96]
+            }),
+            Some(if authenticated {
+                [1.0, 0.68, 0.64, 0.76]
+            } else {
+                [0.78, 0.66, 0.96, 0.72]
+            }),
             if compact { 14.0 } else { 16.0 },
         );
-        sign_in_node.text = "Sign In".to_owned();
+        sign_in_node.text = if authenticated { "Sign Out" } else { "Sign In" }.to_owned();
         sign_in_node.font_size = if compact { 13.0 } else { 15.0 };
         sign_in_node.text_align = UiAlignment::Center;
         nodes.push(sign_in_node);
         hit_regions.push(UiHitRegion {
             id: "__shared_modal_sign_in".to_owned(),
-            action: "shared.sign_in".to_owned(),
+            action: if authenticated {
+                "shared.sign_out"
+            } else {
+                "shared.sign_in"
+            }
+            .to_owned(),
             kind: UiNodeKind::Button,
             rect: sign_in,
             disabled: false,

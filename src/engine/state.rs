@@ -12,6 +12,10 @@ impl Engine {
         self.ui.borrow_mut().set_viewport(viewport);
     }
 
+    pub(crate) fn set_authenticated(&mut self, authenticated: bool) {
+        self.ui.borrow_mut().set_authenticated(authenticated);
+    }
+
     pub(crate) fn ui_node_count(&self) -> usize {
         self.ui.borrow().document_node_count()
     }

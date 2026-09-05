@@ -119,6 +119,40 @@
     }
 
     #[test]
+    fn authenticated_home_action_is_red_sign_out() {
+        let mut runtime = runtime(r##"{"nodes":[]}"##, 390.0, 844.0);
+        runtime.set_authenticated(true);
+        let logo = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_header_logo_surface")
+            .expect("shared logo should render")
+            .rect;
+        let logo_x = logo.x + logo.width * 0.5;
+        let logo_y = logo.y + logo.height * 0.5;
+        assert!(runtime.pointer(1, UiPointerPhase::Down, logo_x, logo_y));
+        assert!(runtime.pointer(1, UiPointerPhase::Up, logo_x, logo_y));
+        runtime.advance(1.0);
+
+        let auth_button = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "__shared_modal_sign_in")
+            .expect("Home tab should expose its sign-out button");
+        assert_eq!(auth_button.text, "Sign Out");
+        assert!(auth_button.background.unwrap()[0] > auth_button.background.unwrap()[1] * 3.0);
+        let auth_x = auth_button.rect.x + auth_button.rect.width * 0.5;
+        let auth_y = auth_button.rect.y + auth_button.rect.height * 0.5;
+        assert!(runtime.pointer(2, UiPointerPhase::Down, auth_x, auth_y));
+        assert!(runtime.pointer(2, UiPointerPhase::Up, auth_x, auth_y));
+        assert!(runtime.poll_event());
+        let event: serde_json::Value = serde_json::from_slice(runtime.event_buffer()).unwrap();
+        assert_eq!(event["action"], "shared.sign_out");
+    }
+
+    #[test]
     fn shared_modal_tabs_are_selectable_without_script_events() {
         let mut runtime = runtime(r##"{"nodes":[]}"##, 1024.0, 768.0);
         let logo = runtime
