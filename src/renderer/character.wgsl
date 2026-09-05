@@ -13,7 +13,7 @@ struct Input {
 struct Output {
     @builtin(position) position: vec4<f32>, @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>, @location(2) tint: vec4<f32>,
-    @location(3) material: vec4<f32>,
+    @location(3) material: vec4<f32>, @location(4) uv: vec2<f32>,
 };
 fn decode_srgb(v: vec3<f32>) -> vec3<f32> {
     return select(pow((v + 0.055) / 1.055, vec3<f32>(2.4)), v / 12.92, v <= vec3<f32>(0.04045));
@@ -30,6 +30,7 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
     output.normal = vec3<f32>(dot(input.normal0.xyz, input.normal), dot(input.normal1.xyz, input.normal), dot(input.normal2.xyz, input.normal));
     output.tint = input.tint;
     output.material = input.material;
+    output.uv = input.uv;
     return output;
 }
 @fragment fn fs_main(input: Output) -> @location(0) vec4<f32> {
@@ -43,6 +44,23 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
     let rim = pow(1.0 - max(dot(normal, view), 0.0), 3.0) * 0.025;
     let base = decode_srgb(input.tint.rgb);
     var lit = base * diffuse + vec3<f32>(specular + rim);
+    if input.material.w == 1.0 {
+        // A low-frequency weave cue rewards close inspection without adding a
+        // texture binding or high-frequency sparkle to distant characters.
+        let weave = sin((input.uv.x + input.uv.y) * 18.0) * 0.018;
+        lit *= 1.0 + weave;
+    }
+    if input.material.w == 2.0 {
+        // Rainwear gets a broad, restrained highlight instead of a fake
+        // metallic reflection from a shinier base color.
+        lit += vec3<f32>(0.018) * pow(max(dot(normal, view), 0.0), 6.0);
+    }
+    if input.material.w == 3.0 {
+        // Stylized environment response for the soft-metal tier. This is
+        // intentionally bounded and remains valid on the ordinary target;
+        // reflection probes remain a later quality tier.
+        lit += vec3<f32>(0.025, 0.030, 0.038) * (0.5 + 0.5 * normal.y);
+    }
     if input.material.z > 0.0 { lit = base * input.material.z; }
     let fog = smoothstep(52.0, 115.0, distance(input.world, globals.camera_position.xyz));
     // Compatibility target stores display-encoded RGB. World/UI keep their

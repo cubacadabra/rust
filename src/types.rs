@@ -46,6 +46,16 @@ pub(crate) struct CharacterEntityKey {
     pub(crate) generation: u32,
 }
 
+impl Default for CharacterEntityKey {
+    fn default() -> Self {
+        Self {
+            kind: CharacterEntityKind::LocalPlayer,
+            slot: 0,
+            generation: 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CharacterMotionSource {
     Simulation,

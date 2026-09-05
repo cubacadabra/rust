@@ -31,6 +31,7 @@ pub(super) struct RenderSign {
 
 #[derive(Clone, Copy, Default)]
 pub(super) struct RenderEntity {
+    pub(super) key: crate::types::CharacterEntityKey,
     pub(super) position: [f32; 3],
     pub(super) yaw: f32,
     pub(super) walk_cycle: f32,
@@ -165,6 +166,7 @@ pub(super) struct Scene {
     pub(super) username: String,
     pub(super) build_blocks: Vec<BuildBlock>,
     pub(super) presentation: std::collections::HashMap<crate::types::CharacterEntityKey, crate::character::CharacterPresentationState>,
+    pub(super) lods: std::collections::HashMap<crate::types::CharacterEntityKey, crate::renderer::character_quality::CharacterLod>,
     pub(super) reduced_effects: bool,
 }
 
@@ -183,6 +185,7 @@ impl Default for Scene {
             username: "PLAYER".to_owned(),
             build_blocks: Vec::new(),
             presentation: std::collections::HashMap::new(),
+            lods: std::collections::HashMap::new(),
             reduced_effects: false,
         }
     }

@@ -15,6 +15,7 @@ pub mod dev_showcase {
     pub use crate::renderer::capture::{
         CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, CaptureReport,
         capture_phase0_baseline, capture_phase2_shape_proof, capture_phase5_outfits,
+        capture_phase6_report,
     };
     pub use crate::renderer::validation::capture_phase3;
 

@@ -77,11 +77,14 @@ impl Material {
     pub fn parameters(self) -> [f32; 4] {
         match self {
             Self::Toy => [0.42, 0.18, 0.0, 0.0],
-            Self::Cloth => [0.92, 0.025, 0.0, 0.0],
-            Self::Denim => [0.85, 0.04, 0.0, 0.0],
+            // The fourth value selects a deliberately cheap, filtered-looking
+            // material detail branch in the character shader. It is not a
+            // texture handle and therefore does not grow the baseline cache.
+            Self::Cloth => [0.92, 0.025, 0.0, 1.0],
+            Self::Denim => [0.85, 0.04, 0.0, 1.0],
             Self::Rubber => [0.72, 0.08, 0.0, 0.0],
-            Self::Coat => [0.28, 0.22, 0.0, 0.0],
-            Self::SoftMetal => [0.36, 0.38, 0.0, 0.0],
+            Self::Coat => [0.28, 0.22, 0.0, 2.0],
+            Self::SoftMetal => [0.36, 0.38, 0.0, 3.0],
             Self::Fuzz => [0.98, 0.015, 0.0, 0.0],
             Self::Face => [1.0, 0.0, 0.0, 0.0],
             Self::Seam => [1.0, 0.0, 1.4, 0.0],

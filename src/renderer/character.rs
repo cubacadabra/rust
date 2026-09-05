@@ -1,10 +1,9 @@
 //! Immutable authored rigid pieces; routine animation changes transforms.
 use super::AvatarStyle;
 use super::character_material::Material;
-#[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
-use crate::character::Pose;
 use crate::character::{
-    BodyId, BodyPart, BodyRecipe, FaceParameters, FacePreset, JointId, OutfitId, body_recipe,
+    BodyId, BodyPart, BodyRecipe, FaceParameters, FacePreset, JointId, OutfitId, Pose,
+    body_recipe,
 };
 use glam::{Mat4, Quat, Vec3};
 
@@ -692,16 +691,44 @@ pub(super) fn add_character_with_outfit(
         }
     }
 }
+#[allow(dead_code)]
 pub(super) fn mesh_recipe(spec: BodyPart) -> super::rounded_geometry::RoundedBoxRecipe {
+    mesh_recipe_with_subdivisions(spec, 2)
+}
+
+pub(super) fn mesh_recipe_with_subdivisions(
+    spec: BodyPart,
+    subdivisions: u32,
+) -> super::rounded_geometry::RoundedBoxRecipe {
     super::rounded_geometry::RoundedBoxRecipe::new(
         spec.size,
         spec.radius,
-        2,
+        subdivisions,
         super::rounded_geometry::TaperProfile {
             bottom: spec.taper.0,
             top: spec.taper.1,
         },
     )
+}
+
+/// Conservative rest-pose sphere for frustum culling. It is derived from
+/// every authored part and padded for secondary motion, not from gameplay
+/// collision dimensions.
+pub(super) fn bounds(body: BodyId, outfit: OutfitId) -> (Vec3, f32) {
+    let recipe = body_recipe(body);
+    let joints = recipe.rig.world_matrices(&Pose::rest(&recipe.rig).transforms);
+    let mut min = Vec3::splat(f32::INFINITY);
+    let mut max = Vec3::splat(f32::NEG_INFINITY);
+    for part in parts_for(&recipe, outfit) {
+        let center = joints[part.anchor.joint.index()]
+            .transform_point3(part.anchor.local.transform_point3(Vec3::ZERO));
+        let extent = part.spec.size.length() * 0.5;
+        min = min.min(center - Vec3::splat(extent));
+        max = max.max(center + Vec3::splat(extent));
+    }
+    let center = (min + max) * 0.5;
+    let radius = ((max - min) * 0.5).length() + 0.42;
+    (center, radius.max(0.5))
 }
 
 #[cfg(test)]

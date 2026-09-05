@@ -9,6 +9,10 @@ use super::{
     DEPTH_FORMAT, Globals, RenderEntity, RenderPalette, Vertex, add_avatar, add_cuboid,
     add_legacy_avatar, color,
 };
+use super::character_quality::{
+    CHARACTER_FAR_PLANE, LOD_FAR_PIXELS, LOD_HYSTERESIS_PIXELS, LOD_NEAR_PIXELS, MAX_EFFECTS,
+    MAX_EFFECTS_PER_CHARACTER, CharacterLod,
+};
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
@@ -107,6 +111,105 @@ pub struct CaptureReport {
     pub engine_capacity_characters: usize,
     pub render_only_stress_characters: usize,
     pub notes: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Phase6QualityReport {
+    pub format_version: u32,
+    pub fixture: &'static str,
+    pub lod: LodPolicyReport,
+    pub effect_budget: EffectBudgetReport,
+    pub cache: CachePolicyReport,
+    pub catalog: CatalogPolicyReport,
+    pub notes: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LodPolicyReport {
+    pub near_pixels: f32,
+    pub mid_pixels: f32,
+    pub hysteresis_pixels: f32,
+    pub near_subdivisions: u32,
+    pub mid_subdivisions: u32,
+    pub far_subdivisions: u32,
+    pub far_plane: f32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EffectBudgetReport {
+    pub max_live_effects: usize,
+    pub max_per_character: usize,
+    pub reduced_effects_disables_seams: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CachePolicyReport {
+    pub max_meshes: usize,
+    pub max_resident_bytes: usize,
+    pub render_only_stress_characters: usize,
+    pub engine_capacity_characters: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CatalogPolicyReport {
+    pub outfits: usize,
+    pub materials: usize,
+    pub texture_bytes: u64,
+    pub licenses: usize,
+}
+
+/// Write the deterministic Phase 6 policy report. Runtime measurements remain
+/// backend/device evidence from the production validation harness; this report
+/// records the bounded decisions that make those runs comparable and prevents
+/// a quality pass from silently changing simulation capacity.
+pub fn capture_phase6_report(output_dir: impl AsRef<Path>) -> Result<Phase6QualityReport, String> {
+    let output_dir = output_dir.as_ref();
+    fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
+    let catalog = crate::character::catalog::validate_catalog(include_str!(
+        "../../assets/characters/catalog.json"
+    ))
+    .map_err(|error| format!("validate Phase 5 catalog: {error}"))?;
+    let report = Phase6QualityReport {
+        format_version: 1,
+        fixture: "phase-6-fidelity-and-sustained-performance-policy",
+        lod: LodPolicyReport {
+            near_pixels: LOD_NEAR_PIXELS,
+            mid_pixels: LOD_FAR_PIXELS,
+            hysteresis_pixels: LOD_HYSTERESIS_PIXELS,
+            near_subdivisions: CharacterLod::Near.subdivisions(),
+            mid_subdivisions: CharacterLod::Mid.subdivisions(),
+            far_subdivisions: CharacterLod::Far.subdivisions(),
+            far_plane: CHARACTER_FAR_PLANE,
+        },
+        effect_budget: EffectBudgetReport {
+            max_live_effects: MAX_EFFECTS,
+            max_per_character: MAX_EFFECTS_PER_CHARACTER,
+            reduced_effects_disables_seams: true,
+        },
+        cache: CachePolicyReport {
+            max_meshes: 256,
+            max_resident_bytes: 32 * 1024 * 1024,
+            render_only_stress_characters: 50,
+            engine_capacity_characters: 18,
+        },
+        catalog: CatalogPolicyReport {
+            outfits: catalog.outfit_count,
+            materials: catalog.material_count,
+            texture_bytes: catalog.texture_bytes,
+            licenses: catalog.license_count,
+        },
+        notes: vec![
+            "Near/mid/far selection uses projected height with 180px and 70px boundaries.",
+            "Animated bounds are conservative and culling is presentation-only.",
+            "The report records policy; sustained native/mobile/browser timings belong to the corresponding capture artifact.",
+            "Directional shadows, AO and bloom remain opt-in alternatives until a device budget ratifies them.",
+        ],
+    };
+    let bytes = serde_json::to_vec_pretty(&report)
+        .map_err(|error| format!("serialize Phase 6 report: {error}"))?;
+    fs::write(output_dir.join("phase6_report.json"), bytes)
+        .map_err(|error| format!("write Phase 6 report: {error}"))?;
+    Ok(report)
 }
 
 #[derive(Debug, Serialize)]

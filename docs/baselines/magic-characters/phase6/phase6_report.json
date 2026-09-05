@@ -1,0 +1,36 @@
+{
+  "format_version": 1,
+  "fixture": "phase-6-fidelity-and-sustained-performance-policy",
+  "lod": {
+    "near_pixels": 180.0,
+    "mid_pixels": 70.0,
+    "hysteresis_pixels": 12.0,
+    "near_subdivisions": 4,
+    "mid_subdivisions": 2,
+    "far_subdivisions": 1,
+    "far_plane": 240.0
+  },
+  "effect_budget": {
+    "max_live_effects": 128,
+    "max_per_character": 8,
+    "reduced_effects_disables_seams": true
+  },
+  "cache": {
+    "max_meshes": 256,
+    "max_resident_bytes": 33554432,
+    "render_only_stress_characters": 50,
+    "engine_capacity_characters": 18
+  },
+  "catalog": {
+    "outfits": 6,
+    "materials": 10,
+    "texture_bytes": 0,
+    "licenses": 6
+  },
+  "notes": [
+    "Near/mid/far selection uses projected height with 180px and 70px boundaries.",
+    "Animated bounds are conservative and culling is presentation-only.",
+    "The report records policy; sustained native/mobile/browser timings belong to the corresponding capture artifact.",
+    "Directional shadows, AO and bloom remain opt-in alternatives until a device budget ratifies them."
+  ]
+}

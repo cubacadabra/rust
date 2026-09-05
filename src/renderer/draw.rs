@@ -1,4 +1,5 @@
 use super::character_material::CharacterPass;
+use super::character_quality;
 use glam::{Mat4, Vec3};
 
 use super::{
@@ -31,12 +32,13 @@ impl Renderer {
             (camera_position, target)
         };
         let world_viewport = self.world_viewport();
+        let view = Mat4::look_at_rh(camera_position, target, Vec3::Y);
         let view_projection = Mat4::perspective_rh(
             62.0_f32.to_radians(),
             (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1),
             0.05,
             240.0,
-        ) * Mat4::look_at_rh(camera_position, target, Vec3::Y);
+        ) * view;
         let globals = Globals {
             view_projection: view_projection.to_cols_array_2d(),
             camera_position: camera_position.extend(1.0).to_array(),
@@ -47,7 +49,8 @@ impl Renderer {
             fog_color: self.scene.world.palette.sky,
         };
         let dynamic_vertices = self.build_dynamic_vertices();
-        let shadow_vertices = self.build_support_shadows();
+        let viewport_aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
+        let shadow_vertices = self.build_support_shadows(view, viewport_aspect);
         self.opaque_vertices.clear();
         self.translucent_vertices.clear();
         self.translucent_vertices
@@ -62,20 +65,52 @@ impl Renderer {
             + shadow_vertices.len()
             + self.translucent_vertices.len();
         self.characters.begin();
+        let character_ink = self.scene.world.palette.ink;
+        let reduced_effects = self.scene.reduced_effects;
+        let lods = &mut self.scene.lods;
+        let mut add_character = |characters: &mut super::character_gpu::CharacterRenderer,
+                             entity: RenderEntity,
+                             style: super::AvatarStyle,
+                             rank: usize,
+                             reduced_effects: bool| {
+            let aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
+            let Some(lod) = character_quality::is_visible(entity, view, aspect).then(|| {
+                character_quality::select_lod(
+                    character_quality::projected_height(entity, view, world_viewport.3),
+                    lods.get(&entity.key).copied(),
+                )
+            }) else {
+                characters.stats.culled += 1;
+                return;
+            };
+            lods.insert(entity.key, lod);
+            characters.add_with_quality(
+                entity,
+                style,
+                character_ink,
+                lod,
+                rank,
+                reduced_effects,
+            );
+        };
         // Local player first gives deterministic priority if a development
         // caller supplies more than the bounded render-only crowd capacity.
         if self.scene.camera[2] > 0.75 {
-            self.characters.add(
+            add_character(
+                &mut self.characters,
                 self.scene.player,
                 self.scene.player_style,
-                self.scene.world.palette.ink,
+                0,
+                reduced_effects,
             );
         }
-        for player in &self.scene.remote_players {
-            self.characters.add(
+        for (index, player) in self.scene.remote_players.iter().enumerate() {
+            add_character(
+                &mut self.characters,
                 *player,
                 self.scene.player_style,
-                self.scene.world.palette.ink,
+                index + 1,
+                reduced_effects,
             );
         }
         for (index, agent) in self.scene.agents.iter().enumerate() {
@@ -85,8 +120,13 @@ impl Renderer {
                 .get(index % self.scene.npc_styles.len().max(1))
                 .copied()
                 .unwrap_or(self.scene.player_style);
-            self.characters
-                .add(*agent, style, self.scene.world.palette.ink);
+            add_character(
+                &mut self.characters,
+                *agent,
+                style,
+                self.scene.remote_players.len() + index + 1,
+                reduced_effects,
+            );
         }
         self.characters.upload(&self.queue);
         let ui_vertices = super::ui::build_ui_vertices(&self.ui_frame);
@@ -371,10 +411,13 @@ impl Renderer {
         mesh
     }
 
-    fn build_support_shadows(&self) -> Vec<Vertex> {
+    fn build_support_shadows(&self, view: Mat4, aspect: f32) -> Vec<Vertex> {
         let mut shadows = Vec::with_capacity(24 * (1 + self.scene.agents.len() + self.scene.remote_players.len()));
         let mut add = |entity: RenderEntity| {
             if !entity.position.iter().all(|value| value.is_finite()) {
+                return;
+            }
+            if !character_quality::is_visible(entity, view, aspect) {
                 return;
             }
             let Some((height, mut alpha)) = support_receiver(&self.scene.world, entity) else {
@@ -392,13 +435,26 @@ impl Renderer {
                 let edge_z = (block.size[2] * 0.5 - (entity.position[2] - block.position[2]).abs()).max(0.04);
                 radius = radius.min(edge_x.min(edge_z) * 0.88);
             }
-            alpha *= (radius / 0.72).clamp(0.15, 1.0);
+            // Two receiver-aligned layers provide a cheap soft/contact shadow:
+            // the wider layer fades into the receiver and the smaller layer
+            // keeps the feet grounded. Both remain depth-tested and never
+            // write depth through the translucent world pipeline.
+            let height_gap = (entity.position[1] - height).max(0.0);
+            alpha *= (radius / 0.72).clamp(0.15, 1.0)
+                * (1.0 - height_gap * 0.28).clamp(0.35, 1.0);
             add_cylinder(
                 &mut shadows,
-                Vec3::new(entity.position[0], height + 0.012, entity.position[2]),
-                radius,
+                Vec3::new(entity.position[0], height + 0.011, entity.position[2]),
+                radius * 1.10,
                 0.012,
-                super::faded(self.scene.world.palette.ink, alpha),
+                super::faded(self.scene.world.palette.ink, alpha * 0.32),
+            );
+            add_cylinder(
+                &mut shadows,
+                Vec3::new(entity.position[0], height + 0.015, entity.position[2]),
+                radius * 0.78,
+                0.014,
+                super::faded(self.scene.world.palette.ink, alpha * 0.58),
             );
         };
         if self.scene.camera[2] > 0.75 {

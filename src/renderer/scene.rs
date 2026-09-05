@@ -77,6 +77,7 @@ impl Renderer {
             && let Some(world) = self.worlds.get(engine.active_world).cloned()
         {
             self.scene.presentation.clear();
+            self.scene.lods.clear();
             self.active_world = engine.active_world;
             self.scene.world = world;
             self.rebuild_static_vertices();
@@ -92,6 +93,7 @@ impl Renderer {
             // unchanged. Rebuilding from the current sample cannot replay
             // an event because no sample history is inferred on first use.
             self.scene.presentation.clear();
+            self.scene.lods.clear();
             self.scene.reduced_effects = reduced_effects;
         }
         let samples: Vec<_> = engine.character_motion_samples().collect();
@@ -138,6 +140,7 @@ impl Renderer {
         self.scene
             .presentation
             .retain(|key, _| active_keys.contains(key));
+        self.scene.lods.retain(|key, _| active_keys.contains(key));
         self.scene.pad_seconds.clear();
         self.scene
             .pad_seconds
@@ -169,6 +172,7 @@ fn render_entity(
     animation: AnimationOutput,
 ) -> RenderEntity {
     RenderEntity {
+        key: sample.key,
         position: sample.position,
         yaw: sample.facing_yaw,
         walk_cycle: sample.stride_phase,

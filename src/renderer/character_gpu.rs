@@ -4,6 +4,7 @@ use super::{
     AvatarStyle, RenderEntity,
     character::{self, Feature, Part},
     character_material::{self, CharacterInstance, CharacterPass, CharacterVertex, Material},
+    character_quality::{self, CharacterLod},
     rounded_geometry::RoundedMeshCache,
 };
 use crate::character::{BodyId, BodyRecipe, OutfitId, body_recipe};
@@ -69,13 +70,24 @@ struct CompiledBody {
     body: BodyId,
     outfit: OutfitId,
     recipe: BodyRecipe,
-    parts: Vec<(Part, usize)>,
+    parts: [Vec<(Part, usize)>; 3],
 }
 struct Batch {
     mesh: usize,
     material: Material,
     instances: Vec<CharacterInstance>,
     start: usize,
+}
+
+fn part_visible(part: Part, lod: CharacterLod) -> bool {
+    match lod {
+        CharacterLod::Near | CharacterLod::Mid => true,
+        // Preserve the head's eyes and mouth at the far tier while dropping
+        // subpixel brows and seam cores. Silhouette appendages remain present.
+        CharacterLod::Far
+            => !matches!(part.feature, Feature::Brow(_))
+                && !matches!(part.tint, character::Tint::Seam),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -92,6 +104,11 @@ pub(super) struct CharacterStats {
     pub mesh_bytes: usize,
     pub resident_bytes: usize,
     pub staging_capacity_bytes: usize,
+    pub culled: usize,
+    pub lod_near: usize,
+    pub lod_mid: usize,
+    pub lod_far: usize,
+    pub effects: usize,
 }
 
 pub(super) struct CharacterRenderer {
@@ -118,63 +135,68 @@ impl CharacterRenderer {
             for outfit in OutfitId::ALL {
                 let recipe = body_recipe(body);
                 recipe.rig.validate().expect("bundled rig");
-                let pieces = character::parts_for(&recipe, outfit);
-                assert!(pieces.len() <= MAX_PARTS);
-                let mut parts = Vec::with_capacity(pieces.len());
-                for part in pieces {
-                    let mesh_recipe = character::mesh_recipe(part.spec);
-                    let mesh_index = recipes
-                        .iter()
-                        .position(|key| *key == mesh_recipe)
-                        .unwrap_or_else(|| {
-                            assert!(meshes.len() < MAX_MESHES);
-                            let mesh = cache.get_or_build(mesh_recipe).expect("bundled mesh");
-                            let vertices: Vec<_> = mesh
-                                .vertices
-                                .iter()
-                                .map(|v| CharacterVertex {
-                                    position: v.position.to_array(),
-                                    normal: v.normal.to_array(),
-                                    uv: v.uv,
-                                })
-                                .collect();
-                            mesh_bytes += size_of_val(vertices.as_slice())
-                                + size_of_val(mesh.indices.as_slice());
-                            assert!(mesh_bytes < MAX_RESIDENCY);
-                            meshes.push(Mesh {
-                                vertices: device.create_buffer_init(
-                                    &wgpu::util::BufferInitDescriptor {
-                                        label: Some("immutable character vertices"),
-                                        contents: bytemuck::cast_slice(&vertices),
-                                        usage: wgpu::BufferUsages::VERTEX,
-                                    },
-                                ),
-                                indices: device.create_buffer_init(
-                                    &wgpu::util::BufferInitDescriptor {
-                                        label: Some("immutable character indices"),
-                                        contents: bytemuck::cast_slice(&mesh.indices),
-                                        usage: wgpu::BufferUsages::INDEX,
-                                    },
-                                ),
-                                index_count: mesh.indices.len() as u32,
+                let mut parts: [Vec<(Part, usize)>; 3] = std::array::from_fn(|_| Vec::new());
+                for lod in CharacterLod::ALL {
+                    let pieces = character::parts_for(&recipe, outfit);
+                    assert!(pieces.len() <= MAX_PARTS);
+                    for part in pieces.into_iter().filter(|part| part_visible(*part, lod)) {
+                        let mesh_recipe = character::mesh_recipe_with_subdivisions(
+                            part.spec,
+                            lod.subdivisions(),
+                        );
+                        let mesh_index = recipes
+                            .iter()
+                            .position(|key| *key == mesh_recipe)
+                            .unwrap_or_else(|| {
+                                assert!(meshes.len() < MAX_MESHES);
+                                let mesh = cache.get_or_build(mesh_recipe).expect("bundled mesh");
+                                let vertices: Vec<_> = mesh
+                                    .vertices
+                                    .iter()
+                                    .map(|v| CharacterVertex {
+                                        position: v.position.to_array(),
+                                        normal: v.normal.to_array(),
+                                        uv: v.uv,
+                                    })
+                                    .collect();
+                                mesh_bytes += size_of_val(vertices.as_slice())
+                                    + size_of_val(mesh.indices.as_slice());
+                                assert!(mesh_bytes < MAX_RESIDENCY);
+                                meshes.push(Mesh {
+                                    vertices: device.create_buffer_init(
+                                        &wgpu::util::BufferInitDescriptor {
+                                            label: Some("immutable character vertices"),
+                                            contents: bytemuck::cast_slice(&vertices),
+                                            usage: wgpu::BufferUsages::VERTEX,
+                                        },
+                                    ),
+                                    indices: device.create_buffer_init(
+                                        &wgpu::util::BufferInitDescriptor {
+                                            label: Some("immutable character indices"),
+                                            contents: bytemuck::cast_slice(&mesh.indices),
+                                            usage: wgpu::BufferUsages::INDEX,
+                                        },
+                                    ),
+                                    index_count: mesh.indices.len() as u32,
+                                });
+                                recipes.push(mesh_recipe);
+                                meshes.len() - 1
                             });
-                            recipes.push(mesh_recipe);
-                            meshes.len() - 1
-                        });
-                    let material = part.tint.material();
-                    let batch = batches
-                        .iter()
-                        .position(|b| b.mesh == mesh_index && b.material == material)
-                        .unwrap_or_else(|| {
-                            batches.push(Batch {
-                                mesh: mesh_index,
-                                material,
-                                instances: Vec::new(),
-                                start: 0,
+                        let material = part.tint.material();
+                        let batch = batches
+                            .iter()
+                            .position(|b| b.mesh == mesh_index && b.material == material)
+                            .unwrap_or_else(|| {
+                                batches.push(Batch {
+                                    mesh: mesh_index,
+                                    material,
+                                    instances: Vec::new(),
+                                    start: 0,
+                                });
+                                batches.len() - 1
                             });
-                            batches.len() - 1
-                        });
-                    parts.push((part, batch));
+                        parts[lod.index()].push((part, batch));
+                    }
                 }
                 bodies.push(CompiledBody {
                     body,
@@ -189,7 +211,8 @@ impl CharacterRenderer {
         for (index, batch) in batches.iter_mut().enumerate() {
             let per_body = bodies
                 .iter()
-                .map(|b| b.parts.iter().filter(|(_, i)| *i == index).count())
+                .flat_map(|b| b.parts.iter())
+                .map(|parts| parts.iter().filter(|(_, i)| *i == index).count())
                 .max()
                 .unwrap_or(0);
             batch.instances.reserve_exact(per_body * MAX_CHARACTERS);
@@ -237,9 +260,37 @@ impl CharacterRenderer {
         self.stats.draws = 0;
         self.stats.triangles = 0;
         self.stats.upload_bytes = 0;
+        self.stats.culled = 0;
+        self.stats.lod_near = 0;
+        self.stats.lod_mid = 0;
+        self.stats.lod_far = 0;
+        self.stats.effects = 0;
     }
 
+    #[allow(dead_code)]
     pub fn add(&mut self, entity: RenderEntity, style: AvatarStyle, face: [f32; 4]) {
+        self.add_with_quality(
+            entity,
+            style,
+            face,
+            // Direct validation/capture callers do not have a camera
+            // projection. Mid is the stable compatibility tier; the gameplay
+            // draw path always supplies the projected-size decision.
+            CharacterLod::Mid,
+            0,
+            false,
+        );
+    }
+
+    pub fn add_with_quality(
+        &mut self,
+        entity: RenderEntity,
+        style: AvatarStyle,
+        face: [f32; 4],
+        lod: CharacterLod,
+        effect_rank: usize,
+        reduced_effects: bool,
+    ) {
         if self.stats.characters >= MAX_CHARACTERS
             || !Vec3::from_array(entity.position).is_finite()
             || !entity.yaw.is_finite()
@@ -273,7 +324,22 @@ impl CharacterRenderer {
             Quat::from_rotation_y(entity.yaw),
             Vec3::from_array(entity.position),
         );
-        for (part, index) in &body.parts {
+        let mut effect_count = 0;
+        for (part, index) in &body.parts[lod.index()] {
+            if matches!(part.tint, character::Tint::Seam) {
+                if self.stats.effects >= character_quality::MAX_EFFECTS
+                    || !character_quality::admit_effect(
+                        effect_rank,
+                        effect_count,
+                        lod,
+                        reduced_effects,
+                    )
+                {
+                    continue;
+                }
+                effect_count += 1;
+                self.stats.effects += 1;
+            }
             let batch = &mut self.batches[*index];
             let transform =
                 root * joints[part.anchor.joint.index()] * feature_transform(*part, entity);
@@ -292,6 +358,11 @@ impl CharacterRenderer {
                 .push(CharacterInstance::new(transform, tint, batch.material));
         }
         self.stats.characters += 1;
+        match lod {
+            CharacterLod::Near => self.stats.lod_near += 1,
+            CharacterLod::Mid => self.stats.lod_mid += 1,
+            CharacterLod::Far => self.stats.lod_far += 1,
+        }
     }
 
     pub fn upload(&mut self, queue: &wgpu::Queue) {

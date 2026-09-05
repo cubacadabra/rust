@@ -671,12 +671,22 @@ fn populate(characters: &mut CharacterRenderer, count: usize, phase: f32) {
             ]
         };
         let mut style = super::default_player_style();
+        style.body = crate::character::BodyId::ALL[index % crate::character::BodyId::ALL.len()];
+        let requested_outfit = crate::character::OutfitId::ALL
+            [index % crate::character::OutfitId::ALL.len()];
+        style.outfit = requested_outfit
+            .supported_by(style.body)
+            .then_some(requested_outfit)
+            .unwrap_or(crate::character::OutfitId::fallback());
+        let body = style.body;
+        let outfit = style.outfit;
         style.skin = super::color([0xe8ae86, 0xc98464, 0x82b78f][index % 3]);
         style.shirt = super::color([0x2d6663, 0x5f8f78, 0x694c88][index % 3]);
         characters.add(
             RenderEntity {
                 position,
-                body: crate::character::BodyId::ALL[index % 3],
+                body,
+                outfit,
                 walk_cycle: phase + index as f32 * 0.37,
                 moving: count > 3,
                 sprinting: index % 2 == 0,

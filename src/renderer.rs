@@ -7,6 +7,7 @@ mod draw;
 mod character;
 mod character_gpu;
 mod character_material;
+mod character_quality;
 mod targets;
 mod rounded_geometry;
 mod scene;

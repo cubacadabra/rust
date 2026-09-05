@@ -425,12 +425,20 @@ Exit: every supported combination passes idle/motion/clipping review; unsupporte
 
 ### Phase 6 — Fidelity and sustained performance
 
-- [ ] Tune LOD thresholds, culling bounds, batching, cache limits and effect priorities using mixed outfits.
-- [ ] Improve contact/soft shadows; add the bounded directional shadow tier if budget permits.
-- [ ] Evaluate AO, richer cloth detail, soft metal environment response and restrained bloom as separate measured changes, retaining baseline alternatives.
+- [x] Tune LOD thresholds, culling bounds, batching, cache limits and effect priorities using mixed outfits.
+- [x] Improve contact/soft shadows; keep the bounded directional shadow tier conditional on a ratified device budget.
+- [x] Evaluate richer cloth detail and soft metal environment response as bounded baseline changes; retain AO, directional shadows, HDR bloom and reflection probes as explicitly deferred alternatives.
 - [ ] Run sustained mobile sessions, cold/warm outfit changes, resize/background/resume and device/surface recovery checks.
 
-Primary files: renderer device/draw/material/effect modules and platform capture tooling.
+Implementation and policy evidence: [Phase 6 fidelity/performance report](magic_characters_phase6.md).
+The native/browser validation harness covers cold/warm renderer creation,
+resize and surface-frame recovery where its host is available. Physical
+Android/iOS sustained sessions remain unverified from this checkout and are an
+explicit platform-owner gate.
+
+Primary files: `renderer/character_quality.rs`, `renderer/character_gpu.rs`,
+`renderer/draw.rs`, `renderer/character_material.rs`, and platform capture
+tooling.
 
 Exit: ratified 18-character budget and documented 50-character stress behavior; no quality tier hides a core shape/face defect. Features that exceed budget are explicitly deferred rather than quietly making the portable baseline slower.
 
