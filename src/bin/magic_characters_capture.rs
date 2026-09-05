@@ -1,5 +1,5 @@
 use cubacadabra_engine::dev_showcase::{
-    CaptureConfig, CapturePalette, CaptureQuality, capture_phase0_baseline,
+    CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, capture_phase0_baseline,
 };
 use std::env;
 use std::path::PathBuf;
@@ -33,6 +33,13 @@ fn main() {
                     "current" => CapturePalette::Current,
                     "high-contrast" => CapturePalette::HighContrast,
                     value => usage(&format!("unknown palette {value:?}")),
+                };
+            }
+            "--avatar" => {
+                config.avatar = match next_value(&mut arguments, "--avatar").as_str() {
+                    "legacy" => CaptureAvatar::Legacy,
+                    "rounded" => CaptureAvatar::Rounded,
+                    value => usage(&format!("unknown avatar path {value:?}")),
                 };
             }
             "--help" | "-h" => usage(""),
@@ -89,7 +96,8 @@ fn usage(error: &str) -> ! {
     eprintln!(
         "usage: magic_characters_capture [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
-         [--quality full|half] [--palette current|high-contrast]"
+         [--quality full|half] [--palette current|high-contrast] \
+         [--avatar legacy|rounded]"
     );
     std::process::exit(if error.is_empty() { 0 } else { 2 });
 }

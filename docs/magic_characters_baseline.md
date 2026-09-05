@@ -13,8 +13,10 @@ cargo run --features dev-showcase --bin magic_characters_capture
 The command writes PNG captures and `phase0_report.json` to
 `docs/baselines/magic-characters/phase0/`. Use `--output` for a disposable
 directory. The fixture is deterministic for `--seed`, `--pose-time`, palette,
-quality, and dimensions; adapter metadata and measured timings are recorded by
-the report.
+quality, avatar path, and dimensions; adapter metadata and measured timings are
+recorded by the report. Use `--avatar rounded --output /tmp/magic-characters-phase1`
+for the repeatable Phase 1 geometry comparison without changing the committed
+legacy baseline.
 
 The default suite includes local and remote idle/walk/sprint/jump captures,
 first-person entry/exit coverage, a raised-platform capture, an 18-character

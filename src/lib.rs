@@ -9,7 +9,8 @@ mod renderer;
 #[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
 pub mod dev_showcase {
     pub use crate::renderer::capture::{
-        CaptureConfig, CapturePalette, CaptureQuality, CaptureReport, capture_phase0_baseline,
+        CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, CaptureReport,
+        capture_phase0_baseline,
     };
 }
 mod scripting;

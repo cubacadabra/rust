@@ -178,26 +178,29 @@ impl Renderer {
                 .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer))
                 .ok()?
         };
-        let adapter = match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        })) {
-            Ok(adapter) => adapter,
-            Err(error) => {
-                eprintln!("[RustRenderer] hardware GLES adapter unavailable: {error}");
-                pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::LowPower,
-                    compatible_surface: Some(&surface),
-                    force_fallback_adapter: true,
-                }))
-                .map_err(|fallback_error| {
-                    eprintln!("[RustRenderer] fallback GLES adapter unavailable: {fallback_error}");
-                    fallback_error
-                })
-                .ok()?
-            }
-        };
+        let adapter =
+            match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })) {
+                Ok(adapter) => adapter,
+                Err(error) => {
+                    eprintln!("[RustRenderer] hardware GLES adapter unavailable: {error}");
+                    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::LowPower,
+                        compatible_surface: Some(&surface),
+                        force_fallback_adapter: true,
+                    }))
+                    .map_err(|fallback_error| {
+                        eprintln!(
+                            "[RustRenderer] fallback GLES adapter unavailable: {fallback_error}"
+                        );
+                        fallback_error
+                    })
+                    .ok()?
+                }
+            };
         let limits = wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits());
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("cubacadabra game device"),

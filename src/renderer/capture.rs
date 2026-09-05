@@ -1,13 +1,13 @@
 //! Phase 0's opt-in, offscreen review fixture.
 //!
-//! This module deliberately renders the current legacy avatar path. It is a
-//! measurement and comparison tool, not a second production renderer. The
+//! This module renders a deterministic legacy or rounded avatar fixture. It is
+//! a measurement and comparison tool, not a second production renderer. The
 //! feature is kept out of normal client builds so the fixture cannot change
 //! simulation capacity, public snapshots, or runtime resource lifetime.
 
 use super::{
-    DEPTH_FORMAT, Globals, RenderEntity, RenderPalette, Vertex, add_cuboid, add_legacy_avatar,
-    color,
+    DEPTH_FORMAT, Globals, RenderEntity, RenderPalette, Vertex, add_avatar, add_cuboid,
+    add_legacy_avatar, color,
 };
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
@@ -16,11 +16,17 @@ use std::path::Path;
 use std::time::Instant;
 use wgpu::util::DeviceExt;
 
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 const WORLD_ASPECT: f32 = 16.0 / 9.0;
 const DEFAULT_SEED: u64 = 0xC0BA_CAFE;
 const DEFAULT_WIDTH: u32 = 640;
 const DEFAULT_HEIGHT: u32 = 360;
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub enum CaptureAvatar {
+    Legacy,
+    Rounded,
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum CaptureQuality {
@@ -53,6 +59,7 @@ pub struct CaptureConfig {
     pub portrait_height: u32,
     pub quality: CaptureQuality,
     pub palette: CapturePalette,
+    pub avatar: CaptureAvatar,
 }
 
 impl Default for CaptureConfig {
@@ -66,6 +73,7 @@ impl Default for CaptureConfig {
             portrait_height: 844,
             quality: CaptureQuality::Full,
             palette: CapturePalette::Current,
+            avatar: CaptureAvatar::Legacy,
         }
     }
 }
@@ -90,7 +98,7 @@ pub struct CaptureRecord {
 #[derive(Debug, Serialize)]
 pub struct CaptureReport {
     pub format_version: u32,
-    pub fixture: &'static str,
+    pub fixture: String,
     pub config: CaptureConfig,
     pub adapter: AdapterRecord,
     pub captures: Vec<CaptureRecord>,
@@ -263,14 +271,18 @@ pub fn capture_phase0_baseline(
 
     let report = CaptureReport {
         format_version: FORMAT_VERSION,
-        fixture: "phase-0-legacy-avatar-offscreen",
+        fixture: match config.avatar {
+            CaptureAvatar::Legacy => "phase-0-legacy-avatar-offscreen",
+            CaptureAvatar::Rounded => "phase-1-rounded-avatar-offscreen",
+        }
+        .to_owned(),
         config,
         adapter,
         captures,
         engine_capacity_characters: 18,
         render_only_stress_characters: 50,
         notes: vec![
-            "This fixture uses the current legacy CPU-expanded avatar path.",
+            "This fixture uses the selected legacy or rounded CPU-expanded avatar path.",
             "The 50-character scene is render-only and never enters Engine simulation or the public snapshot.",
             "GPU timestamp queries are not requested by the production renderer; unavailable values are null.",
             "Portrait captures use the existing 16:9 world viewport centered inside the portrait target.",
@@ -586,6 +598,7 @@ fn build_scene(
 ) -> (Vec<Vertex>, usize, Globals, [f32; 4]) {
     let palette = capture_palette(config.palette);
     let mut vertices = Vec::with_capacity(50 * 10 * 36);
+    let mut rounded_mesh_cache = super::rounded_geometry::RoundedMeshCache::default();
     add_cuboid(
         &mut vertices,
         Vec3::new(0.0, -0.08, 0.0),
@@ -619,6 +632,7 @@ fn build_scene(
                     walk_cycle,
                     moving: !matches!(pose, Pose::Idle),
                     sprinting: matches!(pose, Pose::Sprint),
+                    legacy_assembled: matches!(pose, Pose::Sprint) && !remote,
                 });
             }
         }
@@ -631,6 +645,7 @@ fn build_scene(
                 walk_cycle: 0.9,
                 moving: true,
                 sprinting: false,
+                legacy_assembled: false,
             });
         }
         Scenario::Crowd { count, .. } => {
@@ -647,7 +662,18 @@ fn build_scene(
         );
     }
     for actor in &actors {
-        add_legacy_avatar(&mut vertices, *actor, palette.avatar, palette.ink);
+        match config.avatar {
+            CaptureAvatar::Legacy => {
+                add_legacy_avatar(&mut vertices, *actor, palette.avatar, palette.ink)
+            }
+            CaptureAvatar::Rounded => add_avatar(
+                &mut vertices,
+                *actor,
+                palette.avatar,
+                palette.ink,
+                &mut rounded_mesh_cache,
+            ),
+        }
     }
 
     let (camera_position, look_target) = match camera {
@@ -754,6 +780,7 @@ fn crowd_actors(count: usize, seed: u64) -> Vec<RenderEntity> {
                 walk_cycle: index as f32 * 0.37,
                 moving: true,
                 sprinting: false,
+                legacy_assembled: false,
             }
         })
         .collect()
@@ -838,5 +865,29 @@ mod tests {
             ..CaptureConfig::default()
         };
         assert_eq!(dimensions(config, PHASE0_SCENARIOS[0]), (320, 180));
+    }
+
+    #[test]
+    fn phase0_local_sprint_preserves_the_legacy_snapshot_freeze() {
+        let config = CaptureConfig::default();
+        let (local, ..) = build_scene(config, PHASE0_SCENARIOS[4], 640, 360);
+        let (remote, ..) = build_scene(config, PHASE0_SCENARIOS[5], 640, 360);
+        assert!(
+            local
+                .iter()
+                .zip(remote.iter())
+                .any(|(local, remote)| local.position != remote.position)
+        );
+    }
+
+    #[test]
+    fn phase1_capture_switch_uses_the_rounded_mesh_path() {
+        let rounded_config = CaptureConfig {
+            avatar: CaptureAvatar::Rounded,
+            ..CaptureConfig::default()
+        };
+        let (legacy, ..) = build_scene(CaptureConfig::default(), PHASE0_SCENARIOS[0], 640, 360);
+        let (rounded, ..) = build_scene(rounded_config, PHASE0_SCENARIOS[0], 640, 360);
+        assert!(rounded.len() > legacy.len());
     }
 }

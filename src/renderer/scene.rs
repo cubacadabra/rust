@@ -121,6 +121,7 @@ fn render_entity(sample: CharacterMotionSample) -> RenderEntity {
         walk_cycle: sample.stride_phase,
         moving: sample.moving,
         sprinting: sample.sprinting,
+        legacy_assembled: false,
     }
 }
 

@@ -36,6 +36,9 @@ pub(super) struct RenderEntity {
     pub(super) walk_cycle: f32,
     pub(super) moving: bool,
     pub(super) sprinting: bool,
+    /// Only used by the committed Phase 0 before-image. Production motion
+    /// never reads the legacy snapshot suffix as an assembled flag.
+    pub(super) legacy_assembled: bool,
 }
 
 #[derive(Clone, Copy)]

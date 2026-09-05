@@ -138,13 +138,7 @@ fn add_avatar(
     face_color: [f32; 4],
     rounded_mesh_cache: &mut rounded_geometry::RoundedMeshCache,
 ) {
-    add_avatar_inner(
-        vertices,
-        agent,
-        style,
-        face_color,
-        Some(rounded_mesh_cache),
-    );
+    add_avatar_inner(vertices, agent, style, face_color, Some(rounded_mesh_cache));
 }
 
 /// The Phase 0 capture deliberately keeps a hard-cuboid copy of the old
@@ -179,7 +173,11 @@ fn add_avatar_inner(
     let root = Mat4::from_translation(Vec3::from_array(agent.position))
         * Mat4::from_quat(Quat::from_rotation_y(agent.yaw));
     let stride = if rounded_mesh_cache.is_none() {
-        agent.walk_cycle.sin() * 0.5
+        if agent.legacy_assembled {
+            0.03
+        } else {
+            agent.walk_cycle.sin() * 0.5
+        }
     } else if agent.moving {
         let amplitude = if agent.sprinting { 0.55 } else { 0.5 };
         agent.walk_cycle.sin() * amplitude

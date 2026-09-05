@@ -170,7 +170,12 @@ impl Renderer {
             return (0.0, 0.0, width, height);
         }
         let viewport_height = (width / LANDSCAPE_ASPECT).min(height);
-        (0.0, (height - viewport_height) * 0.5, width, viewport_height)
+        (
+            0.0,
+            (height - viewport_height) * 0.5,
+            width,
+            viewport_height,
+        )
     }
 
     fn build_static_vertices(&self) -> Vec<Vertex> {

@@ -103,7 +103,9 @@ impl Engine {
         self.remote_players.len().min(MAX_AGENTS)
     }
 
-    pub(crate) fn character_motion_samples(&self) -> impl Iterator<Item = CharacterMotionSample> + '_ {
+    pub(crate) fn character_motion_samples(
+        &self,
+    ) -> impl Iterator<Item = CharacterMotionSample> + '_ {
         let local = CharacterMotionSample {
             key: CharacterEntityKey {
                 kind: CharacterEntityKind::LocalPlayer,
@@ -126,58 +128,66 @@ impl Engine {
         let sequence = self.motion_sequence;
         let time = self.elapsed;
         std::iter::once(local)
-            .chain(self.agents.iter().take(self.local_agent_count()).enumerate().map(
-                move |(slot, agent)| {
-                    let facing_yaw = (agent.target.x - agent.position[0])
-                        .atan2(agent.target.z - agent.position[2]);
-                    CharacterMotionSample {
+            .chain(
+                self.agents
+                    .iter()
+                    .take(self.local_agent_count())
+                    .enumerate()
+                    .map(move |(slot, agent)| {
+                        let facing_yaw = (agent.target.x - agent.position[0])
+                            .atan2(agent.target.z - agent.position[2]);
+                        CharacterMotionSample {
+                            key: CharacterEntityKey {
+                                kind: CharacterEntityKind::LocalNpc,
+                                slot,
+                                generation: 0,
+                            },
+                            sequence,
+                            time,
+                            position: agent.position,
+                            facing_yaw,
+                            look_yaw: facing_yaw,
+                            planar_velocity: None,
+                            vertical_velocity: Some(agent.vertical_velocity),
+                            support: if agent.grounded {
+                                CharacterSupport::Grounded {
+                                    height: agent.position[1],
+                                }
+                            } else {
+                                CharacterSupport::Airborne
+                            },
+                            stride_phase: agent.walk_cycle,
+                            moving: agent.phase != crate::types::AgentPhase::Assembled,
+                            sprinting: false,
+                            source: CharacterMotionSource::Simulation,
+                        }
+                    }),
+            )
+            .chain(
+                self.remote_players
+                    .iter()
+                    .take(self.remote_player_count())
+                    .enumerate()
+                    .map(move |(slot, player)| CharacterMotionSample {
                         key: CharacterEntityKey {
-                            kind: CharacterEntityKind::LocalNpc,
+                            kind: CharacterEntityKind::RemotePlayer,
                             slot,
                             generation: 0,
                         },
                         sequence,
                         time,
-                        position: agent.position,
-                        facing_yaw,
-                        look_yaw: facing_yaw,
+                        position: player.position,
+                        facing_yaw: player.yaw,
+                        look_yaw: player.yaw,
                         planar_velocity: None,
-                        vertical_velocity: Some(agent.vertical_velocity),
-                        support: if agent.grounded {
-                            CharacterSupport::Grounded {
-                                height: agent.position[1],
-                            }
-                        } else {
-                            CharacterSupport::Airborne
-                        },
-                        stride_phase: agent.walk_cycle,
-                        moving: agent.phase != crate::types::AgentPhase::Assembled,
-                        sprinting: false,
-                        source: CharacterMotionSource::Simulation,
-                    }
-                },
-            ))
-            .chain(self.remote_players.iter().take(self.remote_player_count()).enumerate().map(
-                move |(slot, player)| CharacterMotionSample {
-                    key: CharacterEntityKey {
-                        kind: CharacterEntityKind::RemotePlayer,
-                        slot,
-                        generation: 0,
-                    },
-                    sequence,
-                    time,
-                    position: player.position,
-                    facing_yaw: player.yaw,
-                    look_yaw: player.yaw,
-                    planar_velocity: None,
-                    vertical_velocity: None,
-                    support: CharacterSupport::Unknown,
-                    stride_phase: player.walk_cycle,
-                    moving: player.moving,
-                    sprinting: player.sprinting,
-                    source: CharacterMotionSource::LegacyRemote,
-                },
-            ))
+                        vertical_velocity: None,
+                        support: CharacterSupport::Unknown,
+                        stride_phase: player.walk_cycle,
+                        moving: player.moving,
+                        sprinting: player.sprinting,
+                        source: CharacterMotionSource::LegacyRemote,
+                    }),
+            )
     }
 
     pub(crate) fn set_remote_player_count(&mut self, count: usize) {

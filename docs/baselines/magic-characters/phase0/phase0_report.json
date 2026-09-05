@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "fixture": "phase-0-legacy-avatar-offscreen",
   "config": {
     "seed": 3233467134,
@@ -9,7 +9,8 @@
     "portrait_width": 390,
     "portrait_height": 844,
     "quality": "Full",
-    "palette": "Current"
+    "palette": "Current",
+    "avatar": "Legacy"
   },
   "adapter": {
     "name": "Apple M4 Max",
@@ -36,8 +37,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.104708,
-      "gpu_submit_and_readback_ms": 12.765042000000001,
+      "cpu_build_ms": 0.102208,
+      "gpu_submit_and_readback_ms": 12.762333,
       "gpu_timestamp_ms": null
     },
     {
@@ -56,8 +57,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.060292,
-      "gpu_submit_and_readback_ms": 1.788959,
+      "cpu_build_ms": 0.059042000000000004,
+      "gpu_submit_and_readback_ms": 1.76775,
       "gpu_timestamp_ms": null
     },
     {
@@ -76,8 +77,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.053542000000000006,
-      "gpu_submit_and_readback_ms": 1.609834,
+      "cpu_build_ms": 0.056666999999999995,
+      "gpu_submit_and_readback_ms": 1.654875,
       "gpu_timestamp_ms": null
     },
     {
@@ -96,8 +97,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.052167,
-      "gpu_submit_and_readback_ms": 1.599,
+      "cpu_build_ms": 0.051584,
+      "gpu_submit_and_readback_ms": 1.5985420000000001,
       "gpu_timestamp_ms": null
     },
     {
@@ -116,8 +117,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.051165999999999996,
-      "gpu_submit_and_readback_ms": 1.5703749999999999,
+      "cpu_build_ms": 0.05175,
+      "gpu_submit_and_readback_ms": 1.680042,
       "gpu_timestamp_ms": null
     },
     {
@@ -136,8 +137,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.055041,
-      "gpu_submit_and_readback_ms": 1.650166,
+      "cpu_build_ms": 0.050667000000000004,
+      "gpu_submit_and_readback_ms": 1.6122910000000001,
       "gpu_timestamp_ms": null
     },
     {
@@ -156,8 +157,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.052583,
-      "gpu_submit_and_readback_ms": 1.631167,
+      "cpu_build_ms": 0.048875,
+      "gpu_submit_and_readback_ms": 1.539791,
       "gpu_timestamp_ms": null
     },
     {
@@ -176,8 +177,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.049792,
-      "gpu_submit_and_readback_ms": 1.59325,
+      "cpu_build_ms": 0.050457999999999996,
+      "gpu_submit_and_readback_ms": 1.514583,
       "gpu_timestamp_ms": null
     },
     {
@@ -196,8 +197,8 @@
       "triangle_count": 12,
       "estimated_vertex_upload_bytes": 1872,
       "estimated_resource_bytes": 2766672,
-      "cpu_build_ms": 0.004417,
-      "gpu_submit_and_readback_ms": 1.566875,
+      "cpu_build_ms": 0.005458,
+      "gpu_submit_and_readback_ms": 1.591917,
       "gpu_timestamp_ms": null
     },
     {
@@ -216,8 +217,8 @@
       "triangle_count": 204,
       "estimated_vertex_upload_bytes": 31824,
       "estimated_resource_bytes": 2796624,
-      "cpu_build_ms": 0.05175,
-      "gpu_submit_and_readback_ms": 1.564541,
+      "cpu_build_ms": 0.060042,
+      "gpu_submit_and_readback_ms": 1.57575,
       "gpu_timestamp_ms": null
     },
     {
@@ -236,8 +237,8 @@
       "triangle_count": 216,
       "estimated_vertex_upload_bytes": 33696,
       "estimated_resource_bytes": 2798496,
-      "cpu_build_ms": 0.053833,
-      "gpu_submit_and_readback_ms": 1.549459,
+      "cpu_build_ms": 0.051333,
+      "gpu_submit_and_readback_ms": 1.563875,
       "gpu_timestamp_ms": null
     },
     {
@@ -256,8 +257,8 @@
       "triangle_count": 3468,
       "estimated_vertex_upload_bytes": 541008,
       "estimated_resource_bytes": 3305808,
-      "cpu_build_ms": 0.864,
-      "gpu_submit_and_readback_ms": 1.553292,
+      "cpu_build_ms": 0.763167,
+      "gpu_submit_and_readback_ms": 1.5421250000000002,
       "gpu_timestamp_ms": null
     },
     {
@@ -276,8 +277,8 @@
       "triangle_count": 9612,
       "estimated_vertex_upload_bytes": 1499472,
       "estimated_resource_bytes": 4264272,
-      "cpu_build_ms": 2.401916,
-      "gpu_submit_and_readback_ms": 1.6444999999999999,
+      "cpu_build_ms": 2.182125,
+      "gpu_submit_and_readback_ms": 1.603708,
       "gpu_timestamp_ms": null
     },
     {
@@ -296,8 +297,8 @@
       "triangle_count": 3468,
       "estimated_vertex_upload_bytes": 541008,
       "estimated_resource_bytes": 4686736,
-      "cpu_build_ms": 0.848792,
-      "gpu_submit_and_readback_ms": 27.020084,
+      "cpu_build_ms": 0.809584,
+      "gpu_submit_and_readback_ms": 1.689542,
       "gpu_timestamp_ms": null
     },
     {
@@ -316,15 +317,15 @@
       "triangle_count": 9612,
       "estimated_vertex_upload_bytes": 1499472,
       "estimated_resource_bytes": 5645200,
-      "cpu_build_ms": 2.353375,
-      "gpu_submit_and_readback_ms": 1.7975,
+      "cpu_build_ms": 2.004792,
+      "gpu_submit_and_readback_ms": 1.774625,
       "gpu_timestamp_ms": null
     }
   ],
   "engine_capacity_characters": 18,
   "render_only_stress_characters": 50,
   "notes": [
-    "This fixture uses the current legacy CPU-expanded avatar path.",
+    "This fixture uses the selected legacy or rounded CPU-expanded avatar path.",
     "The 50-character scene is render-only and never enters Engine simulation or the public snapshot.",
     "GPU timestamp queries are not requested by the production renderer; unavailable values are null.",
     "Portrait captures use the existing 16:9 world viewport centered inside the portrait target.",

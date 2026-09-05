@@ -136,7 +136,9 @@ impl RoundedMeshCache {
         }
 
         let mesh = Arc::new(build_normalized(normalized));
-        if self.meshes.len() >= self.capacity && let Some(oldest) = self.order.pop_front() {
+        if self.meshes.len() >= self.capacity
+            && let Some(oldest) = self.order.pop_front()
+        {
             self.meshes.remove(&oldest);
         }
         self.order.push_back(key);
@@ -258,7 +260,12 @@ fn build_normalized(recipe: NormalizedRecipe) -> IndexedMesh {
     }
 
     apply_taper(&mut mesh, recipe.size.y, recipe.taper);
-    recompute_normals(&mut mesh);
+    if recipe.taper != TaperProfile::default() {
+        recompute_normals(&mut mesh);
+    }
+    if recipe.radius > 0.0 {
+        weld_smooth_normals(&mut mesh);
+    }
     for vertex in &mesh.vertices {
         mesh.bounds_min = mesh.bounds_min.min(vertex.position);
         mesh.bounds_max = mesh.bounds_max.max(vertex.position);
@@ -275,13 +282,11 @@ fn add_hard_faces(mesh: &mut IndexedMesh, half: Vec3) {
                 point[axis] = sign * half[axis];
                 point[tangent[0]] = (u * 2.0 - 1.0) * half[tangent[0]];
                 point[tangent[1]] = (v * 2.0 - 1.0) * half[tangent[1]];
-                (point, Vec3::ZERO, [u, v])
+                let mut normal = Vec3::ZERO;
+                normal[axis] = sign;
+                (point, normal, [u, v])
             };
             add_grid(mesh, 1, 1, &mut map);
-            let base = mesh.vertices.len() - 4;
-            for vertex in &mut mesh.vertices[base..] {
-                vertex.normal[axis] = sign;
-            }
         }
     }
 }
@@ -315,13 +320,7 @@ struct EdgeSpec {
     second_sign: f32,
 }
 
-fn add_edge(
-    mesh: &mut IndexedMesh,
-    half: Vec3,
-    radius: f32,
-    subdivisions: u32,
-    edge: EdgeSpec,
-) {
+fn add_edge(mesh: &mut IndexedMesh, half: Vec3, radius: f32, subdivisions: u32, edge: EdgeSpec) {
     let mut map = |u: f32, v: f32| {
         let angle = v * std::f32::consts::FRAC_PI_2;
         let mut point = Vec3::ZERO;
@@ -339,7 +338,10 @@ fn add_edge(
         normal[edge.second_axis] = edge.second_sign * angle.sin();
         (point, normal.normalize(), [u, v])
     };
-    add_grid(mesh, subdivisions, 1, &mut map);
+    // `v` is the angular coordinate; `u` runs along the straight edge. Keep
+    // both directions tessellated so the curved strip has stable interpolation
+    // and usable UVs at every LOD.
+    add_grid(mesh, subdivisions, subdivisions, &mut map);
 }
 
 fn add_corner(
@@ -450,6 +452,28 @@ fn recompute_normals(mesh: &mut IndexedMesh) {
     }
 }
 
+fn weld_smooth_normals(mesh: &mut IndexedMesh) {
+    let mut sums = HashMap::<[i64; 3], Vec3>::new();
+    for vertex in &mesh.vertices {
+        let key = vertex
+            .position
+            .to_array()
+            .map(|value| (value * 1_000_000.0).round() as i64);
+        sums.entry(key)
+            .and_modify(|sum| *sum += vertex.normal)
+            .or_insert(vertex.normal);
+    }
+    for vertex in &mut mesh.vertices {
+        let key = vertex
+            .position
+            .to_array()
+            .map(|value| (value * 1_000_000.0).round() as i64);
+        if let Some(sum) = sums.get(&key) {
+            vertex.normal = sum.normalize_or_zero();
+        }
+    }
+}
+
 fn quantize(value: f32) -> u32 {
     (value * 1000.0).round() as u32
 }
@@ -518,6 +542,50 @@ mod tests {
         assert!(low.bounds_min.x < low.bounds_max.x);
         assert!(low.bounds_min.y < low.bounds_max.y);
         assert!(low.bounds_min.z < low.bounds_max.z);
+    }
+
+    #[test]
+    fn edge_lod_subdivides_the_rounded_arc() {
+        let mesh = build_normalized(normalize(recipe(0.2, 4)).unwrap());
+        let has_intermediate_edge_point = mesh.vertices.iter().any(|vertex| {
+            vertex.position.z.abs() < 0.1
+                && vertex.position.x.abs() > 0.8
+                && vertex.position.x.abs() < 1.0
+                && vertex.position.y.abs() > 1.3
+                && vertex.position.y.abs() < 1.5
+        });
+        assert!(has_intermediate_edge_point);
+    }
+
+    #[test]
+    fn hard_box_faces_and_normals_point_outward() {
+        let mesh = build_normalized(normalize(recipe(0.0, 1)).unwrap());
+        for triangle in mesh.indices.as_chunks::<3>().0 {
+            let a = mesh.vertices[triangle[0] as usize];
+            let b = mesh.vertices[triangle[1] as usize];
+            let c = mesh.vertices[triangle[2] as usize];
+            let face_normal = (b.position - a.position)
+                .cross(c.position - a.position)
+                .normalize();
+            let centroid = (a.position + b.position + c.position) / 3.0;
+            assert!(face_normal.dot(centroid) > 0.0);
+            assert!(face_normal.dot(a.normal) > 0.99);
+        }
+    }
+
+    #[test]
+    fn rounded_seam_normals_agree_at_coincident_positions() {
+        let mesh = build_normalized(normalize(recipe(0.2, 2)).unwrap());
+        let mut normals = HashMap::<[i64; 3], Vec3>::new();
+        for vertex in &mesh.vertices {
+            let key = vertex
+                .position
+                .to_array()
+                .map(|value| (value * 1_000_000.0).round() as i64);
+            if let Some(previous) = normals.insert(key, vertex.normal) {
+                assert!(previous.dot(vertex.normal) > 0.999);
+            }
+        }
     }
 
     #[test]
