@@ -282,7 +282,12 @@ fn shared_modal_nodes(
             Some([0.58, 0.80, 0.88, 0.68]),
             if compact { 14.0 } else { 16.0 },
         );
-        link_node.text = "https://cubacadabra.com/about/".to_owned();
+        link_node.text = if cfg!(debug_assertions) {
+            "http://localhost:5173/about/"
+        } else {
+            "https://cubacadabra.com/about/"
+        }
+        .to_owned();
         link_node.font_size = if compact { 13.0 } else { 15.0 };
         link_node.text_align = UiAlignment::Center;
         nodes.push(link_node);
@@ -391,4 +396,3 @@ fn header_image(id: &str, image: UiImage, rect: UiRect, image_invert: bool) -> U
         disabled: false,
     }
 }
-
