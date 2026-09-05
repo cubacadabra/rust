@@ -23,7 +23,7 @@ fn log_ui_frame(frame: &UiFrame) {
         return;
     }
     let vertices = super::ui::build_ui_vertices(frame).len();
-    eprintln!(
+    log::trace!(
         "[RustRenderer] UI frame viewport={:.1}x{:.1} safe=({:.1},{:.1},{:.1},{:.1}) nodes={} vertices={}",
         frame.viewport.width,
         frame.viewport.height,
@@ -35,7 +35,7 @@ fn log_ui_frame(frame: &UiFrame) {
         vertices,
     );
     for node in &frame.nodes {
-        eprintln!(
+        log::trace!(
             "[RustRenderer] UI node id={} kind={:?} rect=({:.1},{:.1},{:.1},{:.1}) text={:?}",
             node.id,
             node.kind,

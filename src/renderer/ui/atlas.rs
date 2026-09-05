@@ -10,7 +10,7 @@ fn ui_font() -> &'static Font {
     static FONT: OnceLock<Font> = OnceLock::new();
     FONT.get_or_init(|| {
         #[cfg(target_os = "ios")]
-        eprintln!(
+        log::trace!(
             "[RustRenderer] loading bundled UI font LilitaOne-Regular.ttf ({} bytes)",
             UI_FONT_BYTES.len()
         );
@@ -55,6 +55,6 @@ static LAST_UI_DRAW_VERTEX_COUNT: AtomicUsize = AtomicUsize::new(usize::MAX);
 #[cfg(target_os = "ios")]
 fn log_ui_draw_vertex_count(count: usize) {
     if LAST_UI_DRAW_VERTEX_COUNT.swap(count, Ordering::Relaxed) != count {
-        eprintln!("[RustRenderer] UI draw vertices={count}");
+        log::trace!("[RustRenderer] UI draw vertices={count}");
     }
 }
