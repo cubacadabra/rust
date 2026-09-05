@@ -6,6 +6,25 @@ crate_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
 web_dir=$(CDPATH= cd -- "$crate_dir/../web" && pwd)
 target_dir="$crate_dir/target"
 output_dir="$web_dir/public/wasm/renderer"
+profile=debug
+cargo_profile_args=
+
+for argument in "$@"; do
+  case "$argument" in
+    --debug)
+      profile=debug
+      cargo_profile_args=
+      ;;
+    --release)
+      profile=release
+      cargo_profile_args=--release
+      ;;
+    *)
+      echo "Usage: $0 [--debug|--release]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 wasm_bindgen_command=$(command -v wasm-bindgen || true)
 if [ -z "$wasm_bindgen_command" ] && [ -x "${CARGO_HOME:-$HOME/.cargo}/bin/wasm-bindgen" ]; then
@@ -28,12 +47,12 @@ mkdir -p "$output_dir"
 $cargo_command build \
   --manifest-path "$crate_dir/Cargo.toml" \
   --target wasm32-unknown-unknown \
-  --release \
+  $cargo_profile_args \
   --features web-renderer
 "$wasm_bindgen_command" \
-  "$target_dir/wasm32-unknown-unknown/release/cubacadabra_engine.wasm" \
+  "$target_dir/wasm32-unknown-unknown/$profile/cubacadabra_engine.wasm" \
   --target web \
   --no-typescript \
   --out-dir "$output_dir" \
   --out-name cubacadabra_renderer
-echo "Built $output_dir/cubacadabra_renderer.js"
+echo "Built $output_dir/cubacadabra_renderer.js ($profile)"

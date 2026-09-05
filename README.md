@@ -36,7 +36,9 @@ The script adds the `wasm32-unknown-unknown` target when needed, builds this
 crate with the `web-renderer` feature, and writes generated files to
 `web/public/wasm/renderer/`. These are local build artifacts; the Rust source
 and `scripts/build_web_renderer.sh` remain the source of truth. `npm run dev`
-and `npm run build` in `web/` invoke this command automatically.
+and `npm run build` in `web/` invoke this command automatically and use a
+debug WASM build. The deployment helper uses `npm run build:release` so only
+deployed builds use the optimized release WASM.
 
 For engine-only Rust checks:
 
