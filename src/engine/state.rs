@@ -23,6 +23,10 @@ impl Engine {
         self.ui.borrow_mut().set_viewport(viewport);
     }
 
+    pub(crate) fn set_ui_suppressed(&mut self, suppressed: bool) {
+        self.ui.borrow_mut().set_suppressed(suppressed);
+    }
+
     pub(crate) fn set_authenticated(&mut self, authenticated: bool) {
         self.ui.borrow_mut().set_authenticated(authenticated);
     }

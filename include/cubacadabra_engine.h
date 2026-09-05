@@ -42,6 +42,7 @@ void engine_set_ui_viewport(
     float safe_bottom,
     float safe_left
 );
+void engine_set_ui_suppressed(CubacadabraEngine *engine, uint8_t suppressed);
 void engine_set_authenticated(CubacadabraEngine *engine, uint8_t authenticated);
 uint8_t *engine_ui_document_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_ui_document_buffer(CubacadabraEngine *engine);

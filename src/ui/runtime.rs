@@ -16,6 +16,7 @@ impl Default for UiRuntime {
             shared_modal_target: 0.0,
             shared_modal_tab: 0,
             joystick_gesture_rect: UiRect::default(),
+            suppressed: false,
         }
     }
 }
@@ -45,6 +46,15 @@ impl UiRuntime {
             self.viewport = viewport;
             self.dirty = true;
         }
+    }
+
+    pub(crate) fn set_suppressed(&mut self, suppressed: bool) {
+        if self.suppressed == suppressed {
+            return;
+        }
+        self.suppressed = suppressed;
+        self.captures.clear();
+        self.dirty = true;
     }
 
     pub(crate) fn set_world_id(&mut self, world_id: &str) {
@@ -258,6 +268,15 @@ impl UiRuntime {
 
     fn rebuild_if_needed(&mut self) {
         if !self.dirty {
+            return;
+        }
+        if self.suppressed {
+            self.frame = UiFrame {
+                viewport: self.viewport,
+                nodes: Vec::new(),
+            };
+            self.hit_regions.clear();
+            self.dirty = false;
             return;
         }
         let safe = UiRect {

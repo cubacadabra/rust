@@ -81,6 +81,17 @@ pub unsafe extern "C" fn engine_set_ui_viewport(
     }
 }
 
+/// Hides the engine-owned HUD while a native host-owned preview is active.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_set_ui_suppressed(engine: *mut Engine, suppressed: u8) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.set_ui_suppressed(suppressed != 0);
+    }
+}
+
 /// Sets the authentication state used by the shared logo modal. The platform
 /// host owns authentication and must provide its own session state here.
 ///

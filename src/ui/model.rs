@@ -369,4 +369,5 @@ pub(crate) struct UiRuntime {
     shared_modal_target: f32,
     shared_modal_tab: usize,
     joystick_gesture_rect: UiRect,
+    pub(crate) suppressed: bool,
 }
