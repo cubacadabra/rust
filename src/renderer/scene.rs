@@ -111,7 +111,14 @@ impl Renderer {
         self.scene
             .build_blocks
             .extend_from_slice(engine.build_blocks());
-        self.ui_frame = engine.ui.borrow_mut().frame().clone();
+        // SwiftUI/Metal can ask the renderer to sync while the engine is
+        // still rebuilding its UI frame. Do not turn that transient overlap
+        // into a process-aborting RefCell panic; the next frame will retry
+        // with the latest UI state.
+        let Ok(mut ui) = engine.ui.try_borrow_mut() else {
+            return;
+        };
+        self.ui_frame = ui.frame().clone();
         #[cfg(target_os = "ios")]
         log_ui_frame(&self.ui_frame);
     }
