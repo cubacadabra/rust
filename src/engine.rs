@@ -13,7 +13,7 @@ use crate::game_package::GamePackageDefinition;
 use crate::math::Random;
 use crate::scripting::GameScript;
 use crate::character::definition::CharacterAppearance;
-use crate::types::{Agent, BuildBlock, CharacterMotionEvent, Input, Player, RemotePlayer};
+use crate::types::{Agent, BuildBlock, CharacterEmote, CharacterMotionEvent, Input, Player, RemotePlayer};
 use std::collections::BTreeMap;
 use crate::ui::UiRuntime;
 use crate::world::{Aabb, LaunchPad, RuntimeWorld};
@@ -79,6 +79,8 @@ pub struct Engine {
     pub(crate) remote_update_buffer: Vec<u8>,
     pub(crate) remote_update_status: u8,
     pub(crate) player_motion_event: CharacterMotionEvent,
+    pub(crate) player_emote: CharacterEmote,
+    pub(crate) player_emote_sequence: u64,
     /// Presentation-only preference. It never changes simulation, snapshots,
     /// collision, or the public host ABI.
     pub(crate) reduced_effects: bool,

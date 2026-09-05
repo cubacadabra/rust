@@ -110,6 +110,11 @@ impl Engine {
         self.reduced_effects
     }
 
+    pub(crate) fn trigger_local_wave(&mut self) {
+        self.player_emote = CharacterEmote::Wave;
+        self.player_emote_sequence = self.player_emote_sequence.wrapping_add(1).max(1);
+    }
+
     pub(crate) fn agent_count(&self) -> usize {
         self.local_agent_count() + self.remote_player_count()
     }
@@ -147,8 +152,8 @@ impl Engine {
             sprinting: self.player.sprinting,
             source: CharacterMotionSource::Simulation,
             event: self.player_motion_event,
-            emote: CharacterEmote::None,
-            emote_sequence: 0,
+            emote: self.player_emote,
+            emote_sequence: self.player_emote_sequence,
             appearance_revision: self.player_appearance.revision,
         };
         let sequence = self.motion_sequence;

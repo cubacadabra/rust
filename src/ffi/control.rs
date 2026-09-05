@@ -41,6 +41,18 @@ pub unsafe extern "C" fn engine_set_reduced_effects(engine: *mut Engine, reduced
     }
 }
 
+/// Triggers one presentation-only wave on the local character. The sequence
+/// is edge-triggered by the renderer and does not affect simulation or the
+/// multiplayer movement ABI.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_trigger_local_wave(engine: *mut Engine) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.trigger_local_wave();
+    }
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.

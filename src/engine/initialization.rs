@@ -2,7 +2,7 @@ use crate::engine::{DEFAULT_LAUNCH_COUNTDOWN, Engine, MAX_AGENTS, SNAPSHOT_STRID
 use crate::math::Random;
 use crate::character::definition::CharacterAppearance;
 use crate::engine::identity::{STATUS_APPLIED, STATUS_INVALID};
-use crate::types::{CharacterMotionEvent, Input, Player};
+use crate::types::{CharacterEmote, CharacterMotionEvent, Input, Player};
 use crate::ui::UiRuntime;
 use crate::world::{LaunchPad, block_bounds};
 use std::cell::RefCell;
@@ -52,6 +52,8 @@ impl Engine {
             remote_update_buffer: Vec::new(),
             remote_update_status: STATUS_INVALID,
             player_motion_event: CharacterMotionEvent::None,
+            player_emote: CharacterEmote::None,
+            player_emote_sequence: 0,
             reduced_effects: false,
             launch_event_id: 0,
             last_launch_pad: 0,
