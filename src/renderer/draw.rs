@@ -123,7 +123,9 @@ impl Renderer {
             }
         }
         self.characters.upload(&self.queue);
-        let ui_vertices = super::ui::build_ui_vertices(&self.ui_frame);
+        let mut ui_vertices = Vec::new();
+        self.add_world_labels(&mut ui_vertices, view_projection, world_viewport);
+        ui_vertices.extend(super::ui::build_ui_vertices(&self.ui_frame));
         #[cfg(target_os = "android")]
         if !super::device::ANDROID_FIRST_FRAME_REPORTED.swap(
             true,
@@ -582,6 +584,56 @@ impl Renderer {
         self.ui_vertex_capacity = required.next_power_of_two();
         self.ui_vertex_buffer =
             super::device::create_vertex_buffer(&self.device, self.ui_vertex_capacity);
+    }
+
+    fn add_world_labels(
+        &self,
+        vertices: &mut Vec<Vertex>,
+        view_projection: Mat4,
+        world_viewport: (f32, f32, f32, f32),
+    ) {
+        let mut add = |entity: RenderEntity, name: &str| {
+            let label_position = Vec3::from_array(entity.position) + Vec3::new(0.0, 3.75, 0.0);
+            let clip = view_projection * label_position.extend(1.0);
+            if !clip.is_finite() || clip.w <= 0.01 {
+                return;
+            }
+            let ndc = clip.truncate() / clip.w;
+            if !ndc.is_finite() || ndc.z < 0.0 || ndc.z > 1.0 {
+                return;
+            }
+            let x = world_viewport.0 + (ndc.x + 1.0) * 0.5 * world_viewport.2;
+            let y = world_viewport.1 + (1.0 - (ndc.y + 1.0) * 0.5) * world_viewport.3;
+            let camera = Vec3::from_array(self.scene.camera);
+            let distance = (label_position - camera).length().max(1.0);
+            let font_size = (190.0 / distance).clamp(10.0, 20.0);
+            super::ui::add_world_label(
+                vertices,
+                &self.ui_frame,
+                x,
+                y,
+                name,
+                font_size,
+            );
+        };
+
+        if self.scene.camera[2] > 0.75 {
+            add(self.scene.player, &self.scene.username);
+        }
+        for (index, player) in self.scene.remote_players.iter().enumerate() {
+            let fallback = format!("PLAYER {}", index + 1);
+            let name = self
+                .scene
+                .remote_names
+                .get(index)
+                .map(String::as_str)
+                .unwrap_or(&fallback);
+            add(*player, name);
+        }
+        for (index, agent) in self.scene.agents.iter().enumerate() {
+            let name = format!("BOT {}", index + 1);
+            add(*agent, &name);
+        }
     }
 }
 

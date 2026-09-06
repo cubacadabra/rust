@@ -88,6 +88,7 @@ impl Renderer {
         self.scene.player = RenderEntity::default();
         self.scene.agents.clear();
         self.scene.remote_players.clear();
+        self.scene.remote_names.clear();
         self.scene.player_style = style_from_appearance(
             engine.player_appearance(),
             self.scene.player_style,
@@ -104,6 +105,7 @@ impl Renderer {
         }
         let samples: Vec<_> = engine.character_motion_samples().collect();
         let mut active_keys = HashSet::with_capacity(samples.len());
+        let mut remote_index = 0;
         for sample in samples {
             active_keys.insert(sample.key);
             let style = match sample.key.kind {
@@ -138,10 +140,18 @@ impl Renderer {
                         .push(render_entity(sample, style, animation))
                 }
                 CharacterEntityKind::RemotePlayer => self.scene.remote_players.push(render_entity(
-                    sample,
-                    style,
-                    animation,
+                    sample, style, animation,
                 )),
+            }
+            if sample.key.kind == CharacterEntityKind::RemotePlayer {
+                let fallback = format!("PLAYER {}", remote_index + 1);
+                let name = engine
+                    .remote_players
+                    .get(remote_index)
+                    .map(|player| display_name(&player.stable_id, &fallback))
+                    .unwrap_or(fallback);
+                self.scene.remote_names.push(name);
+                remote_index += 1;
             }
         }
         self.scene
@@ -169,6 +179,22 @@ impl Renderer {
         self.ui_frame = ui.frame().clone();
         #[cfg(target_os = "ios")]
         log_ui_frame(&self.ui_frame);
+    }
+}
+
+fn display_name(value: &str, fallback: &str) -> String {
+    let name = value
+        .rsplit(':')
+        .next()
+        .unwrap_or(value)
+        .chars()
+        .filter(|character| character.is_ascii_graphic() || *character == ' ')
+        .take(24)
+        .collect::<String>();
+    if name.trim().is_empty() {
+        fallback.to_owned()
+    } else {
+        name
     }
 }
 
