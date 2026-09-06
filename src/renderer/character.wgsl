@@ -124,9 +124,15 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
             let upper = smile + (0.11 + opening * 0.45) * edge;
             let lower = smile - (0.11 + opening * 0.65) * edge;
             // One continuous mouth, bounded inside the face quad even at full
-            // opening and curvature. The lip flattens as the smile opens.
-            // Unioning an ellipse with a smile left two sharp floating corners.
-            if abs(x) >= 1.0 || p.y > upper || p.y < lower { discard; }
+            // opening and curvature. Use the same derivative footprint for
+            // the side and curved lip boundaries so small mouths do not turn
+            // into jagged binary pixels at gameplay distance.
+            let side_edge = 1.0 - abs(x);
+            let lip_edge = min(upper - p.y, p.y - lower);
+            let mouth_edge = min(side_edge, lip_edge);
+            let mouth_aa = max(uv_footprint * 1.5, 0.002);
+            if mouth_edge <= -mouth_aa { discard; }
+            coverage = smoothstep(-mouth_aa, mouth_aa, mouth_edge);
             if opening > 0.12 {
                 color = vec3<f32>(0.08, 0.05, 0.07);
                 // A tiny tooth or tongue cue gives the open expressions a

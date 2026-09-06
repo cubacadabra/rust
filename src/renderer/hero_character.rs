@@ -278,7 +278,7 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
                 p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.205, 0.20, -0.414));
             }
             (_, _, Feature::Mouth) => {
-                p.spec = BodyPart::new(Vec3::new(0.30, 0.12, 0.02), 0.0);
+                p.spec = BodyPart::new(Vec3::new(0.34, 0.16, 0.02), 0.0);
                 p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.19, -0.405));
             }
             (_, _, Feature::Cheek(side)) => {
@@ -826,6 +826,11 @@ mod tests {
             crate::character::OutfitId::EverydayHoodie,
         );
         assert_eq!(parts.iter().filter(|p| p.shape == Shape::Sleeve).count(), 2);
+        let mouth = parts
+            .iter()
+            .find(|part| matches!(part.feature, Feature::Mouth))
+            .expect("person recipe has a mouth feature");
+        assert_eq!(mouth.spec.size, Vec3::new(0.34, 0.16, 0.02));
         assert!(!parts.iter().any(|p| matches!(p.feature, Feature::Seam(_))));
         assert!(parts.iter().any(|p| matches!(p.feature, Feature::Spark(_))));
     }
