@@ -3,9 +3,11 @@ use super::character_quality;
 use glam::{Mat4, Vec3};
 
 use super::{
-    Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline, add_launch_pad,
-    add_pixel_text, add_spawn_pad, faded,
+    Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline,
+    add_launch_pad, add_pixel_text, add_spawn_pad, faded,
 };
+#[cfg(debug_assertions)]
+use super::add_floor_pixel_text;
 use super::CharacterRenderMode;
 
 impl Renderer {
@@ -384,6 +386,18 @@ impl Renderer {
                 self.scene.elapsed,
             );
         }
+        #[cfg(debug_assertions)]
+        add_floor_pixel_text(
+            &mut mesh,
+            super::DEBUG_GIT_SHA,
+            Vec3::new(
+                world.spawn[0],
+                world.spawn[1] + if world.show_spawn_pad { 0.35 } else { 0.035 },
+                world.spawn[2],
+            ),
+            9.0,
+            world.palette.ink,
+        );
         for (index, cloud) in world.clouds.iter().enumerate() {
             add_cloud(
                 &mut mesh,

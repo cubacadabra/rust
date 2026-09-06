@@ -22,6 +22,9 @@ use glam::{Mat4, Quat, Vec3};
 use crate::types::BuildBlock;
 use crate::ui::UiFrame;
 
+#[cfg(debug_assertions)]
+const DEBUG_GIT_SHA: &str = env!("CUBACADABRA_GIT_SHA");
+
 include!("renderer/types.rs");
 include!("renderer/geometry.rs");
 include!("renderer/world_geometry.rs");

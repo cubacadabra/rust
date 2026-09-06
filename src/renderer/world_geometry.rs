@@ -160,6 +160,42 @@ fn add_pixel_text(
     max_width: f32,
     color: [f32; 4],
 ) {
+    add_pixel_text_transformed(
+        vertices,
+        text,
+        Mat4::from_translation(origin) * Mat4::from_quat(Quat::from_rotation_y(yaw)),
+        max_width,
+        0.072,
+        color,
+    );
+}
+
+#[cfg(debug_assertions)]
+fn add_floor_pixel_text(
+    vertices: &mut Vec<Vertex>,
+    text: &str,
+    origin: Vec3,
+    max_width: f32,
+    color: [f32; 4],
+) {
+    add_pixel_text_transformed(
+        vertices,
+        text,
+        Mat4::from_translation(origin) * Mat4::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        max_width,
+        0.24,
+        color,
+    );
+}
+
+fn add_pixel_text_transformed(
+    vertices: &mut Vec<Vertex>,
+    text: &str,
+    root: Mat4,
+    max_width: f32,
+    max_pixel: f32,
+    color: [f32; 4],
+) {
     let characters = text
         .chars()
         .filter(|character| character.is_ascii())
@@ -170,9 +206,8 @@ fn add_pixel_text(
         return;
     }
     let columns = characters.len() * 6 - 1;
-    let pixel = (max_width / columns as f32).min(0.072);
+    let pixel = (max_width / columns as f32).min(max_pixel);
     let text_width = columns as f32 * pixel;
-    let root = Mat4::from_translation(origin) * Mat4::from_quat(Quat::from_rotation_y(yaw));
     for (character_index, character) in characters.into_iter().enumerate() {
         let glyph = glyph(character);
         for (row, bits) in glyph.into_iter().enumerate() {
@@ -385,4 +420,3 @@ fn add_triangle(
         },
     ]);
 }
-
