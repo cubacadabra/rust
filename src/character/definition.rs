@@ -1,8 +1,8 @@
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 use std::collections::BTreeMap;
 
 use super::face::FaceAnchors;
-use super::rig::{RigDefinition, common_rest_rig};
+use super::rig::{JointId, RigDefinition, common_rest_rig};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum BodyId {
@@ -439,7 +439,57 @@ pub(crate) struct BodyRecipe {
 }
 
 pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
-    let rig = common_rest_rig();
+    let mut rig = common_rest_rig();
+    let set_joint = |rig: &mut RigDefinition, joint: JointId, translation: Vec3| {
+        rig.joints[joint.index()].rest.translation = translation;
+    };
+
+    // The common hierarchy keeps outfits and animation portable. Rest
+    // positions give each species its own stance and distribution of mass.
+    match id {
+        BodyId::Person => {
+            set_joint(&mut rig, JointId::Torso, Vec3::new(0.0, 1.68, 0.0));
+            set_joint(&mut rig, JointId::Head, Vec3::new(0.0, 1.02, 0.0));
+            set_joint(&mut rig, JointId::LeftUpperArm, Vec3::new(-0.59, -0.01, 0.0));
+            set_joint(&mut rig, JointId::RightUpperArm, Vec3::new(0.59, -0.01, 0.0));
+            set_joint(&mut rig, JointId::LeftUpperLeg, Vec3::new(-0.22, 0.87, 0.0));
+            set_joint(&mut rig, JointId::RightUpperLeg, Vec3::new(0.22, 0.87, 0.0));
+            set_joint(&mut rig, JointId::LeftLowerLeg, Vec3::new(0.0, -0.53, 0.0));
+            set_joint(&mut rig, JointId::RightLowerLeg, Vec3::new(0.0, -0.53, 0.0));
+            set_joint(&mut rig, JointId::LeftFoot, Vec3::new(0.0, -0.29, -0.13));
+            set_joint(&mut rig, JointId::RightFoot, Vec3::new(0.0, -0.29, -0.13));
+        }
+        BodyId::Cat => {
+            set_joint(&mut rig, JointId::Torso, Vec3::new(0.0, 1.64, 0.015));
+            set_joint(&mut rig, JointId::Head, Vec3::new(0.0, 1.00, -0.015));
+            set_joint(&mut rig, JointId::LeftUpperArm, Vec3::new(-0.62, -0.03, 0.0));
+            set_joint(&mut rig, JointId::RightUpperArm, Vec3::new(0.62, -0.03, 0.0));
+            set_joint(&mut rig, JointId::LeftLowerArm, Vec3::new(0.0, -0.54, 0.0));
+            set_joint(&mut rig, JointId::RightLowerArm, Vec3::new(0.0, -0.54, 0.0));
+            set_joint(&mut rig, JointId::LeftHand, Vec3::new(0.0, -0.45, -0.02));
+            set_joint(&mut rig, JointId::RightHand, Vec3::new(0.0, -0.45, -0.02));
+            set_joint(&mut rig, JointId::LeftUpperLeg, Vec3::new(-0.29, 0.84, 0.0));
+            set_joint(&mut rig, JointId::RightUpperLeg, Vec3::new(0.29, 0.84, 0.0));
+            set_joint(&mut rig, JointId::LeftLowerLeg, Vec3::new(0.0, -0.50, 0.0));
+            set_joint(&mut rig, JointId::RightLowerLeg, Vec3::new(0.0, -0.50, 0.0));
+            set_joint(&mut rig, JointId::LeftFoot, Vec3::new(0.0, -0.29, -0.08));
+            set_joint(&mut rig, JointId::RightFoot, Vec3::new(0.0, -0.29, -0.08));
+        }
+        BodyId::Dragon => {
+            set_joint(&mut rig, JointId::Torso, Vec3::new(0.0, 1.68, 0.025));
+            set_joint(&mut rig, JointId::Head, Vec3::new(0.0, 1.00, -0.04));
+            set_joint(&mut rig, JointId::LeftUpperArm, Vec3::new(-0.69, 0.07, 0.0));
+            set_joint(&mut rig, JointId::RightUpperArm, Vec3::new(0.69, 0.07, 0.0));
+            set_joint(&mut rig, JointId::LeftHand, Vec3::new(0.0, -0.47, -0.03));
+            set_joint(&mut rig, JointId::RightHand, Vec3::new(0.0, -0.47, -0.03));
+            set_joint(&mut rig, JointId::LeftUpperLeg, Vec3::new(-0.31, 0.88, 0.02));
+            set_joint(&mut rig, JointId::RightUpperLeg, Vec3::new(0.31, 0.88, 0.02));
+            set_joint(&mut rig, JointId::LeftLowerLeg, Vec3::new(0.0, -0.55, 0.0));
+            set_joint(&mut rig, JointId::RightLowerLeg, Vec3::new(0.0, -0.55, 0.0));
+            set_joint(&mut rig, JointId::LeftFoot, Vec3::new(0.0, -0.28, -0.16));
+            set_joint(&mut rig, JointId::RightFoot, Vec3::new(0.0, -0.28, -0.16));
+        }
+    }
     rig.validate()
         .expect("built-in character rig must validate");
     let default_appearance = CharacterAppearance {
@@ -457,102 +507,107 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             && default_appearance.colors.skin[3] > 0.0
             && !id.stable_id().is_empty()
     );
-    let common = (
-        BodyPart::new(Vec3::new(0.98, 1.02, 0.70), 0.13),
-        BodyPart::new(Vec3::new(1.02, 0.86, 0.78), 0.16),
-        BodyPart::new(Vec3::new(0.34, 0.58, 0.42), 0.08),
-        BodyPart::new(Vec3::new(0.34, 0.55, 0.40), 0.08),
-        BodyPart::new(Vec3::new(0.42, 0.27, 0.40), 0.10),
-        BodyPart::new(Vec3::new(0.48, 0.64, 0.48), 0.10),
-        BodyPart::new(Vec3::new(0.45, 0.56, 0.45), 0.09),
-        BodyPart::new(Vec3::new(0.62, 0.30, 0.84), 0.10),
-    );
-    let (mut torso, head, upper_arm, lower_arm, hand, upper_leg, lower_leg, foot) = common;
-    // A narrow waist and dropped shoulder line are part of the silhouette,
-    // not a material effect. The rounded builder applies this profile before
-    // recomputing normals.
-    torso.taper = (0.88, 1.0);
     match id {
-        BodyId::Person => BodyRecipe {
+        BodyId::Person => {
+            let mut torso = BodyPart::new(Vec3::new(0.90, 1.06, 0.66), 0.15);
+            torso.taper = (0.80, 1.0);
+            BodyRecipe {
+                id,
+                rig,
+                torso,
+                head: BodyPart::new(Vec3::new(1.10, 0.92, 0.78), 0.19),
+                upper_arm: BodyPart::new(Vec3::new(0.31, 0.56, 0.39), 0.09),
+                lower_arm: BodyPart::new(Vec3::new(0.30, 0.52, 0.37), 0.09),
+                hand: BodyPart::new(Vec3::new(0.44, 0.29, 0.41), 0.12),
+                upper_leg: BodyPart::new(Vec3::new(0.42, 0.61, 0.45), 0.11),
+                lower_leg: BodyPart::new(Vec3::new(0.40, 0.52, 0.42), 0.10),
+                foot: BodyPart::new(Vec3::new(0.65, 0.31, 0.88), 0.12),
+                face: FaceAnchors::default(),
+                first_person_anchor: Vec3::new(0.0, 2.76, -0.04),
+                third_person_target: Vec3::new(0.0, 1.58, 0.0),
+                extras: SpeciesExtras {
+                    ear_size: None,
+                    muzzle_size: None,
+                    tail_segments: 0,
+                    horns: false,
+                    wings: false,
+                },
+            }
+        }
+        BodyId::Cat => {
+            let mut torso = BodyPart::new(Vec3::new(1.04, 0.98, 0.74), 0.17);
+            torso.taper = (1.08, 0.82);
+            BodyRecipe {
             id,
             rig,
             torso,
-            head,
-            upper_arm,
-            lower_arm,
-            hand,
-            upper_leg,
-            lower_leg,
-            foot,
-            face: FaceAnchors::default(),
-            first_person_anchor: Vec3::new(0.0, 2.80, -0.03),
-            third_person_target: Vec3::new(0.0, 1.62, 0.0),
-            extras: SpeciesExtras {
-                ear_size: None,
-                muzzle_size: None,
-                tail_segments: 0,
-                horns: false,
-                wings: false,
-            },
-        },
-        BodyId::Cat => BodyRecipe {
-            id,
-            rig,
-            torso: BodyPart::new(Vec3::new(1.02, 0.98, 0.72), 0.14),
-            head: BodyPart::new(Vec3::new(1.02, 0.84, 0.78), 0.17),
-            upper_arm,
-            lower_arm,
-            hand,
-            upper_leg,
-            lower_leg,
-            foot,
+            head: BodyPart::new(Vec3::new(1.18, 0.82, 0.76), 0.20),
+            upper_arm: BodyPart::new(Vec3::new(0.37, 0.55, 0.43), 0.11),
+            lower_arm: BodyPart::new(Vec3::new(0.36, 0.48, 0.41), 0.11),
+            hand: BodyPart::new(Vec3::new(0.47, 0.30, 0.44), 0.13),
+            upper_leg: BodyPart::new(Vec3::new(0.50, 0.56, 0.50), 0.13),
+            lower_leg: BodyPart::new(Vec3::new(0.48, 0.48, 0.47), 0.12),
+            foot: BodyPart::new(Vec3::new(0.62, 0.29, 0.74), 0.13),
             face: FaceAnchors {
-                eye_y: 0.12,
-                eye_x: 0.20,
-                face_z: -0.397,
-                brow_y: 0.28,
-                mouth_y: -0.18,
+                eye_y: 0.11,
+                eye_x: 0.22,
+                eye_size: Vec2::new(0.19, 0.25),
+                eye_tilt: 0.055,
+                face_z: -0.387,
+                brow_y: 0.27,
+                brow_width: 0.20,
+                mouth_y: -0.17,
+                mouth_width: 0.28,
                 muzzle_y: -0.12,
             },
-            first_person_anchor: Vec3::new(0.0, 2.80, -0.04),
-            third_person_target: Vec3::new(0.0, 1.60, 0.0),
+            first_person_anchor: Vec3::new(0.0, 2.70, -0.04),
+            third_person_target: Vec3::new(0.0, 1.55, 0.0),
             extras: SpeciesExtras {
-                ear_size: Some(Vec3::new(0.28, 0.40, 0.28)),
-                muzzle_size: Some(Vec3::new(0.45, 0.25, 0.27)),
+                ear_size: Some(Vec3::new(0.34, 0.50, 0.30)),
+                muzzle_size: Some(Vec3::new(0.48, 0.24, 0.26)),
                 tail_segments: 3,
                 horns: false,
                 wings: false,
             },
-        },
-        BodyId::Dragon => BodyRecipe {
+        }
+        }
+        BodyId::Dragon => {
+            let mut torso = BodyPart::new(Vec3::new(1.16, 1.08, 0.84), 0.18);
+            torso.taper = (0.92, 1.08);
+            BodyRecipe {
             id,
             rig,
-            torso: BodyPart::new(Vec3::new(1.04, 1.04, 0.76), 0.15),
-            head: BodyPart::new(Vec3::new(1.04, 0.82, 0.84), 0.17),
-            upper_arm,
-            lower_arm,
-            hand,
-            upper_leg,
-            lower_leg,
-            foot: BodyPart::new(Vec3::new(0.66, 0.32, 0.88), 0.11),
+            torso,
+            head: BodyPart::new(Vec3::new(1.10, 0.86, 0.92), 0.19),
+            upper_arm: BodyPart::new(Vec3::new(0.40, 0.58, 0.47), 0.12),
+            lower_arm: BodyPart::new(Vec3::new(0.39, 0.53, 0.45), 0.11),
+            hand: BodyPart::new(Vec3::new(0.50, 0.31, 0.47), 0.13),
+            upper_leg: BodyPart::new(Vec3::new(0.54, 0.62, 0.54), 0.13),
+            lower_leg: BodyPart::new(Vec3::new(0.51, 0.51, 0.50), 0.12),
+            foot: BodyPart::new(Vec3::new(0.74, 0.35, 0.98), 0.14),
             face: FaceAnchors {
                 eye_y: 0.11,
-                eye_x: 0.20,
-                face_z: -0.427,
-                brow_y: 0.28,
-                mouth_y: -0.17,
+                eye_x: 0.21,
+                eye_size: Vec2::new(0.20, 0.23),
+                eye_tilt: -0.09,
+                face_z: -0.467,
+                brow_y: 0.27,
+                brow_width: 0.23,
+                mouth_y: -0.16,
+                mouth_width: 0.31,
                 muzzle_y: -0.09,
             },
-            first_person_anchor: Vec3::new(0.0, 2.78, -0.05),
-            third_person_target: Vec3::new(0.0, 1.64, 0.0),
+            first_person_anchor: Vec3::new(0.0, 2.74, -0.07),
+            third_person_target: Vec3::new(0.0, 1.62, 0.02),
             extras: SpeciesExtras {
                 ear_size: None,
-                muzzle_size: Some(Vec3::new(0.52, 0.27, 0.32)),
+                muzzle_size: Some(Vec3::new(0.56, 0.29, 0.36)),
                 tail_segments: 4,
                 horns: true,
                 wings: true,
             },
-        },
+        }
+        }
     }
 }
 
@@ -580,6 +635,10 @@ mod tests {
         assert!(person.extras.ear_size.is_none());
         assert!(cat.extras.ear_size.is_some());
         assert!(dragon.extras.horns && dragon.extras.wings);
+        assert!(cat.head.size.x > person.head.size.x);
+        assert!(dragon.torso.size.x > person.torso.size.x);
+        assert!(person.rig.joints[JointId::LeftUpperArm.index()].rest.translation.x.abs()
+            < cat.rig.joints[JointId::LeftUpperArm.index()].rest.translation.x.abs());
     }
 
     #[test]

@@ -17,7 +17,7 @@ public snapshot unchanged.
   actual world viewport aspect ratio and the existing 0.05–240 unit camera
   range.
 - Batches continue to be shared by immutable mesh/material keys. The catalog
-  remains bounded at 256 meshes and 32 MiB of character mesh/instance
+  remains bounded at 384 meshes and 32 MiB of character mesh/instance
   residency; normal frames upload only the selected instances.
 - Effects are admitted deterministically in draw order, with at most eight
   seam effects per character and 128 live effects total. Reduced effects and

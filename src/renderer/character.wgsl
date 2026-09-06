@@ -56,13 +56,29 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
             if dot(p, p) > 0.88 { discard; }
             let highlight = (p - vec2<f32>(-0.28, 0.34)) / vec2<f32>(0.23, 0.20);
             if dot(highlight, highlight) < 1.0 { color = vec3<f32>(0.98, 0.97, 0.92); }
-        } else {
+        } else if input.material.w == 5.0 {
             let curve = input.material.x;
             let opening = clamp(input.material.y, 0.0, 1.0);
             let smile = curve * (p.x * p.x - 0.45) * 0.75;
             let line = abs(p.y - smile) < 0.13 && abs(p.x) < 0.88;
             let oval = p.x * p.x / 0.64 + p.y * p.y / max(0.02, opening * opening) < 1.0;
-            if !(line || (opening > 0.20 && oval)) { discard; }
+            if opening > 0.12 && oval {
+                color = vec3<f32>(0.08, 0.05, 0.07);
+                // A tiny tooth or tongue cue gives the open expressions a
+                // stronger read without adding another mesh or texture.
+                if opening > 0.38 && p.y > 0.20 && p.y < 0.62 {
+                    color = vec3<f32>(0.96, 0.92, 0.82);
+                } else if opening > 0.30 && p.y < -0.36 {
+                    color = vec3<f32>(0.82, 0.29, 0.34);
+                }
+            } else if !line {
+                discard;
+            }
+        } else if input.material.w == 6.0 {
+            if dot(p, p) > 0.92 { discard; }
+        } else {
+            if dot(p, p) > 0.94 { discard; }
+            color *= 0.92;
         }
         let fog = smoothstep(100.0, 220.0, distance(input.world, globals.camera_position.xyz));
         return vec4<f32>(mix(color, globals.fog_color.rgb, fog), 1.0);

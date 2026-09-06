@@ -198,9 +198,13 @@ impl CharacterPresentationState {
             0.0
         };
         self.head_look = damp(self.head_look, look_delta, 12.0, delta);
-        let gap_target: f32 = if sample.moving { 0.18 } else { 0.0 }
+        let gap_target: f32 = if sample.moving {
+            0.20 + if sample.sprinting { 0.08 } else { 0.0 }
+        } else {
+            0.0
+        }
             + if matches!(sample.support, CharacterSupport::Airborne) {
-                0.24
+                0.32
             } else {
                 0.0
             }
@@ -208,7 +212,7 @@ impl CharacterPresentationState {
                 sample.event,
                 CharacterMotionEvent::Takeoff | CharacterMotionEvent::Landing
             ) {
-                0.30
+                0.42
             } else {
                 0.0
             };
@@ -228,6 +232,17 @@ impl CharacterPresentationState {
         };
         let run = if sample.sprinting { 1.0 } else { 0.0 };
         let swing = phase.sin() * (0.34 + run * 0.22) * self.locomotion_blend;
+        let stride_bob = phase.sin().abs() * 0.038 * self.locomotion_blend;
+        pose.transforms[JointId::Torso.index()].translation.y += stride_bob;
+        // These offsets are cosmetic clearances. The gameplay collider and
+        // root position remain authoritative while the pieces visibly float
+        // apart when the toy is moving or airborne.
+        let gap = self.gap_spring;
+        pose.transforms[JointId::Head.index()].translation.y += gap * 0.032;
+        pose.transforms[JointId::LeftUpperArm.index()].translation.x -= gap * 0.028;
+        pose.transforms[JointId::RightUpperArm.index()].translation.x += gap * 0.028;
+        pose.transforms[JointId::LeftFoot.index()].translation.y -= gap * 0.010;
+        pose.transforms[JointId::RightFoot.index()].translation.y -= gap * 0.010;
         rotate(&mut pose, JointId::LeftUpperArm, swing * 0.72, 0.0, 0.0);
         rotate(&mut pose, JointId::RightUpperArm, -swing * 0.72, 0.0, 0.0);
         rotate(
@@ -286,6 +301,7 @@ impl CharacterPresentationState {
             || vertical_velocity.abs() > 0.5
         {
             let rising = (vertical_velocity / 10.5).clamp(-1.0, 1.0);
+            pose.transforms[JointId::Torso.index()].translation.y += rising * 0.026;
             rotate(&mut pose, JointId::Torso, -rising * 0.10, 0.0, 0.0);
             rotate(
                 &mut pose,
@@ -318,6 +334,7 @@ impl CharacterPresentationState {
         }
         if self.landing_timer > 0.0 {
             let compression = (self.landing_timer / 0.24).smoothstep(0.0, 1.0);
+            pose.transforms[JointId::Torso.index()].translation.y -= compression * 0.075;
             rotate(&mut pose, JointId::Torso, compression * 0.15, 0.0, 0.0);
             rotate(
                 &mut pose,
@@ -378,7 +395,20 @@ impl CharacterPresentationState {
             gap_expansion: self.gap_spring,
         };
 
-        let target_face = FaceParameters::preset(self.expression).clamped();
+        let reactive_expression = if waving {
+            FacePreset::Excited
+        } else if self.landing_timer > 0.0 {
+            FacePreset::Surprised
+        } else if matches!(sample.support, CharacterSupport::Airborne)
+            || vertical_velocity.abs() > 0.5
+        {
+            FacePreset::Amazed
+        } else if sample.sprinting {
+            FacePreset::Determined
+        } else {
+            self.expression
+        };
+        let target_face = FaceParameters::preset(reactive_expression).clamped();
         self.face = blend_face(self.face, target_face, delta);
         if time >= self.next_blink && time >= self.blink_until {
             self.blink_count = self.blink_count.wrapping_add(1);

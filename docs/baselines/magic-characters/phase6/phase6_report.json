@@ -16,7 +16,7 @@
     "reduced_effects_disables_seams": true
   },
   "cache": {
-    "max_meshes": 256,
+    "max_meshes": 384,
     "max_resident_bytes": 33554432,
     "render_only_stress_characters": 50,
     "engine_capacity_characters": 18

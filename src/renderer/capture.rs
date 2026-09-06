@@ -209,7 +209,7 @@ pub fn capture_phase6_report(output_dir: impl AsRef<Path>) -> Result<Phase6Quali
             reduced_effects_disables_seams: true,
         },
         cache: CachePolicyReport {
-            max_meshes: 256,
+            max_meshes: 384,
             max_resident_bytes: 32 * 1024 * 1024,
             render_only_stress_characters: 50,
             engine_capacity_characters: 18,

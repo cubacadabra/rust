@@ -132,9 +132,14 @@ pub(crate) struct FaceAnchors {
     /// Head-local coordinates. The face points toward local -Z.
     pub(crate) eye_y: f32,
     pub(crate) eye_x: f32,
+    pub(crate) eye_size: Vec2,
+    /// A small species-specific cant keeps every face from sharing one stamp.
+    pub(crate) eye_tilt: f32,
     pub(crate) face_z: f32,
     pub(crate) brow_y: f32,
+    pub(crate) brow_width: f32,
     pub(crate) mouth_y: f32,
+    pub(crate) mouth_width: f32,
     pub(crate) muzzle_y: f32,
 }
 
@@ -143,9 +148,13 @@ impl Default for FaceAnchors {
         Self {
             eye_y: 0.10,
             eye_x: 0.19,
+            eye_size: Vec2::new(0.18, 0.27),
+            eye_tilt: -0.025,
             face_z: -0.397,
             brow_y: 0.27,
+            brow_width: 0.21,
             mouth_y: -0.18,
+            mouth_width: 0.34,
             muzzle_y: -0.10,
         }
     }

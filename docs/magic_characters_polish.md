@@ -81,7 +81,7 @@ work follows the frontend skill's guidance on restraint and consistency.
   cloth detail, and directional/hemisphere shading that better describes form.
 - Outfit-aware head clearance and bounds that include scaled attachments.
 
-Small construction details share an immutable mesh. The 48-part, 256-mesh,
+Small construction details share an immutable mesh. The 48-part, 384-mesh,
 32 MiB residency and 18-player simulation limits remain enforced. The capture
 lineup uses explicit varied review palettes; existing live appearance tints
 are not replaced by those fixture colors.

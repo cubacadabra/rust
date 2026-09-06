@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 
 pub(super) const MAX_CHARACTERS: usize = 50;
 const MAX_PARTS: usize = 48;
-const MAX_MESHES: usize = 256;
+const MAX_MESHES: usize = 384;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
 
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
@@ -37,6 +37,14 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                     1.0,
                 ));
         }
+        Feature::Cheek(_side) => {
+            local = local
+                * Mat4::from_scale(glam::Vec3::new(
+                    1.0 + face.mouth_opening * 0.12,
+                    1.0 + face.mouth_opening * 0.18,
+                    1.0,
+                ));
+        }
         Feature::Ear(side) => {
             local =
                 local * Mat4::from_quat(Quat::from_rotation_z(side * entity.secondary.ear_tilt));
@@ -50,6 +58,28 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
         Feature::Wing(side) => {
             local =
                 local * Mat4::from_quat(Quat::from_rotation_z(side * entity.secondary.wing_flap));
+        }
+        Feature::Seam(phase) => {
+            let intensity = entity.secondary.gap_expansion.clamp(0.0, 0.72);
+            local = local
+                * Mat4::from_scale(Vec3::splat(
+                    1.0 + intensity * (0.38 + phase.abs() * 0.10),
+                ));
+        }
+        Feature::Spark(side) => {
+            let intensity = entity.secondary.gap_expansion.clamp(0.0, 0.72);
+            local = local
+                * Mat4::from_translation(Vec3::new(
+                    side * intensity * 0.18,
+                    intensity * 0.36,
+                    -intensity * 0.05,
+                ))
+                * Mat4::from_rotation_z(side * (0.7 + intensity * 1.4))
+                * Mat4::from_scale(Vec3::new(
+                    1.0 + intensity * 1.8,
+                    1.0 + intensity * 0.6,
+                    1.0 + intensity * 1.8,
+                ));
         }
     }
     if matches!(part.tint, character::Tint::Seam) {
@@ -84,6 +114,7 @@ fn part_visible(part: Part, lod: CharacterLod) -> bool {
         // subpixel brows and seam cores. Silhouette appendages remain present.
         CharacterLod::Far
             => !matches!(part.feature, Feature::Brow(_))
+                && !matches!(part.feature, Feature::Cheek(_))
                 && !matches!(part.tint, character::Tint::Seam),
     }
 }
@@ -136,7 +167,13 @@ impl CharacterRenderer {
                 let mut parts: [Vec<(Part, usize)>; 3] = std::array::from_fn(|_| Vec::new());
                 for lod in CharacterLod::ALL {
                     let pieces = character::parts_for(&recipe, outfit);
-                    assert!(pieces.len() <= MAX_PARTS);
+                    assert!(
+                        pieces.len() <= MAX_PARTS,
+                        "character catalog entry exceeds MAX_PARTS: body={:?} outfit={:?} parts={}",
+                        body,
+                        outfit,
+                        pieces.len()
+                    );
                     for part in pieces.into_iter().filter(|part| part_visible(*part, lod)) {
                         let mesh_recipe = character::mesh_recipe_with_subdivisions(
                             part.spec,
@@ -349,6 +386,11 @@ impl CharacterRenderer {
                     0.5
                 }
             });
+            if matches!(part.feature, Feature::Spark(_)) {
+                tint[3] *= (entity.secondary.gap_expansion / 0.30).clamp(0.0, 1.0);
+            } else if matches!(part.feature, Feature::Seam(_)) {
+                tint[3] *= 0.62 + entity.secondary.gap_expansion.clamp(0.0, 0.72) * 0.42;
+            }
             if batch.material != Material::Seam {
                 tint[3] = 1.0;
             }
@@ -356,7 +398,11 @@ impl CharacterRenderer {
             let mut instance = CharacterInstance::new(transform, tint, batch.material);
             match part.feature {
                 Feature::Eye(_) => instance.material = [1.0, 0.0, 0.0, 4.0],
-                Feature::Mouth => instance.material = [entity.face.mouth_curve, entity.face.mouth_opening, 0.0, 5.0],
+                Feature::Mouth => {
+                    instance.material = [entity.face.mouth_curve, entity.face.mouth_opening, 0.0, 5.0]
+                }
+                Feature::Brow(_) => instance.material = [1.0, 0.0, 0.0, 6.0],
+                Feature::Cheek(_) => instance.material = [1.0, 0.0, 0.0, 7.0],
                 _ => {}
             }
             batch.instances.push(instance);
