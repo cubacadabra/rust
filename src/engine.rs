@@ -14,7 +14,7 @@ use crate::math::Random;
 use crate::scripting::GameScript;
 use crate::character::definition::CharacterAppearance;
 use crate::types::{Agent, BuildBlock, CharacterEmote, CharacterMotionEvent, Input, Player, RemotePlayer};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use crate::ui::UiRuntime;
 use crate::world::{Aabb, LaunchPad, RuntimeWorld};
 use std::cell::RefCell;
@@ -71,12 +71,14 @@ pub struct Engine {
     pub(crate) remote_packet_sequence: u64,
     pub(crate) remote_world_id: Option<String>,
     pub(crate) remote_identity_cache: BTreeMap<String, CharacterAppearance>,
+    pub(crate) remote_identity_cache_order: VecDeque<String>,
     pub(crate) player_appearance: CharacterAppearance,
     pub(crate) player_appearance_persistent: bool,
     pub(crate) appearance_generation: u32,
     pub(crate) appearance_buffer: Vec<u8>,
     pub(crate) appearance_status: u8,
     pub(crate) remote_update_buffer: Vec<u8>,
+    pub(crate) remote_motion_buffer: Vec<u8>,
     pub(crate) remote_update_status: u8,
     pub(crate) player_motion_event: CharacterMotionEvent,
     pub(crate) player_emote: CharacterEmote,

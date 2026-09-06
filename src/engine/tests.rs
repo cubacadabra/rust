@@ -1,4 +1,4 @@
-use super::{Engine, SNAPSHOT_STRIDE};
+use super::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 use crate::types::{
     Agent, AgentPhase, CharacterEntityKind, CharacterSupport, Input, LaunchPadPhase,
 };
@@ -347,6 +347,67 @@ fn remote_updates_reject_stale_sequences_and_deduplicate_emotes() {
 }
 
 #[test]
+fn remote_duplicate_motion_sequence_does_not_replace_newer_motion() {
+    let mut engine = Engine::new();
+    assert!(engine.apply_remote_update_json(
+        r##"{"version":1,"sequence":10,"players":[
+            {"id":"account:motion","generation":1,"position":[5,0,0],"yaw":0,
+             "motionSequence":100}
+        ]}"##,
+    ));
+    assert!(engine.apply_remote_update_json(
+        r##"{"version":1,"sequence":11,"players":[
+            {"id":"account:motion","generation":1,"position":[50,0,0],"yaw":1,
+             "motionSequence":100}
+        ]}"##,
+    ));
+
+    let sample = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("remote motion sample");
+    assert_eq!(sample.position, [5.0, 0.0, 0.0]);
+    assert_eq!(sample.facing_yaw, 0.0);
+}
+
+#[test]
+fn compact_remote_motion_batch_updates_only_newer_motion() {
+    let mut engine = Engine::new();
+    assert!(engine.apply_remote_update_json(
+        r##"{"version":1,"sequence":1,"players":[
+            {"id":"account:typed-motion","generation":2,"position":[5,0,0],"yaw":0,
+             "motionSequence":100}
+        ]}"##,
+    ));
+    let identity = crate::engine::identity::stable_identity("account:typed-motion");
+    let mut batch = vec![0_u8; 8 + crate::engine::identity::REMOTE_MOTION_RECORD_BYTES];
+    batch[0..4].copy_from_slice(&1_u32.to_le_bytes());
+    batch[4..8].copy_from_slice(&1_u32.to_le_bytes());
+    batch[8..16].copy_from_slice(&identity.to_le_bytes());
+    batch[16..20].copy_from_slice(&2_u32.to_le_bytes());
+    batch[20..28].copy_from_slice(&100_u64.to_le_bytes());
+    batch[28..32].copy_from_slice(&50.0_f32.to_le_bytes());
+    batch[32..36].copy_from_slice(&0.0_f32.to_le_bytes());
+    batch[36..40].copy_from_slice(&0.0_f32.to_le_bytes());
+    batch[40..44].copy_from_slice(&1.0_f32.to_le_bytes());
+    batch[44..48].copy_from_slice(&1_u32.to_le_bytes());
+    assert!(engine.apply_remote_motion_batch(&batch));
+    let duplicate = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("typed motion sample");
+    assert_eq!(duplicate.position, [5.0, 0.0, 0.0]);
+
+    batch[20..28].copy_from_slice(&101_u64.to_le_bytes());
+    assert!(engine.apply_remote_motion_batch(&batch));
+    let newer = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("newer typed motion sample");
+    assert_eq!(newer.position, [50.0, 0.0, 0.0]);
+}
+
+#[test]
 fn reconnect_can_hydrate_cached_appearance_without_reusing_motion_state() {
     let mut engine = Engine::new();
     assert!(engine.apply_remote_update_json(
@@ -380,6 +441,80 @@ fn reconnect_can_hydrate_cached_appearance_without_reusing_motion_state() {
             .expect("cached appearance")
             .body,
         crate::character::BodyId::Dragon
+    );
+}
+
+#[test]
+fn reconnect_rejects_conflicting_same_revision_appearance_from_known_identity() {
+    let mut engine = Engine::new();
+    assert!(engine.apply_remote_update_json(
+        r##"{"version":1,"sequence":1,"players":[
+            {"id":"account:appearance-reconnect","generation":4,"position":[0,0,0],"yaw":0,
+             "appearance":{"version":1,"body":"cuba:dragon.v1","revision":6}}
+        ]}"##,
+    ));
+    engine.reset_remote_session();
+
+    assert!(engine.apply_remote_update_json(
+        r##"{"version":1,"sequence":1,"players":[
+            {"id":"account:appearance-reconnect","generation":5,"position":[0,0,0],"yaw":0,
+             "appearance":{"version":1,"body":"cuba:cat.v1","revision":6}}
+        ]}"##,
+    ));
+    let restored = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("reconnected remote");
+    assert_eq!(engine.remote_update_status(), 3);
+    assert_eq!(restored.appearance_revision, 6);
+    assert_eq!(
+        engine
+            .remote_appearance(restored.key)
+            .expect("cached appearance")
+            .body,
+        crate::character::BodyId::Dragon
+    );
+}
+
+#[test]
+fn remote_identity_cache_evicts_least_recently_seen_entry() {
+    let mut engine = Engine::new();
+    let appearance = crate::character::definition::CharacterAppearance::default();
+    for index in 0..MAX_AGENTS {
+        engine.cache_remote_appearance(format!("account:{index}"), appearance.clone());
+    }
+    engine.cache_remote_appearance("account:0".to_owned(), appearance.clone());
+    engine.cache_remote_appearance("account:new".to_owned(), appearance);
+
+    assert!(engine.remote_identity_cache.contains_key("account:0"));
+    assert!(!engine.remote_identity_cache.contains_key("account:1"));
+    assert!(engine.remote_identity_cache.contains_key("account:new"));
+}
+
+#[test]
+fn first_appearance_after_appearance_omission_is_accepted() {
+    let mut engine = Engine::new();
+    assert!(engine.apply_remote_update_json(
+        r##"{"version":1,"sequence":1,"players":[
+            {"id":"account:first-appearance","generation":1,"position":[0,0,0],"yaw":0}
+        ]}"##,
+    ));
+    assert!(engine.apply_remote_update_json(
+        r##"{"version":1,"sequence":2,"players":[
+            {"id":"account:first-appearance","generation":1,"position":[0,0,0],"yaw":0,
+             "appearance":{"version":1,"body":"cuba:cat.v1","revision":0}}
+        ]}"##,
+    ));
+    let sample = engine
+        .character_motion_samples()
+        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+        .expect("remote with first appearance");
+    assert_eq!(
+        engine
+            .remote_appearance(sample.key)
+            .expect("accepted appearance")
+            .body,
+        crate::character::BodyId::Cat
     );
 }
 

@@ -9,9 +9,18 @@ use serde::Deserialize;
 
 pub(crate) const MAX_APPEARANCE_BYTES: usize = 4 * 1024;
 pub(crate) const MAX_REMOTE_UPDATE_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_REMOTE_MOTION_BATCH_BYTES: usize = 4 * 1024;
 pub(crate) const MAX_REMOTE_ID_BYTES: usize = 96;
 pub(crate) const MAX_WORLD_ID_BYTES: usize = 96;
 pub(crate) const REMOTE_PROTOCOL_VERSION: u16 = 1;
+pub(crate) const REMOTE_MOTION_PROTOCOL_VERSION: u32 = 1;
+pub(crate) const REMOTE_MOTION_BATCH_HEADER_BYTES: usize = 8;
+pub(crate) const REMOTE_MOTION_RECORD_BYTES: usize = 40;
+
+// Little-endian hot-path ABI:
+// header: u32 version, u32 record count
+// record: u64 stable identity, u32 generation, u64 motion sequence,
+//         f32 x/y/z/yaw, u32 flags (bit 0 moving, bit 1 sprinting)
 
 /// Status returned by the additive buffer APIs. `Fallback` means the message
 /// was accepted but one or more fields resolved to a bundled safe default.

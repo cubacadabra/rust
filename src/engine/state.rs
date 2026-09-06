@@ -393,6 +393,118 @@ impl Engine {
         self.apply_remote_update_json(&source)
     }
 
+    pub(crate) fn prepare_remote_motion_batch_buffer(&mut self, length: usize) -> *mut u8 {
+        if length > identity::MAX_REMOTE_MOTION_BATCH_BYTES {
+            self.remote_motion_buffer.clear();
+            self.remote_update_status = STATUS_INVALID;
+            return std::ptr::null_mut();
+        }
+        self.remote_motion_buffer.resize(length, 0);
+        self.remote_motion_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn apply_remote_motion_batch_buffer(&mut self) -> bool {
+        let source = self.remote_motion_buffer.clone();
+        self.apply_remote_motion_batch(&source)
+    }
+
+    /// Applies the compact hot-path motion ABI. The control-plane roster owns
+    /// stable identity and ordering; each record carries the identity hash,
+    /// generation and motion sequence so stale packets cannot move a new
+    /// presentation lifetime.
+    pub(crate) fn apply_remote_motion_batch(&mut self, source: &[u8]) -> bool {
+        const HEADER_BYTES: usize = identity::REMOTE_MOTION_BATCH_HEADER_BYTES;
+        const RECORD_BYTES: usize = identity::REMOTE_MOTION_RECORD_BYTES;
+        if source.len() > identity::MAX_REMOTE_MOTION_BATCH_BYTES
+            || source.len() < HEADER_BYTES
+        {
+            self.remote_update_status = STATUS_INVALID;
+            return false;
+        }
+
+        let version = u32::from_le_bytes(source[0..4].try_into().unwrap());
+        let count = u32::from_le_bytes(source[4..8].try_into().unwrap()) as usize;
+        let Some(expected_length) = HEADER_BYTES.checked_add(
+            count
+                .checked_mul(RECORD_BYTES)
+                .unwrap_or(usize::MAX),
+        ) else {
+            self.remote_update_status = STATUS_INVALID;
+            return false;
+        };
+        if version != identity::REMOTE_MOTION_PROTOCOL_VERSION
+            || count > MAX_AGENTS
+            || source.len() != expected_length
+        {
+            self.remote_update_status = STATUS_INVALID;
+            return false;
+        }
+
+        let mut records = Vec::with_capacity(count);
+        let mut identities = std::collections::BTreeSet::new();
+        for index in 0..count {
+            let offset = HEADER_BYTES + index * RECORD_BYTES;
+            let stable_identity =
+                u64::from_le_bytes(source[offset..offset + 8].try_into().unwrap());
+            let generation =
+                u32::from_le_bytes(source[offset + 8..offset + 12].try_into().unwrap());
+            let motion_sequence =
+                u64::from_le_bytes(source[offset + 12..offset + 20].try_into().unwrap());
+            let position = [
+                f32::from_le_bytes(source[offset + 20..offset + 24].try_into().unwrap()),
+                f32::from_le_bytes(source[offset + 24..offset + 28].try_into().unwrap()),
+                f32::from_le_bytes(source[offset + 28..offset + 32].try_into().unwrap()),
+            ];
+            let yaw = f32::from_le_bytes(source[offset + 32..offset + 36].try_into().unwrap());
+            let flags =
+                u32::from_le_bytes(source[offset + 36..offset + 40].try_into().unwrap());
+            if stable_identity == 0
+                || flags & !0b11 != 0
+                || !identities.insert(stable_identity)
+                || !position.iter().all(|value| value.is_finite())
+                || !yaw.is_finite()
+            {
+                self.remote_update_status = STATUS_INVALID;
+                return false;
+            }
+            records.push((
+                stable_identity,
+                generation,
+                motion_sequence,
+                position,
+                yaw,
+                flags,
+            ));
+        }
+
+        for (stable_identity, generation, motion_sequence, position, yaw, flags) in records {
+            let Some(player) = self
+                .remote_players
+                .iter_mut()
+                .find(|player| player.identity == stable_identity)
+            else {
+                continue;
+            };
+            if (generation != 0 && player.generation != generation)
+                || motion_sequence <= player.motion_sequence
+            {
+                continue;
+            }
+            player.position = position;
+            player.yaw = yaw;
+            player.look_yaw = yaw;
+            player.planar_velocity = None;
+            player.vertical_velocity = None;
+            player.support = CharacterSupport::Unknown;
+            player.moving = flags & 0b01 != 0;
+            player.sprinting = flags & 0b10 != 0;
+            player.motion_sequence = motion_sequence;
+        }
+        self.remote_update_status = STATUS_APPLIED;
+        self.write_snapshot();
+        true
+    }
+
     pub(crate) fn apply_remote_update_json(&mut self, source: &str) -> bool {
         if source.len() > identity::MAX_REMOTE_UPDATE_BYTES {
             self.remote_update_status = STATUS_INVALID;
@@ -423,7 +535,10 @@ impl Engine {
             let old = previous
                 .iter()
                 .find(|player| player.stable_id == update.id);
-            let is_new = old.is_none();
+            // A roster presence is not proof that an appearance revision has
+            // been accepted: older clients may join without appearance data.
+            // The cache is the durable appearance-revision boundary.
+            let is_new = !self.remote_identity_cache.contains_key(&update.id);
             let mut player = old.cloned().unwrap_or_else(|| {
                 let appearance = self
                     .remote_identity_cache
@@ -472,7 +587,7 @@ impl Engine {
             );
 
             let incoming_motion_sequence = update.motion_sequence.unwrap_or(message.sequence);
-            if incoming_motion_sequence >= player.motion_sequence {
+            if incoming_motion_sequence > player.motion_sequence {
                 player.position = update.position;
                 player.yaw = update.yaw;
                 player.look_yaw = update.look_yaw.unwrap_or(update.yaw);
@@ -498,7 +613,11 @@ impl Engine {
                     };
                 }
             }
-            self.cache_remote_appearance(update.id.clone(), player.appearance.clone());
+            if update.appearance.is_some()
+                || self.remote_identity_cache.contains_key(&update.id)
+            {
+                self.cache_remote_appearance(update.id.clone(), player.appearance.clone());
+            }
             next_players.push(player);
         }
         self.remote_players = next_players;
@@ -548,15 +667,16 @@ impl Engine {
         self.remote_generation
     }
 
-    fn cache_remote_appearance(&mut self, id: String, appearance: CharacterAppearance) {
-        if !self.remote_identity_cache.contains_key(&id)
-            && self.remote_identity_cache.len() >= MAX_AGENTS
-        {
-            if let Some(oldest) = self.remote_identity_cache.keys().next().cloned() {
+    pub(crate) fn cache_remote_appearance(&mut self, id: String, appearance: CharacterAppearance) {
+        if self.remote_identity_cache.contains_key(&id) {
+            self.remote_identity_cache_order.retain(|cached_id| cached_id != &id);
+        } else if self.remote_identity_cache.len() >= MAX_AGENTS {
+            if let Some(oldest) = self.remote_identity_cache_order.pop_front() {
                 self.remote_identity_cache.remove(&oldest);
             }
         }
-        self.remote_identity_cache.insert(id, appearance);
+        self.remote_identity_cache.insert(id.clone(), appearance);
+        self.remote_identity_cache_order.push_back(id);
     }
 
     pub(crate) fn remote_update_status(&self) -> u8 {

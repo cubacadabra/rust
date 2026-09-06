@@ -189,6 +189,29 @@ pub unsafe extern "C" fn engine_apply_remote_update_buffer(engine: *mut Engine) 
         .unwrap_or(0)
 }
 
+/// Returns a bounded engine-owned byte buffer for one compact remote-motion
+/// batch. The buffer is applied atomically by the matching load function.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_remote_motion_batch_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_remote_motion_batch_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_apply_remote_motion_batch_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.apply_remote_motion_batch_buffer()))
+        .unwrap_or(0)
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create` and
