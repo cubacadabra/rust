@@ -63,9 +63,63 @@ pub(super) fn actor(time: f32) -> RenderEntity {
     result
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum HeroCaptureSet {
+    #[default]
+    Full,
+    Stills,
+    Motion,
+    Review,
+}
+
+impl HeroCaptureSet {
+    pub const fn expected_captures(self) -> usize {
+        match self {
+            Self::Full => 632,
+            Self::Stills => 30,
+            Self::Motion => 602,
+            Self::Review => 8,
+        }
+    }
+
+    fn includes_stills(self) -> bool {
+        matches!(self, Self::Full | Self::Stills | Self::Review)
+    }
+
+    fn includes_motion(self) -> bool {
+        matches!(self, Self::Full | Self::Motion)
+    }
+
+    fn includes_static(self, name: &str) -> bool {
+        match self {
+            Self::Full | Self::Stills => true,
+            Self::Motion => false,
+            Self::Review => matches!(
+                name,
+                "hero-front"
+                    | "hero-three-quarter"
+                    | "hero-side"
+                    | "hero-back"
+                    | "hero-face"
+                    | "hero-wave"
+                    | "hero-wave-silhouette"
+                    | "hero-study-gameplay"
+            ),
+        }
+    }
+}
+
 pub fn capture_phase9_hero(
     output_dir: impl AsRef<Path>,
+    config: CaptureConfig,
+) -> Result<CaptureReport, String> {
+    capture_phase9_hero_with_set(output_dir, config, HeroCaptureSet::Full)
+}
+
+pub fn capture_phase9_hero_with_set(
+    output_dir: impl AsRef<Path>,
     mut config: CaptureConfig,
+    capture_set: HeroCaptureSet,
 ) -> Result<CaptureReport, String> {
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir).map_err(|e| format!("create hero directory: {e}"))?;
@@ -80,132 +134,158 @@ pub fn capture_phase9_hero(
         gpu_timestamps: false,
     };
     let mut captures = Vec::new();
-    for (name, yaw, pitch, distance, time) in [
-        ("hero-front", std::f32::consts::PI, 0.18, 4.8, 2.4),
-        ("hero-three-quarter", 2.70, 0.22, 4.8, 2.4),
-        ("hero-side", std::f32::consts::FRAC_PI_2, 0.12, 4.8, 2.4),
-        ("hero-back", 0.0, 0.16, 4.8, 2.4),
-        ("hero-face", 2.90, 0.06, 2.3, 2.4),
-        ("hero-curious", 2.90, 0.06, 2.3, 1.0),
-        ("hero-wink", 2.90, 0.06, 2.3, 5.9),
-        ("hero-wave", 2.70, 0.22, 4.8, 3.4),
-        ("hero-wave-silhouette", 2.70, 0.22, 4.8, 3.4),
-    ] {
-        let mut frame = config;
-        frame.pose_time = time;
-        captures.push(context.capture(
-            output_dir,
-            frame,
-            Scenario::Hero {
-                name,
-                yaw,
-                pitch,
-                distance,
-                study: Study::Everyday,
-                silhouette: name == "hero-wave-silhouette",
-                motion: false,
-            },
-        )?);
-    }
-    // Comparable views reopen proportion/face review without multiplying
-    // wardrobe IDs or substituting generated illustration for engine evidence.
-    for (study, names) in [
-        (
-            Study::Everyday,
-            [
-                "hero-study-front",
-                "hero-study-side",
-                "hero-study-back",
-                "hero-study-three-quarter",
-                "hero-study-face",
-                "hero-study-silhouette",
-                "hero-study-gameplay",
-            ],
-        ),
-        (
-            Study::LongerLegs,
-            [
-                "longer-front",
-                "longer-side",
-                "longer-back",
-                "longer-three-quarter",
-                "longer-face",
-                "longer-silhouette",
-                "longer-gameplay",
-            ],
-        ),
-        (
-            Study::SoftShoulders,
-            [
-                "soft-front",
-                "soft-side",
-                "soft-back",
-                "soft-three-quarter",
-                "soft-face",
-                "soft-silhouette",
-                "soft-gameplay",
-            ],
-        ),
-    ] {
-        for (index, (yaw, pitch, distance)) in [
-            (std::f32::consts::PI, 0.18, 4.8),
-            (std::f32::consts::FRAC_PI_2, 0.12, 4.8),
-            (0.0, 0.16, 4.8),
-            (2.70, 0.22, 4.8),
-            (2.90, 0.06, 2.3),
-            (2.70, 0.22, 4.8),
-            (0.0, 0.22, 9.0),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let mut settings = config;
-            settings.pose_time = 2.4;
+    if capture_set.includes_stills() {
+        for (name, yaw, pitch, distance, time) in [
+            ("hero-front", std::f32::consts::PI, 0.18, 4.8, 2.4),
+            ("hero-three-quarter", 2.70, 0.22, 4.8, 2.4),
+            ("hero-side", std::f32::consts::FRAC_PI_2, 0.12, 4.8, 2.4),
+            ("hero-back", 0.0, 0.16, 4.8, 2.4),
+            ("hero-face", 2.90, 0.06, 2.3, 2.4),
+            ("hero-curious", 2.90, 0.06, 2.3, 1.0),
+            ("hero-wink", 2.90, 0.06, 2.3, 5.9),
+            ("hero-wave", 2.70, 0.22, 4.8, 3.4),
+            ("hero-wave-silhouette", 2.70, 0.22, 4.8, 3.4),
+        ] {
+            if !capture_set.includes_static(name) {
+                continue;
+            }
+            let mut frame = config;
+            frame.pose_time = time;
             captures.push(context.capture(
                 output_dir,
-                settings,
+                frame,
                 Scenario::Hero {
-                    name: names[index],
+                    name,
                     yaw,
                     pitch,
                     distance,
-                    study,
-                    silhouette: index == 5,
+                    study: Study::Everyday,
+                    silhouette: name == "hero-wave-silhouette",
                     motion: false,
                 },
             )?);
         }
     }
-    for motion in [false, true] {
-        for frame in 0..=300 {
-            let mut settings = config;
-            settings.pose_time = frame as f32 / 30.0;
-            let mut capture = context.capture(
-                output_dir,
-                settings,
-                Scenario::Hero {
-                    name: "hero-motion",
-                    yaw: if motion {
-                        std::f32::consts::FRAC_PI_2
-                    } else {
-                        2.70
+    if capture_set.includes_stills() {
+        // Comparable views reopen proportion/face review without multiplying
+        // wardrobe IDs or substituting generated illustration for engine evidence.
+        for (study, names) in [
+            (
+                Study::Everyday,
+                [
+                    "hero-study-front",
+                    "hero-study-side",
+                    "hero-study-back",
+                    "hero-study-three-quarter",
+                    "hero-study-face",
+                    "hero-study-silhouette",
+                    "hero-study-gameplay",
+                ],
+            ),
+            (
+                Study::LongerLegs,
+                [
+                    "longer-front",
+                    "longer-side",
+                    "longer-back",
+                    "longer-three-quarter",
+                    "longer-face",
+                    "longer-silhouette",
+                    "longer-gameplay",
+                ],
+            ),
+            (
+                Study::SoftShoulders,
+                [
+                    "soft-front",
+                    "soft-side",
+                    "soft-back",
+                    "soft-three-quarter",
+                    "soft-face",
+                    "soft-silhouette",
+                    "soft-gameplay",
+                ],
+            ),
+        ] {
+            for (index, (yaw, pitch, distance)) in [
+                (std::f32::consts::PI, 0.18, 4.8),
+                (std::f32::consts::FRAC_PI_2, 0.12, 4.8),
+                (0.0, 0.16, 4.8),
+                (2.70, 0.22, 4.8),
+                (2.90, 0.06, 2.3),
+                (2.70, 0.22, 4.8),
+                (0.0, 0.22, 9.0),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if !capture_set.includes_static(names[index]) {
+                    continue;
+                }
+                let mut settings = config;
+                settings.pose_time = 2.4;
+                captures.push(context.capture(
+                    output_dir,
+                    settings,
+                    Scenario::Hero {
+                        name: names[index],
+                        yaw,
+                        pitch,
+                        distance,
+                        study,
+                        silhouette: index == 5,
+                        motion: false,
                     },
-                    pitch: 0.22,
-                    distance: if motion { 7.2 } else { 4.8 },
-                    study: Study::Everyday,
-                    silhouette: false,
-                    motion,
-                },
-            )?;
-            let name = format!("{}-{frame:04}", if motion { "gait" } else { "hero" });
-            let image = format!("{name}.png");
-            fs::rename(output_dir.join(&capture.image), output_dir.join(&image))
-                .map_err(|e| format!("save hero frame: {e}"))?;
-            capture.name = name;
-            capture.image = image;
-            captures.push(capture);
+                )?);
+            }
         }
     }
+    if capture_set.includes_motion() {
+        for motion in [false, true] {
+            for frame in 0..=300 {
+                let mut settings = config;
+                settings.pose_time = frame as f32 / 30.0;
+                let mut capture = context.capture(
+                    output_dir,
+                    settings,
+                    Scenario::Hero {
+                        name: "hero-motion",
+                        yaw: if motion {
+                            std::f32::consts::FRAC_PI_2
+                        } else {
+                            2.70
+                        },
+                        pitch: 0.22,
+                        distance: if motion { 7.2 } else { 4.8 },
+                        study: Study::Everyday,
+                        silhouette: false,
+                        motion,
+                    },
+                )?;
+                let name = format!("{}-{frame:04}", if motion { "gait" } else { "hero" });
+                let image = format!("{name}.png");
+                fs::rename(output_dir.join(&capture.image), output_dir.join(&image))
+                    .map_err(|e| format!("save hero frame: {e}"))?;
+                capture.name = name;
+                capture.image = image;
+                captures.push(capture);
+            }
+        }
+    }
+    let capture_note = match capture_set {
+        HeroCaptureSet::Full => {
+            "30 static views plus two 301-frame timelines (greeting and side-on gait) at 30 fps; presentation evaluates at 60 Hz."
+        }
+        HeroCaptureSet::Stills => {
+            "Phase 9 stills capture set: 30 static/review views; animation timelines omitted."
+        }
+        HeroCaptureSet::Motion => {
+            "Phase 9 motion capture set: two 301-frame timelines; static/review views omitted."
+        }
+        HeroCaptureSet::Review => {
+            "Phase 9 review capture set: 8 Everyday-person static views; animation timelines and alternate studies omitted."
+        }
+    };
     let report = CaptureReport {
         format_version: FORMAT_VERSION,
         fixture: "person-direction-studies-v2".to_owned(),
@@ -215,7 +295,7 @@ pub fn capture_phase9_hero(
         engine_capacity_characters: 18,
         render_only_stress_characters: 50,
         notes: vec![
-            "30 static views plus two 301-frame timelines (greeting and side-on gait) at 30 fps; presentation evaluates at 60 Hz.",
+            capture_note,
             "0–1.6s notice; 1.6–3s turn and smile; 3s wave; 4–5.5s grin; 5.5–6.1s wink; settle through 10s.",
             "Studio palette and camera are review-only; geometry, materials, face controls, animation and soft-shadow mesh also run in gameplay.",
             "All views are engine renders. Everyday is the working default, not an approved final design. LongerLegs and SoftShoulders are capture-only comparisons.",
@@ -232,6 +312,21 @@ pub fn capture_phase9_hero(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hero_capture_sets_have_stable_counts_without_gpu_setup() {
+        assert_eq!(HeroCaptureSet::Full.expected_captures(), 632);
+        assert_eq!(HeroCaptureSet::Stills.expected_captures(), 30);
+        assert_eq!(HeroCaptureSet::Motion.expected_captures(), 602);
+        assert_eq!(HeroCaptureSet::Review.expected_captures(), 8);
+        assert!(HeroCaptureSet::default().includes_stills());
+        assert!(HeroCaptureSet::default().includes_motion());
+        assert!(!HeroCaptureSet::Review.includes_motion());
+        assert!(HeroCaptureSet::Review.includes_static("hero-wave"));
+        assert!(!HeroCaptureSet::Review.includes_static("hero-curious"));
+        assert!(HeroCaptureSet::Stills.includes_static("soft-gameplay"));
+    }
+
     #[test]
     fn hero_uses_the_common_animator_and_settles_after_the_greeting() {
         assert!(actor(3.1).secondary.spark_life > 0.0);

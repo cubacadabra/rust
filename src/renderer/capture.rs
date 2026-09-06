@@ -33,7 +33,7 @@ mod motion;
 pub use motion::capture_phase4_motion;
 #[path = "capture_hero.rs"]
 mod hero;
-pub use hero::capture_phase9_hero;
+pub use hero::{HeroCaptureSet, capture_phase9_hero, capture_phase9_hero_with_set};
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum CaptureAvatar {

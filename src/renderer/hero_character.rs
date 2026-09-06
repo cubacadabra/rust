@@ -71,10 +71,10 @@ pub(super) fn fit_pose(
             RightFoot,
         ),
     ] {
-        let (shoulder, drop) = if study == Study::SoftShoulders {
-            (0.51, 0.27)
-        } else {
-            (0.49, 0.32)
+        let (shoulder, drop) = match study {
+            Study::Everyday => (0.49, 0.28),
+            Study::LongerLegs => (0.49, 0.32),
+            Study::SoftShoulders => (0.51, 0.27),
         };
         place(arm, Vec3::new(side * shoulder, drop, 0.0));
         place(elbow, Vec3::new(0.0, ELBOW, 0.0));

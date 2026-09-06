@@ -1,8 +1,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 use cubacadabra_engine::dev_showcase::{
     capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3, capture_phase4_motion, capture_phase5_outfits,
-    capture_phase6_report, capture_phase8_rollout, capture_phase9_hero, CaptureAvatar, CaptureConfig, CapturePalette,
-    CaptureQuality,
+    capture_phase6_report, capture_phase8_rollout, capture_phase9_hero_with_set, CaptureAvatar,
+    CaptureConfig, CapturePalette, CaptureQuality, HeroCaptureSet,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::env;
@@ -17,6 +17,7 @@ fn main() {
     let mut config = CaptureConfig::default();
     let mut output = None;
     let mut phase = 0_u8;
+    let mut capture_set = HeroCaptureSet::Full;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -37,6 +38,15 @@ fn main() {
                     "full" => CaptureQuality::Full,
                     "half" => CaptureQuality::Half,
                     value => usage(&format!("unknown quality {value:?}")),
+                };
+            }
+            "--capture-set" => {
+                capture_set = match next_value(&mut arguments, "--capture-set").as_str() {
+                    "full" => HeroCaptureSet::Full,
+                    "stills" => HeroCaptureSet::Stills,
+                    "motion" => HeroCaptureSet::Motion,
+                    "review" => HeroCaptureSet::Review,
+                    value => usage(&format!("unknown capture set {value:?}")),
                 };
             }
             "--palette" => {
@@ -61,6 +71,9 @@ fn main() {
     }
 
     let output = output.unwrap_or_else(|| PathBuf::from(format!("target/character-review/phase{phase}")));
+    if phase != 9 && capture_set != HeroCaptureSet::Full {
+        usage("--capture-set is only supported for Phase 9");
+    }
     if phase == 3 {
         match capture_phase3(&output) {
             Ok(report) => println!(
@@ -81,7 +94,7 @@ fn main() {
         let result = if phase == 4 {
             capture_phase4_motion(&output, config)
         } else if phase == 9 {
-            capture_phase9_hero(&output, config)
+            capture_phase9_hero_with_set(&output, config, capture_set)
         } else {
             capture_phase5_outfits(&output, config)
         };
@@ -195,7 +208,8 @@ fn usage(error: &str) -> ! {
     eprintln!(
         "usage: magic_characters_capture [--phase 0|2|3|4|5|6|8|9] [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
-         [--quality full|half] [--palette current|high-contrast] \
+         [--quality full|half] [--capture-set full|stills|motion|review] \
+         [--palette current|high-contrast] \
          [--avatar legacy|rounded|shape-proof|magic]"
     );
     std::process::exit(if error.is_empty() { 0 } else { 2 });
