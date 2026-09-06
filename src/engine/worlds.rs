@@ -295,7 +295,10 @@ impl Engine {
                 }
             })
             .collect::<Vec<_>>();
-        let Some(start_world) = world_indices.get(package.start_world.as_str()).copied() else {
+        let Some(start_world_id) = package.initial_world_id() else {
+            return false;
+        };
+        let Some(start_world) = world_indices.get(start_world_id).copied() else {
             return false;
         };
 

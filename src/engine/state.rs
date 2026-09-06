@@ -874,8 +874,22 @@ impl Engine {
         let source = String::from_utf8_lossy(&self.script_buffer).into_owned();
         match GameScript::load(&source, std::rc::Rc::clone(&self.ui)) {
             Ok(script) => {
+                let direct_world_id = (script.lobby_enabled_override() == Some(false))
+                    .then(|| {
+                        self.package.as_ref().and_then(|package| {
+                            package
+                                .direct_world_id()
+                                .map(str::to_owned)
+                        })
+                    })
+                    .flatten();
                 self.script = Some(script);
                 self.script_error_buffer.clear();
+                if let Some(world_id) = direct_world_id {
+                    if let Some(index) = self.world_ids.iter().position(|id| id == &world_id) {
+                        self.start_world(index);
+                    }
+                }
                 true
             }
             Err(error) => {

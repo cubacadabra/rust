@@ -90,6 +90,10 @@ builds use `mlua` with vendored Luau; the `wasm32-unknown-unknown` build uses
 the pure-Rust `luaur-rt` Luau runtime so the browser can run the same lifecycle
 callbacks without a separate JavaScript scripting implementation. Both hosts
 expose the same sandboxed `lobby`, `session`, and lifecycle API.
+Packages keep lobby routing enabled by default. Set `"lobby": false` in the
+manifest, or call `api.lobby:set_enabled(false)` from `on_start`, to enter the
+configured experience world directly. Direct worlds use the normal per-world
+instance allocator and capacity rules.
 
 ## Source layout
 

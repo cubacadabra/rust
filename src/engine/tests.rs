@@ -806,6 +806,45 @@ fn world_transitions_update_ui_visibility_context() {
 }
 
 #[test]
+fn disabled_lobby_starts_directly_in_the_shared_world() {
+    let manifest = r#"{
+        "lobby": false,
+        "startWorld": "lobby",
+        "launch": {"destinationWorld":"real-game"},
+        "worlds":{"real-game":{"world":{"spawn":[0,0,8]}}}
+    }"#;
+    let mut engine = Engine::new();
+    engine.package_buffer = manifest.as_bytes().to_vec();
+
+    assert!(engine.load_package_buffer());
+    assert_eq!(engine.world_ids[engine.active_world()], "real-game");
+    assert_eq!(engine.player.position, [0.0, 0.0, 8.0]);
+}
+
+#[test]
+fn luau_can_switch_a_lobby_package_to_direct_startup() {
+    let manifest = r#"{
+        "startWorld": "lobby",
+        "launch": {"destinationWorld":"real-game"},
+        "worlds":{"real-game":{"world":{"spawn":[0,0,8]}}}
+    }"#;
+    let script = r#"
+        local game = {}
+        function game.on_start(api)
+            api.lobby:set_enabled(false)
+        end
+        return game
+    "#;
+    let mut engine = Engine::new();
+    engine.package_buffer = manifest.as_bytes().to_vec();
+    assert!(engine.load_package_buffer());
+    engine.script_buffer = script.as_bytes().to_vec();
+
+    assert!(engine.load_script_buffer());
+    assert_eq!(engine.world_ids[engine.active_world()], "real-game");
+}
+
+#[test]
 fn portals_enter_and_exit_the_immersive_settings_world() {
     let manifest = r#"{
         "startWorld":"lobby",

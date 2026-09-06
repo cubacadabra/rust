@@ -12,6 +12,7 @@ use mlua as lua;
 #[derive(Default, Debug)]
 pub(crate) struct ScriptState {
     pub(crate) lobby_status: String,
+    pub(crate) lobby_enabled: Option<bool>,
     pub(crate) session_name: Option<String>,
     pub(crate) last_error: Option<String>,
 }
@@ -104,6 +105,10 @@ impl GameScript {
         Rc::clone(&self.state)
     }
 
+    pub(crate) fn lobby_enabled_override(&self) -> Option<bool> {
+        self.state.borrow().lobby_enabled
+    }
+
     #[allow(dead_code)]
     pub(crate) fn launch(&self, pad_id: &str, player_ids: &[u32]) -> Result<(), String> {
         let Some(on_launch) = &self.on_launch else {
@@ -136,6 +141,14 @@ fn create_api(
 
     let lobby = create_table(lua)?;
     let lobby_state = Rc::clone(&state);
+    let lobby_enabled_state = Rc::clone(&state);
+    lobby.set(
+        "set_enabled",
+        lua.create_function(move |_, (_lobby, enabled): (lua::Table, bool)| {
+            lobby_enabled_state.borrow_mut().lobby_enabled = Some(enabled);
+            Ok(())
+        })?,
+    )?;
     lobby.set(
         "set_status",
         lua.create_function(move |_, (_lobby, status): (lua::Table, String)| {
@@ -306,6 +319,21 @@ mod tests {
 
         assert_eq!(script.state().borrow().lobby_status, "ready");
         script.tick(1.0 / 60.0).expect("tick should run");
+    }
+
+    #[test]
+    fn luau_can_disable_the_lobby() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    api.lobby:set_enabled(false)
+                end
+                return game
+            "#,
+        );
+
+        assert_eq!(script.lobby_enabled_override(), Some(false));
     }
 
     #[test]

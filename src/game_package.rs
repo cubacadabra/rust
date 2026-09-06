@@ -6,6 +6,10 @@ fn default_start_world() -> String {
     "lobby".to_owned()
 }
 
+fn default_lobby_enabled() -> bool {
+    true
+}
+
 fn default_ground_size() -> f32 {
     120.0
 }
@@ -39,6 +43,10 @@ fn default_scale() -> f32 {
 pub(crate) struct GamePackageDefinition {
     #[serde(default = "default_start_world")]
     pub(crate) start_world: String,
+    /// Lobbies remain the default for existing packages. A package can opt
+    /// into direct experience routing with `"lobby": false`.
+    #[serde(default = "default_lobby_enabled")]
+    pub(crate) lobby: bool,
     #[serde(default)]
     pub(crate) launch: LaunchRouteDefinition,
     #[serde(default)]
@@ -113,6 +121,21 @@ impl GamePackageDefinition {
                     .map(|(id, world)| (id.clone(), world.clone())),
             )
             .collect()
+    }
+
+    pub(crate) fn initial_world_id(&self) -> Option<&str> {
+        if self.lobby || self.start_world != "lobby" {
+            return Some(self.start_world.as_str());
+        }
+        self.direct_world_id()
+    }
+
+    pub(crate) fn direct_world_id(&self) -> Option<&str> {
+        if self.start_world != "lobby" {
+            Some(self.start_world.as_str())
+        } else {
+            self.launch.destination_world.as_deref()
+        }
     }
 }
 
@@ -508,5 +531,21 @@ mod tests {
         )
         .expect("legacy avatar should parse");
         assert!(package.avatars.player.unwrap().character.is_none());
+    }
+
+    #[test]
+    fn disabled_lobby_starts_in_the_launch_destination() {
+        let package = GamePackageDefinition::parse(
+            r#"{
+                "lobby": false,
+                "startWorld": "lobby",
+                "launch": {"destinationWorld": "arena"},
+                "worlds": {"arena": {}}
+            }"#,
+        )
+        .expect("package should parse");
+
+        assert_eq!(package.initial_world_id(), Some("arena"));
+        assert_eq!(package.world_entries().len(), 2);
     }
 }
