@@ -54,6 +54,33 @@ struct LicenseFile {
     license: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StyleExamplesFile {
+    schema_version: u16,
+    language: String,
+    examples: Vec<StyleExampleFile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StyleExampleFile {
+    id: String,
+    kind: String,
+    dimensions: [f32; 3],
+    radius: f32,
+    materials: Vec<String>,
+    anchors: Vec<String>,
+    lod: LodFile,
+    provenance: ProvenanceFile,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ProvenanceFile {
+    source: String,
+    license: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogValidationReport {
     pub schema_version: u16,
@@ -61,6 +88,12 @@ pub struct CatalogValidationReport {
     pub material_count: usize,
     pub texture_bytes: u64,
     pub license_count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StyleExamplesValidationReport {
+    pub schema_version: u16,
+    pub example_count: usize,
 }
 
 pub(crate) fn validate_catalog(source: &str) -> Result<CatalogValidationReport, String> {
@@ -151,11 +184,52 @@ pub(crate) fn validate_catalog(source: &str) -> Result<CatalogValidationReport, 
     })
 }
 
+/// Validate the small official non-character transfer examples. These remain
+/// metadata/recipe fixtures rather than a second world asset importer.
+pub(crate) fn validate_style_examples(
+    source: &str,
+) -> Result<StyleExamplesValidationReport, String> {
+    let file: StyleExamplesFile = serde_json::from_str(source)
+        .map_err(|error| format!("style examples JSON is invalid: {error}"))?;
+    if file.schema_version != 1 || file.language != "soft-cubism.v1" {
+        return Err("unsupported style examples schema or language".to_owned());
+    }
+    if file.examples.len() != 3 {
+        return Err("style examples must contain tree, prop and accessory".to_owned());
+    }
+    for example in &file.examples {
+        if !example.id.starts_with("cuba:")
+            || example.kind.is_empty()
+            || example.materials.is_empty()
+            || example.anchors.is_empty()
+            || example.provenance.source.is_empty()
+            || example.provenance.license.is_empty()
+            || !example
+                .dimensions
+                .iter()
+                .all(|value| value.is_finite() && *value > 0.0)
+            || !example.radius.is_finite()
+            || example.radius < 0.0
+            || example.radius > example.dimensions.iter().copied().fold(f32::INFINITY, f32::min) * 0.5
+            || example.lod.near < example.lod.mid
+            || example.lod.mid < example.lod.far
+            || example.lod.far == 0
+        {
+            return Err(format!("invalid style example {:?}", example.id));
+        }
+    }
+    Ok(StyleExamplesValidationReport {
+        schema_version: file.schema_version,
+        example_count: file.examples.len(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const FIXTURE: &str = include_str!("../../assets/characters/catalog.json");
+    const STYLE_FIXTURE: &str = include_str!("../../assets/characters/soft_cubism_examples.json");
 
     #[test]
     fn bundled_phase5_catalog_is_complete_and_bounded() {
@@ -170,5 +244,12 @@ mod tests {
     fn catalog_rejects_unknown_body_fit() {
         let source = FIXTURE.replace("cuba:cat.v1", "cuba:person.v1");
         assert!(validate_catalog(&source).is_err());
+    }
+
+    #[test]
+    fn bundled_style_examples_are_complete_and_bounded() {
+        let report = validate_style_examples(STYLE_FIXTURE).expect("bundled style examples");
+        assert_eq!(report.schema_version, 1);
+        assert_eq!(report.example_count, 3);
     }
 }

@@ -12,10 +12,11 @@ pub mod dev_showcase {
     use std::path::Path;
 
     pub use crate::character::catalog::CatalogValidationReport;
+    pub use crate::character::catalog::StyleExamplesValidationReport;
     pub use crate::renderer::capture::{
         CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, CaptureReport,
-        capture_phase0_baseline, capture_phase2_shape_proof, capture_phase5_outfits,
-        capture_phase6_report,
+        Phase8RolloutReport, capture_phase0_baseline, capture_phase2_shape_proof,
+        capture_phase5_outfits, capture_phase6_report, capture_phase8_rollout,
     };
     pub use crate::renderer::validation::capture_phase3;
 
@@ -25,6 +26,14 @@ pub mod dev_showcase {
         let source = std::fs::read_to_string(path.as_ref())
             .map_err(|error| format!("read {}: {error}", path.as_ref().display()))?;
         crate::character::catalog::validate_catalog(&source)
+    }
+
+    pub fn validate_style_examples(
+        path: impl AsRef<Path>,
+    ) -> Result<StyleExamplesValidationReport, String> {
+        let source = std::fs::read_to_string(path.as_ref())
+            .map_err(|error| format!("read {}: {error}", path.as_ref().display()))?;
+        crate::character::catalog::validate_style_examples(&source)
     }
 }
 mod scripting;

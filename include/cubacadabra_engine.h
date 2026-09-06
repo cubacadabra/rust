@@ -17,6 +17,8 @@ typedef struct CubacadabraRenderer CubacadabraRenderer;
 #define CUBACADABRA_IDENTITY_STALE 2
 #define CUBACADABRA_IDENTITY_FALLBACK 3
 #define CUBACADABRA_IDENTITY_DUPLICATE 4
+#define CUBACADABRA_RENDER_APPEARANCE_LEGACY 0
+#define CUBACADABRA_RENDER_APPEARANCE_MAGIC 1
 
 CubacadabraEngine *engine_create(void);
 void engine_set_input(
@@ -231,6 +233,13 @@ void engine_destroy(CubacadabraEngine *engine);
 
 CubacadabraRenderer *engine_renderer_create(void *native_surface, float width, float height);
 void engine_renderer_resize(CubacadabraRenderer *renderer, float width, float height);
+/* Selects the reversible character visual rollout mode. Returns 1 for
+ * legacy (0) or magic (1), and 0 for an invalid mode or null renderer. */
+uint8_t engine_renderer_set_appearance_mode(
+    CubacadabraRenderer *renderer,
+    uint8_t mode
+);
+uint8_t engine_renderer_appearance_mode(const CubacadabraRenderer *renderer);
 void engine_renderer_sync(CubacadabraRenderer *renderer, const CubacadabraEngine *engine);
 void engine_renderer_draw(CubacadabraRenderer *renderer);
 void engine_renderer_destroy(CubacadabraRenderer *renderer);

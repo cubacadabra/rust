@@ -1,7 +1,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 use cubacadabra_engine::dev_showcase::{
     capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3, capture_phase5_outfits,
-    capture_phase6_report, CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality,
+    capture_phase6_report, capture_phase8_rollout, CaptureAvatar, CaptureConfig, CapturePalette,
+    CaptureQuality,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::env;
@@ -50,6 +51,7 @@ fn main() {
                     "legacy" => CaptureAvatar::Legacy,
                     "rounded" => CaptureAvatar::Rounded,
                     "shape-proof" => CaptureAvatar::ShapeProof,
+                    "magic" => CaptureAvatar::Magic,
                     value => usage(&format!("unknown avatar path {value:?}")),
                 };
             }
@@ -65,6 +67,8 @@ fn main() {
             "docs/baselines/magic-characters/phase5".to_owned()
         } else if phase == 6 {
             "docs/baselines/magic-characters/phase6".to_owned()
+        } else if phase == 8 {
+            "docs/baselines/magic-characters/phase8".to_owned()
         } else {
             format!("docs/baselines/magic-characters/phase{phase}")
         })
@@ -116,8 +120,23 @@ fn main() {
         }
         return;
     }
+    if phase == 8 {
+        match capture_phase8_rollout(&output, config) {
+            Ok(report) => println!(
+                "wrote Phase 8 legacy/magic rollout captures ({} + {}) to {}",
+                report.legacy_capture.captures.len(),
+                report.magic_capture.captures.len(),
+                output.display()
+            ),
+            Err(error) => {
+                eprintln!("Phase 8: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     if phase != 0 && phase != 2 {
-        usage("supported phases are 0, 2, 3, 5 and 6");
+        usage("supported phases are 0, 2, 3, 5, 6 and 8");
     }
     let result = if phase == 2 {
         capture_phase2_shape_proof(&output, config)
@@ -179,10 +198,10 @@ fn usage(error: &str) -> ! {
         eprintln!("error: {error}");
     }
     eprintln!(
-        "usage: magic_characters_capture [--phase 0|2|3|5|6] [--output DIR] [--seed N] [--pose-time SECONDS] \
+        "usage: magic_characters_capture [--phase 0|2|3|5|6|8] [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
          [--quality full|half] [--palette current|high-contrast] \
-         [--avatar legacy|rounded|shape-proof]"
+         [--avatar legacy|rounded|shape-proof|magic]"
     );
     std::process::exit(if error.is_empty() { 0 } else { 2 });
 }

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "language": "soft-cubism.v1",
+  "examples": [
+    {
+      "id": "cuba:squircle-tree.v1",
+      "kind": "tree",
+      "dimensions": [2.8, 5.4, 2.8],
+      "radius": 0.42,
+      "materials": ["toy-bark", "soft-foliage"],
+      "anchors": ["trunk", "canopy", "ground-contact"],
+      "lod": {"near": 1800, "mid": 720, "far": 180},
+      "provenance": {
+        "source": "procedural recipe / official starter world",
+        "license": "Cubacadabra official"
+      }
+    },
+    {
+      "id": "cuba:rounded-cart-panel.v1",
+      "kind": "prop",
+      "dimensions": [2.4, 1.1, 0.18],
+      "radius": 0.09,
+      "materials": ["painted-toy", "soft-metal", "rubber"],
+      "anchors": ["panel-center", "wheel-left", "wheel-right"],
+      "lod": {"near": 900, "mid": 360, "far": 96},
+      "provenance": {
+        "source": "procedural recipe / official starter world",
+        "license": "Cubacadabra official"
+      }
+    },
+    {
+      "id": "cuba:star-badge.v1",
+      "kind": "accessory",
+      "dimensions": [0.42, 0.42, 0.08],
+      "radius": 0.04,
+      "materials": ["painted-toy", "emission"],
+      "anchors": ["chest", "hat", "prop-surface"],
+      "lod": {"near": 420, "mid": 160, "far": 32},
+      "provenance": {
+        "source": "procedural recipe / official starter world",
+        "license": "Cubacadabra official"
+      }
+    }
+  ]
+}

@@ -504,6 +504,39 @@ pub unsafe extern "C" fn engine_renderer_resize(renderer: *mut Renderer, width: 
     }
 }
 
+/// Selects the reversible character renderer rollout mode. `0` is the
+/// legacy hard-cuboid renderer and `1` is the magic instanced renderer. An
+/// invalid value leaves the current mode unchanged and returns zero.
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
+/// `renderer` must be null or a live pointer returned by
+/// `engine_renderer_create`.
+pub unsafe extern "C" fn engine_renderer_set_appearance_mode(
+    renderer: *mut Renderer,
+    mode: u8,
+) -> u8 {
+    let Some(mode) = super::renderer::CharacterRenderMode::from_u8(mode) else {
+        return 0;
+    };
+    let Some(renderer) = (unsafe { renderer.as_mut() }) else {
+        return 0;
+    };
+    renderer.set_character_render_mode(mode);
+    1
+}
+
+#[unsafe(no_mangle)]
+#[cfg(not(target_arch = "wasm32"))]
+/// # Safety
+/// `renderer` must be null or a live pointer returned by
+/// `engine_renderer_create`.
+pub unsafe extern "C" fn engine_renderer_appearance_mode(renderer: *const Renderer) -> u8 {
+    unsafe { renderer.as_ref() }
+        .map(|renderer| renderer.character_render_mode().as_u8())
+        .unwrap_or(super::renderer::CharacterRenderMode::Magic.as_u8())
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 /// # Safety

@@ -42,3 +42,20 @@ The validator enforces the six outfit IDs, declared body fits, non-empty
 coverage/material/LOD metadata, provenance records, and the 8 MiB compressed
 character payload ceiling. An unsupported body/outfit request falls back to
 the bundled everyday hoodie atomically; it never partially equips a recipe.
+
+## Phase 8 official transfer examples
+
+[`soft_cubism_examples.json`](soft_cubism_examples.json) is the compact
+non-character reference set: a squircle-foliage tree, a rounded toy-cart panel,
+and a star badge that can attach to a character or prop. It uses the same
+`soft-cubism.v1` language, explicit bounds/radii, LODs, anchors, materials, and
+source/license provenance. Validate it with:
+
+```sh
+cargo run --features dev-showcase --bin validate_character_assets -- \
+  --style-examples assets/characters/soft_cubism_examples.json
+```
+
+The validator command accepts the examples path with its normal positional
+path argument as well; the explicit library helper is
+`dev_showcase::validate_style_examples` for host/tool integration.

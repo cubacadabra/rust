@@ -49,6 +49,34 @@ pub(super) struct RenderEntity {
     pub(super) support: crate::types::CharacterSupport,
 }
 
+/// Visual rollout switch for the character renderer. This is deliberately a
+/// renderer concern: it never changes simulation, collision, appearance
+/// identity, or the public snapshot ABI.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum CharacterRenderMode {
+    /// The compatibility renderer: hard cuboids and legacy colors.
+    Legacy = 0,
+    /// The production rigid-piece renderer: rounded meshes, outfits and
+    /// character-only material/effect passes.
+    #[default]
+    Magic = 1,
+}
+
+impl CharacterRenderMode {
+    pub(crate) const fn as_u8(self) -> u8 {
+        self as u8
+    }
+
+    pub(crate) const fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Legacy),
+            1 => Some(Self::Magic),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct AvatarStyle {
     pub(super) skin: [f32; 4],
@@ -219,6 +247,7 @@ pub struct Renderer {
     pub(super) width: f32,
     pub(super) height: f32,
     pub(super) scene: Scene,
+    pub(super) character_render_mode: CharacterRenderMode,
     pub(super) package_generation: u32,
     pub(super) active_world: usize,
     pub(super) worlds: Vec<RenderWorld>,
@@ -258,4 +287,19 @@ fn default_npc_styles() -> Vec<AvatarStyle> {
         face: crate::character::FacePreset::Happy,
     })
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CharacterRenderMode;
+
+    #[test]
+    fn appearance_mode_boundary_is_small_and_reversible() {
+        assert_eq!(CharacterRenderMode::default(), CharacterRenderMode::Magic);
+        assert_eq!(CharacterRenderMode::Legacy.as_u8(), 0);
+        assert_eq!(CharacterRenderMode::Magic.as_u8(), 1);
+        assert_eq!(CharacterRenderMode::from_u8(0), Some(CharacterRenderMode::Legacy));
+        assert_eq!(CharacterRenderMode::from_u8(1), Some(CharacterRenderMode::Magic));
+        assert_eq!(CharacterRenderMode::from_u8(2), None);
+    }
 }

@@ -6,6 +6,7 @@ use super::{
     Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline, add_cylinder, add_launch_pad,
     add_pixel_text, add_spawn_pad, faded,
 };
+use super::CharacterRenderMode;
 
 impl Renderer {
     pub fn draw(&mut self) {
@@ -50,7 +51,11 @@ impl Renderer {
         };
         let dynamic_vertices = self.build_dynamic_vertices();
         let viewport_aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
-        let shadow_vertices = self.build_support_shadows(view, viewport_aspect);
+        let shadow_vertices = if self.character_render_mode == CharacterRenderMode::Magic {
+            self.build_support_shadows(view, viewport_aspect)
+        } else {
+            Vec::new()
+        };
         self.opaque_vertices.clear();
         self.translucent_vertices.clear();
         self.translucent_vertices
@@ -64,6 +69,7 @@ impl Renderer {
         let dynamic_count = self.opaque_vertices.len()
             + shadow_vertices.len()
             + self.translucent_vertices.len();
+        let magic_mode = self.character_render_mode == CharacterRenderMode::Magic;
         self.characters.begin();
         let character_ink = self.scene.world.palette.ink;
         let reduced_effects = self.scene.reduced_effects;
@@ -93,40 +99,42 @@ impl Renderer {
                 reduced_effects,
             );
         };
-        // Local player first gives deterministic priority if a development
-        // caller supplies more than the bounded render-only crowd capacity.
-        if self.scene.camera[2] > 0.75 {
-            add_character(
-                &mut self.characters,
-                self.scene.player,
-                self.scene.player_style,
-                0,
-                reduced_effects,
-            );
-        }
-        for (index, player) in self.scene.remote_players.iter().enumerate() {
-            add_character(
-                &mut self.characters,
-                *player,
-                self.scene.player_style,
-                index + 1,
-                reduced_effects,
-            );
-        }
-        for (index, agent) in self.scene.agents.iter().enumerate() {
-            let style = self
-                .scene
-                .npc_styles
-                .get(index % self.scene.npc_styles.len().max(1))
-                .copied()
-                .unwrap_or(self.scene.player_style);
-            add_character(
-                &mut self.characters,
-                *agent,
-                style,
-                self.scene.remote_players.len() + index + 1,
-                reduced_effects,
-            );
+        if magic_mode {
+            // Local player first gives deterministic priority if a development
+            // caller supplies more than the bounded render-only crowd capacity.
+            if self.scene.camera[2] > 0.75 {
+                add_character(
+                    &mut self.characters,
+                    self.scene.player,
+                    self.scene.player_style,
+                    0,
+                    reduced_effects,
+                );
+            }
+            for (index, player) in self.scene.remote_players.iter().enumerate() {
+                add_character(
+                    &mut self.characters,
+                    *player,
+                    self.scene.player_style,
+                    index + 1,
+                    reduced_effects,
+                );
+            }
+            for (index, agent) in self.scene.agents.iter().enumerate() {
+                let style = self
+                    .scene
+                    .npc_styles
+                    .get(index % self.scene.npc_styles.len().max(1))
+                    .copied()
+                    .unwrap_or(self.scene.player_style);
+                add_character(
+                    &mut self.characters,
+                    *agent,
+                    style,
+                    self.scene.remote_players.len() + index + 1,
+                    reduced_effects,
+                );
+            }
         }
         self.characters.upload(&self.queue);
         let ui_vertices = super::ui::build_ui_vertices(&self.ui_frame);
@@ -229,9 +237,11 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(start..end));
                 pass.draw(0..shadow_vertices.len() as u32, 0..1);
             }
-            self.characters.draw(&mut pass, CharacterPass::Opaque);
-            self.characters.draw(&mut pass, CharacterPass::Face);
-            self.characters.draw(&mut pass, CharacterPass::Effect);
+            if magic_mode {
+                self.characters.draw(&mut pass, CharacterPass::Opaque);
+                self.characters.draw(&mut pass, CharacterPass::Face);
+                self.characters.draw(&mut pass, CharacterPass::Effect);
+            }
             if !self.translucent_vertices.is_empty() {
                 pass.set_pipeline(&self.translucent_pipeline);
                 let start = (size_of_val(self.opaque_vertices.as_slice())
@@ -407,6 +417,41 @@ impl Renderer {
                 0.025,
                 faded(world.palette.paper, 0.3),
             );
+        }
+        if self.character_render_mode == CharacterRenderMode::Legacy {
+            // This is the complete rollback path: it uses the established
+            // hard-cuboid avatar and legacy package colors, while preserving
+            // the typed pose inputs supplied by the current engine.
+            if self.scene.camera[2] > 0.75 {
+                super::add_legacy_avatar(
+                    &mut mesh,
+                    self.scene.player,
+                    self.scene.player_style,
+                    self.scene.world.palette.ink,
+                );
+            }
+            for player in &self.scene.remote_players {
+                super::add_legacy_avatar(
+                    &mut mesh,
+                    *player,
+                    self.scene.player_style,
+                    self.scene.world.palette.ink,
+                );
+            }
+            for (index, agent) in self.scene.agents.iter().enumerate() {
+                let style = self
+                    .scene
+                    .npc_styles
+                    .get(index % self.scene.npc_styles.len().max(1))
+                    .copied()
+                    .unwrap_or(self.scene.player_style);
+                super::add_legacy_avatar(
+                    &mut mesh,
+                    *agent,
+                    style,
+                    self.scene.world.palette.ink,
+                );
+            }
         }
         mesh
     }

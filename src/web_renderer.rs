@@ -25,6 +25,20 @@ impl WebRenderer {
         self.renderer.resize(width, height);
     }
 
+    /// Selects the staged character visual rollout mode: 0 = legacy, 1 =
+    /// magic. Invalid values are rejected without changing the current mode.
+    pub fn set_appearance_mode(&mut self, mode: u8) -> bool {
+        let Some(mode) = crate::renderer::CharacterRenderMode::from_u8(mode) else {
+            return false;
+        };
+        self.renderer.set_character_render_mode(mode);
+        true
+    }
+
+    pub fn appearance_mode(&self) -> u8 {
+        self.renderer.character_render_mode().as_u8()
+    }
+
     pub fn sync_engine(&mut self, engine: usize) {
         let engine = engine as *const Engine;
         if let Some(engine) = unsafe { engine.as_ref() } {

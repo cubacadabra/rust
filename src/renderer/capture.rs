@@ -1,9 +1,9 @@
-//! Phase 0's opt-in, offscreen review fixture.
+//! Opt-in, offscreen review fixtures for the character program.
 //!
-//! This module renders a deterministic legacy or rounded avatar fixture. It is
-//! a measurement and comparison tool, not a second production renderer. The
-//! feature is kept out of normal client builds so the fixture cannot change
-//! simulation capacity, public snapshots, or runtime resource lifetime.
+//! Legacy and magic rollout captures exercise the two renderer paths. Rounded
+//! and shape-proof captures remain historical before-images. The feature is
+//! kept out of normal client builds so fixtures cannot change simulation
+//! capacity, public snapshots, or runtime resource lifetime.
 
 use super::{
     DEPTH_FORMAT, Globals, RenderEntity, RenderPalette, Vertex, add_avatar, add_cuboid,
@@ -13,6 +13,7 @@ use super::character_quality::{
     CHARACTER_FAR_PLANE, LOD_FAR_PIXELS, LOD_HYSTERESIS_PIXELS, LOD_NEAR_PIXELS, MAX_EFFECTS,
     MAX_EFFECTS_PER_CHARACTER, CharacterLod,
 };
+use crate::character::{Pose as CharacterPose, body_recipe};
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
@@ -32,6 +33,9 @@ pub enum CaptureAvatar {
     Rounded,
     ShapeProof,
     Wardrobe,
+    /// Uses the same indexed/instanced CharacterRenderer as the live draw
+    /// path. Kept separate from Wardrobe for rollout reports.
+    Magic,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
@@ -94,6 +98,11 @@ pub struct CaptureRecord {
     pub actor_count: usize,
     pub vertex_count: usize,
     pub triangle_count: usize,
+    pub render_mode: &'static str,
+    pub character_draws: usize,
+    pub character_instances: usize,
+    pub character_mesh_uploads: usize,
+    pub character_resident_bytes: usize,
     pub estimated_vertex_upload_bytes: usize,
     pub estimated_resource_bytes: usize,
     pub cpu_build_ms: f64,
@@ -111,6 +120,19 @@ pub struct CaptureReport {
     pub engine_capacity_characters: usize,
     pub render_only_stress_characters: usize,
     pub notes: Vec<&'static str>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Phase8RolloutReport {
+    pub format_version: u32,
+    pub fixture: &'static str,
+    pub default_mode: &'static str,
+    pub rollback_mode: &'static str,
+    pub legacy_capture: CaptureReport,
+    pub magic_capture: CaptureReport,
+    pub wardrobe_capture: CaptureReport,
+    pub compatibility_checks: Vec<&'static str>,
+    pub retirement_checks: Vec<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -389,7 +411,7 @@ pub fn capture_phase0_baseline(
     let output_dir = output_dir.as_ref();
     fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
 
-    let context = HeadlessContext::new()?;
+    let mut context = HeadlessContext::new()?;
     let adapter = AdapterRecord {
         name: context.adapter_info.name.clone(),
         backend: format!("{:?}", context.adapter_info.backend),
@@ -414,6 +436,7 @@ pub fn capture_phase0_baseline(
             CaptureAvatar::Rounded => "phase-1-rounded-avatar-offscreen",
             CaptureAvatar::ShapeProof => "phase-2-three-body-shape-proof",
             CaptureAvatar::Wardrobe => "phase-5-six-outfit-procedural-review",
+            CaptureAvatar::Magic => "phase-8-magic-instanced-rollout",
         }
         .to_owned(),
         config,
@@ -422,7 +445,7 @@ pub fn capture_phase0_baseline(
         engine_capacity_characters: 18,
         render_only_stress_characters: 50,
         notes: vec![
-            "This fixture uses the selected legacy or rounded CPU-expanded avatar path.",
+            "Legacy uses the compatibility hard-cuboid path; Magic/Wardrobe use the indexed instanced character path.",
             "The 50-character scene is render-only and never enters Engine simulation or the public snapshot.",
             "GPU timestamp queries are not requested by the production renderer; unavailable values are null.",
             "Portrait captures use the existing 16:9 world viewport centered inside the portrait target.",
@@ -446,7 +469,7 @@ pub fn capture_phase2_shape_proof(
     let output_dir = output_dir.as_ref();
     config.avatar = CaptureAvatar::ShapeProof;
     fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
-    let context = HeadlessContext::new()?;
+    let mut context = HeadlessContext::new()?;
     let adapter = AdapterRecord {
         name: context.adapter_info.name.clone(),
         backend: format!("{:?}", context.adapter_info.backend),
@@ -497,7 +520,7 @@ pub fn capture_phase5_outfits(
     let output_dir = output_dir.as_ref();
     config.avatar = CaptureAvatar::Wardrobe;
     fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
-    let context = HeadlessContext::new()?;
+    let mut context = HeadlessContext::new()?;
     let adapter = AdapterRecord {
         name: context.adapter_info.name.clone(),
         backend: format!("{:?}", context.adapter_info.backend),
@@ -535,11 +558,63 @@ pub fn capture_phase5_outfits(
     Ok(report)
 }
 
+/// Produce the Phase 8 comparison artifact. The two suites intentionally use
+/// separate output folders so reviewers can compare the same camera/viewport
+/// evidence without overwriting either side of the rollback pair.
+pub fn capture_phase8_rollout(
+    output_dir: impl AsRef<Path>,
+    config: CaptureConfig,
+) -> Result<Phase8RolloutReport, String> {
+    let output_dir = output_dir.as_ref();
+    fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
+
+    let mut legacy_config = config;
+    legacy_config.avatar = CaptureAvatar::Legacy;
+    let legacy_capture = capture_phase0_baseline(output_dir.join("legacy"), legacy_config)?;
+
+    let mut magic_config = config;
+    magic_config.avatar = CaptureAvatar::Magic;
+    let magic_capture = capture_phase0_baseline(output_dir.join("magic"), magic_config)?;
+    let wardrobe_capture = capture_phase5_outfits(output_dir.join("wardrobe"), config)?;
+
+    let report = Phase8RolloutReport {
+        format_version: 1,
+        fixture: "phase-8-reversible-renderer-rollout",
+        // Magic remains the current default because the instanced path is the
+        // committed production renderer. Hosts can select Legacy before sync
+        // while a staged rollout or compatibility incident is investigated.
+        default_mode: "magic",
+        rollback_mode: "legacy",
+        legacy_capture,
+        magic_capture,
+        wardrobe_capture,
+        compatibility_checks: vec![
+            "legacy hard-cuboid geometry is available through the renderer mode boundary",
+            "legacy package colors remain siblings of the versioned character appearance",
+            "public snapshot length, stride and suffix semantics are unchanged",
+            "first-person hiding, third-person framing and portrait letterboxing use the existing camera rules",
+            "the render-only 50-character suite does not alter the 18-character engine capacity",
+        ],
+        retirement_checks: vec![
+            "live magic characters use immutable indexed meshes and instance uploads",
+            "CPU-expanded magic geometry is restricted to the opt-in development capture fixture",
+            "legacy rendering remains until host owners agree the compatibility window",
+            "old-color migration remains independent from the visual rollback switch",
+        ],
+    };
+    let bytes = serde_json::to_vec_pretty(&report)
+        .map_err(|error| format!("serialize Phase 8 rollout report: {error}"))?;
+    fs::write(output_dir.join("phase8_report.json"), bytes)
+        .map_err(|error| format!("write Phase 8 rollout report: {error}"))?;
+    Ok(report)
+}
+
 struct HeadlessContext {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
     globals_layout: wgpu::BindGroupLayout,
+    characters: super::character_gpu::CharacterRenderer,
     adapter_info: wgpu::AdapterInfo,
 }
 
@@ -631,17 +706,20 @@ impl HeadlessContext {
             multiview_mask: None,
             cache: None,
         });
+        let characters =
+            super::character_gpu::CharacterRenderer::new(&device, &globals_layout, 1);
         Ok(Self {
             device,
             queue,
             pipeline,
             globals_layout,
+            characters,
             adapter_info,
         })
     }
 
     fn capture(
-        &self,
+        &mut self,
         output_dir: &Path,
         config: CaptureConfig,
         scenario: Scenario,
@@ -649,7 +727,35 @@ impl HeadlessContext {
         let (width, height) = dimensions(config, scenario);
         let viewport = world_viewport(width, height);
         let build_started = Instant::now();
-        let (vertices, actor_count, globals, sky) = build_scene(config, scenario, width, height);
+        let (vertices, actors, globals, sky) = build_scene(config, scenario, width, height);
+        let actor_count = actors.len();
+        let magic = matches!(config.avatar, CaptureAvatar::Magic | CaptureAvatar::Wardrobe);
+        if magic {
+            self.characters.begin();
+            let palette = capture_palette(config.palette);
+            for (rank, actor) in actors.iter().enumerate() {
+                let mut entity = *actor;
+                let recipe = body_recipe(entity.body);
+                entity.pose = CharacterPose::locomotion(
+                    &recipe.rig,
+                    entity.walk_cycle,
+                    entity.moving,
+                    entity.sprinting,
+                );
+                let mut style = palette.avatar;
+                style.body = entity.body;
+                style.outfit = entity.outfit;
+                self.characters.add_with_quality(
+                    entity,
+                    style,
+                    palette.ink,
+                    CharacterLod::Mid,
+                    rank,
+                    false,
+                );
+            }
+            self.characters.upload(&self.queue);
+        }
         let cpu_build_ms = build_started.elapsed().as_secs_f64() * 1000.0;
         let vertex_upload_bytes = std::mem::size_of_val(vertices.as_slice());
         let vertex_buffer = self
@@ -763,6 +869,11 @@ impl HeadlessContext {
             pass.set_bind_group(0, &globals_bind_group, &[]);
             pass.set_vertex_buffer(0, vertex_buffer.slice(..));
             pass.draw(0..vertices.len() as u32, 0..1);
+            if magic {
+                self.characters.draw(&mut pass, super::character_material::CharacterPass::Opaque);
+                self.characters.draw(&mut pass, super::character_material::CharacterPass::Face);
+                self.characters.draw(&mut pass, super::character_material::CharacterPass::Effect);
+            }
         }
         encoder.copy_texture_to_buffer(
             color_texture.as_image_copy(),
@@ -815,13 +926,34 @@ impl HeadlessContext {
             height,
             world_viewport: viewport,
             actor_count,
-            vertex_count: vertices.len(),
-            triangle_count: vertices.len() / 3,
-            estimated_vertex_upload_bytes: vertex_upload_bytes,
+            vertex_count: vertices.len()
+                + if magic { self.characters.stats.triangles * 3 } else { 0 },
+            triangle_count: vertices.len() / 3
+                + if magic { self.characters.stats.triangles } else { 0 },
+            render_mode: if magic { "magic" } else { "legacy" },
+            character_draws: if magic { self.characters.stats.draws } else { 0 },
+            character_instances: if magic { self.characters.stats.instances } else { 0 },
+            character_mesh_uploads: if magic {
+                self.characters.stats.mesh_uploads
+            } else {
+                0
+            },
+            character_resident_bytes: if magic {
+                self.characters.stats.resident_bytes
+            } else {
+                0
+            },
+            estimated_vertex_upload_bytes: vertex_upload_bytes
+                + if magic { self.characters.stats.upload_bytes } else { 0 },
             estimated_resource_bytes: vertex_upload_bytes
                 + readback_size as usize
                 + (width as usize * height as usize * 4)
-                + (width as usize * height as usize * 4),
+                + (width as usize * height as usize * 4)
+                + if magic {
+                    self.characters.stats.resident_bytes
+                } else {
+                    0
+                },
             cpu_build_ms,
             gpu_submit_and_readback_ms,
             gpu_timestamp_ms: None,
@@ -834,7 +966,7 @@ fn build_scene(
     scenario: Scenario,
     width: u32,
     height: u32,
-) -> (Vec<Vertex>, usize, Globals, [f32; 4]) {
+) -> (Vec<Vertex>, Vec<RenderEntity>, Globals, [f32; 4]) {
     let palette = capture_palette(config.palette);
     let mut vertices = Vec::with_capacity(50 * 10 * 36);
     let mut rounded_mesh_cache = super::rounded_geometry::RoundedMeshCache::default();
@@ -1027,20 +1159,7 @@ fn build_scene(
                     &mut rounded_mesh_cache,
                 );
             }
-            CaptureAvatar::Wardrobe => {
-                let mut style = palette.avatar;
-                style.body = actor.body;
-                style.outfit = actor.outfit;
-                super::character::add_character_with_outfit(
-                    &mut vertices,
-                    *actor,
-                    actor.body,
-                    actor.outfit,
-                    style,
-                    palette.ink,
-                    &mut rounded_mesh_cache,
-                );
-            }
+            CaptureAvatar::Wardrobe | CaptureAvatar::Magic => {}
         }
     }
 
@@ -1076,7 +1195,7 @@ fn build_scene(
             .to_array(),
         fog_color: palette.sky,
     };
-    (vertices, actors.len(), globals, palette.sky)
+    (vertices, actors, globals, palette.sky)
 }
 
 fn capture_palette(palette: CapturePalette) -> CaptureColors {
@@ -1283,7 +1402,7 @@ mod tests {
             640,
             360,
         );
-        assert_eq!(actors, 3);
+        assert_eq!(actors.len(), 3);
         assert!(vertices.len() > 3 * 15 * 36);
     }
 }

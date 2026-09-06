@@ -461,10 +461,12 @@ Exit: two different clients show the same stable outfit/species for each player 
 
 ### Phase 8 — Rollout and art-language expansion
 
-- [ ] Ship a reversible renderer appearance mode (`legacy` / `magic`) through a small configuration boundary for comparison and staged rollout. Defaults switch only after the preceding production gates pass.
-- [ ] Run mixed-content compatibility, ordinary gameplay/camera checks and regression captures before changing the default.
-- [ ] Publish the final official asset style/proportion/fit guide and a tree/prop/accessory example using the same language.
-- [ ] Remove the temporary CPU-expanded shape path after the instanced path is verified; retire legacy rendering only after the client/package compatibility window is agreed. Preserve old-color migration longer than the visual rollback switch.
+- [x] Ship a reversible renderer appearance mode (`legacy` / `magic`) through a small configuration boundary for comparison and staged rollout. Defaults switch only after the preceding production gates pass.
+- [x] Run mixed-content compatibility, ordinary gameplay/camera checks and regression captures before changing the default.
+- [x] Publish the final official asset style/proportion/fit guide and a tree/prop/accessory example using the same language.
+- [x] Remove the temporary CPU-expanded shape path after the instanced path is verified; retire legacy rendering only after the client/package compatibility window is agreed. Preserve old-color migration longer than the visual rollback switch.
+
+Implementation and capture evidence: [Phase 8 rollout and art-language report](magic_characters_phase8.md), with the generated [legacy/magic/wardrobe capture report](baselines/magic-characters/phase8/phase8_report.json).
 
 Exit: rollout evidence, fallback behavior and ownership documented; all three bodies and six outfits are production identity choices, not just showcase props.
 

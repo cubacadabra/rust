@@ -142,10 +142,9 @@ fn add_avatar(
     add_avatar_inner(vertices, agent, style, face_color, Some(rounded_mesh_cache));
 }
 
-/// The Phase 0 capture deliberately keeps a hard-cuboid copy of the old
-/// avatar path so committed before-images do not silently change when the
-/// production comparison path advances.
-#[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
+/// The reversible rollout keeps a hard-cuboid copy of the old avatar path.
+/// It is intentionally limited to the compatibility mode; the production
+/// magic path uses immutable indexed meshes and instances.
 fn add_legacy_avatar(
     vertices: &mut Vec<Vertex>,
     agent: RenderEntity,

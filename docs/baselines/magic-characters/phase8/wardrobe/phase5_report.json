@@ -1,0 +1,58 @@
+{
+  "format_version": 2,
+  "fixture": "phase-5-six-outfit-procedural-review",
+  "config": {
+    "seed": 3233467134,
+    "pose_time": 0.35,
+    "width": 640,
+    "height": 360,
+    "portrait_width": 390,
+    "portrait_height": 844,
+    "quality": "Full",
+    "palette": "Current",
+    "avatar": "Wardrobe"
+  },
+  "adapter": {
+    "name": "Apple M4 Max",
+    "backend": "Metal",
+    "device_type": "IntegratedGpu",
+    "driver": "",
+    "driver_info": "",
+    "gpu_timestamps": false
+  },
+  "captures": [
+    {
+      "name": "phase5-six-outfit-lineup",
+      "image": "phase5-six-outfit-lineup.png",
+      "width": 640,
+      "height": 360,
+      "world_viewport": [
+        0,
+        0,
+        640,
+        360
+      ],
+      "actor_count": 6,
+      "vertex_count": 76980,
+      "triangle_count": 25660,
+      "render_mode": "magic",
+      "character_draws": 60,
+      "character_instances": 200,
+      "character_mesh_uploads": 212,
+      "character_resident_bytes": 2746880,
+      "estimated_vertex_upload_bytes": 27472,
+      "estimated_resource_bytes": 5513552,
+      "cpu_build_ms": 0.380625,
+      "gpu_submit_and_readback_ms": 11.936458,
+      "gpu_timestamp_ms": null
+    }
+  ],
+  "engine_capacity_characters": 18,
+  "render_only_stress_characters": 50,
+  "notes": [
+    "The six hero outfits are rendered from the bounded procedural catalog.",
+    "Person hoodie/pajamas, cat puffer/raincoat, and dragon wizard/knight are shown together.",
+    "The fixture is render-only and does not enable local NPC simulation or alter snapshots.",
+    "Run validate_character_assets before reviewing capture output."
+  ]
+}

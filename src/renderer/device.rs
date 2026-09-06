@@ -155,6 +155,16 @@ fn create_ui_texture_atlas(
 }
 
 impl Renderer {
+    /// Selects the reversible character visual rollout mode. The mode is
+    /// latched by the renderer only; no engine state or snapshot is touched.
+    pub(crate) fn set_character_render_mode(&mut self, mode: super::CharacterRenderMode) {
+        self.character_render_mode = mode;
+    }
+
+    pub(crate) fn character_render_mode(&self) -> super::CharacterRenderMode {
+        self.character_render_mode
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
         if layer.is_null() || width <= 0.0 || height <= 0.0 {
@@ -409,6 +419,10 @@ impl Renderer {
             width,
             height,
             scene: super::Scene::default(),
+            // Keep the current production visual as the default. Hosts can
+            // select Legacy before their first sync for staged rollout or
+            // instant comparison; changing this setting is presentation-only.
+            character_render_mode: super::CharacterRenderMode::Magic,
             package_generation: 0,
             active_world: usize::MAX,
             worlds: Vec::new(),
