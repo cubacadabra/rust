@@ -11,6 +11,15 @@ impl Engine {
         self.target_camera_distance = 0.0;
     }
 
+    pub fn reset_showcase_view(&mut self) {
+        self.view_yaw = 0.0;
+        self.view_pitch = -0.095;
+        self.target_yaw = 0.0;
+        self.target_pitch = -0.095;
+        self.camera_distance = 8.0;
+        self.target_camera_distance = 8.0;
+    }
+
     /// Apply a server correction to the locally predicted player. The server
     /// validates travel distance rather than simulating rigid-body collisions.
     pub fn reconcile_player(&mut self, position: [f32; 3], yaw: f32) {

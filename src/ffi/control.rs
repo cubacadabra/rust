@@ -245,6 +245,18 @@ pub unsafe extern "C" fn engine_reset_view(engine: *mut Engine) {
     }
 }
 
+/// Resets the camera to the third-person framing used by native character
+/// showcases.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_reset_showcase_view(engine: *mut Engine) {
+    if let Some(engine) = unsafe { engine.as_mut() } {
+        engine.reset_showcase_view();
+    }
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
