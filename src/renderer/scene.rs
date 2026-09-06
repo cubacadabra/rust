@@ -148,7 +148,14 @@ impl Renderer {
                 let name = engine
                     .remote_players
                     .get(remote_index)
-                    .map(|player| display_name(&player.stable_id, &fallback))
+                    .map(|player| {
+                        let source = if player.display_name.trim().is_empty() {
+                            &player.stable_id
+                        } else {
+                            &player.display_name
+                        };
+                        display_name(source, &fallback)
+                    })
                     .unwrap_or(fallback);
                 self.scene.remote_names.push(name);
                 remote_index += 1;

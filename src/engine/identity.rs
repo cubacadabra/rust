@@ -11,6 +11,7 @@ pub(crate) const MAX_APPEARANCE_BYTES: usize = 4 * 1024;
 pub(crate) const MAX_REMOTE_UPDATE_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_REMOTE_MOTION_BATCH_BYTES: usize = 4 * 1024;
 pub(crate) const MAX_REMOTE_ID_BYTES: usize = 96;
+pub(crate) const MAX_REMOTE_USERNAME_BYTES: usize = 24;
 pub(crate) const MAX_WORLD_ID_BYTES: usize = 96;
 pub(crate) const REMOTE_PROTOCOL_VERSION: u16 = 1;
 pub(crate) const REMOTE_MOTION_PROTOCOL_VERSION: u32 = 1;
@@ -45,6 +46,8 @@ pub(crate) struct RemoteStateMessage {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RemotePlayerMessage {
     pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) username: Option<String>,
     #[serde(default)]
     pub(crate) generation: u32,
     pub(crate) position: [f32; 3],
@@ -110,6 +113,13 @@ pub(crate) fn valid_remote_message(message: &RemoteStateMessage) -> bool {
 
 fn valid_remote_player(player: &RemotePlayerMessage) -> bool {
     valid_identifier(&player.id, MAX_REMOTE_ID_BYTES)
+        && player.username.as_deref().is_none_or(|username| {
+            let username = username.trim();
+            username.len() >= 2
+                && username.len() <= MAX_REMOTE_USERNAME_BYTES
+                && username.is_ascii()
+                && username.bytes().all(|byte| !byte.is_ascii_control())
+        })
         && player.position.iter().all(|value| value.is_finite())
         && player.yaw.is_finite()
         && player.look_yaw.is_none_or(f32::is_finite)

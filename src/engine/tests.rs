@@ -349,7 +349,7 @@ fn versioned_remote_roster_preserves_identity_through_reorder() {
     let mut engine = Engine::new();
     let first = r##"{
         "version":1,"sequence":1,"worldId":"lobby","players":[
-        {"id":"account:alice","generation":7,"position":[1,0,2],"yaw":0.2,
+        {"id":"account:alice","username":"Alice","generation":7,"position":[1,0,2],"yaw":0.2,
          "moving":true,"appearance":{"version":1,"body":"cuba:cat.v1","revision":4}},
         {"id":"account:bob","generation":9,"position":[-1,0,2],"yaw":-0.2,"moving":false}
     ]}"##;
@@ -361,6 +361,7 @@ fn versioned_remote_roster_preserves_identity_through_reorder() {
         .expect("alice sample");
     let alice_identity = alice.key.identity;
     assert_eq!(alice.key.generation, 7);
+    assert_eq!(engine.remote_players[0].display_name, "Alice");
     assert_eq!(
         engine
             .remote_appearance(alice.key)

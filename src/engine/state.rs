@@ -588,6 +588,9 @@ impl Engine {
                 player.emote_sequence = 0;
             }
             player.stable_id = update.id.clone();
+            if let Some(username) = update.username {
+                player.display_name = username;
+            }
             player.identity = identity::stable_identity(&update.id);
             player.generation = generation;
             if update.appearance.is_none() {
