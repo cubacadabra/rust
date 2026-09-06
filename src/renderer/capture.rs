@@ -31,6 +31,9 @@ const DEFAULT_HEIGHT: u32 = 360;
 #[path = "capture_motion.rs"]
 mod motion;
 pub use motion::capture_phase4_motion;
+#[path = "capture_hero.rs"]
+mod hero;
+pub use hero::capture_phase9_hero;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum CaptureAvatar {
@@ -99,6 +102,7 @@ pub struct CaptureRecord {
     pub image: String,
     pub width: u32,
     pub height: u32,
+    pub sample_count: u32,
     pub world_viewport: [u32; 4],
     pub actor_count: usize,
     pub vertex_count: usize,
@@ -284,6 +288,7 @@ enum Scenario {
     },
     WardrobeLineup { name: &'static str, camera_yaw: f32 },
     MotionLineup,
+    Hero { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
     Orbit { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
 }
 
@@ -296,6 +301,7 @@ impl Scenario {
             Self::ShapeLineup { name, .. } => name,
             Self::WardrobeLineup { name, .. } => name,
             Self::MotionLineup => "motion",
+            Self::Hero {name,..} => name,
             Self::Orbit { name, .. } => name,
         }
     }
@@ -636,10 +642,15 @@ struct HeadlessContext {
     globals_layout: wgpu::BindGroupLayout,
     characters: super::character_gpu::CharacterRenderer,
     adapter_info: wgpu::AdapterInfo,
+    samples: u32,
 }
 
 impl HeadlessContext {
     fn new() -> Result<Self, String> {
+        Self::new_with_quality(false)
+    }
+
+    fn new_with_quality(antialias: bool) -> Result<Self, String> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..wgpu::InstanceDescriptor::new_without_display_handle()
@@ -658,6 +669,7 @@ impl HeadlessContext {
         })
         .map_err(|error| format!("headless adapter unavailable: {error}"))?;
         let adapter_info = adapter.get_info();
+        let samples=super::targets::select_samples(&adapter,antialias);
         let limits = wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits());
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("cubacadabra phase 0 capture device"),
@@ -712,7 +724,7 @@ impl HeadlessContext {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState::default(),
+            multisample: wgpu::MultisampleState {count:samples,..Default::default()},
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
@@ -727,7 +739,7 @@ impl HeadlessContext {
             cache: None,
         });
         let characters =
-            super::character_gpu::CharacterRenderer::new(&device, &globals_layout, 1);
+            super::character_gpu::CharacterRenderer::new(&device, &globals_layout, samples);
         Ok(Self {
             device,
             queue,
@@ -735,6 +747,7 @@ impl HeadlessContext {
             globals_layout,
             characters,
             adapter_info,
+            samples,
         })
     }
 
@@ -756,7 +769,7 @@ impl HeadlessContext {
             for (rank, actor) in actors.iter().enumerate() {
                 let mut entity = *actor;
                 let recipe = body_recipe(entity.body);
-                if !matches!(scenario, Scenario::MotionLineup) {
+                if !matches!(scenario, Scenario::MotionLineup | Scenario::Hero {..}) {
                     entity.pose = CharacterPose::locomotion(
                         &recipe.rig,
                         entity.walk_cycle,
@@ -767,6 +780,12 @@ impl HeadlessContext {
                 let mut style = palette.avatar;
                 style.body = entity.body;
                 style.outfit = entity.outfit;
+                if matches!(scenario,Scenario::Hero {..}) {
+                    style.skin=color(0xe1a66d);
+                    style.shirt=color(0x14733e);
+                    style.pants=color(0x243349);
+                    style.shoes=color(0x23563b);
+                }
                 if matches!(scenario, Scenario::ShapeLineup { .. } | Scenario::MotionLineup) {
                     use crate::character::BodyId;
                     match entity.body {
@@ -797,7 +816,7 @@ impl HeadlessContext {
                     style.shoes = [0.18, 0.22, 0.28, 1.0];
                     entity.face = crate::character::FaceParameters::preset(crate::character::FacePreset::Happy);
                 }
-                let lod = if let Scenario::Orbit { yaw, pitch, distance, .. } = scenario {
+                let lod = if let Scenario::Orbit { yaw, pitch, distance, .. } | Scenario::Hero { yaw, pitch, distance, .. } = scenario {
                     let (position, target) = super::camera::orbit(Vec3::ZERO, entity.body, yaw, pitch, distance);
                     let view = Mat4::look_at_rh(position, target, Vec3::Y);
                     super::character_quality::select_lod(
@@ -856,6 +875,12 @@ impl HeadlessContext {
             view_formats: &[],
         });
         let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let multisample_view = (self.samples>1).then(|| self.device.create_texture(&wgpu::TextureDescriptor {
+            label:Some("hero multisample color"),
+            size:wgpu::Extent3d {width,height,depth_or_array_layers:1},mip_level_count:1,
+            sample_count:self.samples,dimension:wgpu::TextureDimension::D2,
+            format:wgpu::TextureFormat::Rgba8Unorm,usage:wgpu::TextureUsages::RENDER_ATTACHMENT,view_formats:&[],
+        }).create_view(&wgpu::TextureViewDescriptor::default()));
         let depth_view = self
             .device
             .create_texture(&wgpu::TextureDescriptor {
@@ -866,7 +891,7 @@ impl HeadlessContext {
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
-                sample_count: 1,
+                sample_count: self.samples,
                 dimension: wgpu::TextureDimension::D2,
                 format: DEPTH_FORMAT,
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -893,9 +918,9 @@ impl HeadlessContext {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra phase 0 capture pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &color_view,
+                    view: multisample_view.as_ref().unwrap_or(&color_view),
                     depth_slice: None,
-                    resolve_target: None,
+                    resolve_target: multisample_view.as_ref().map(|_|&color_view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: sky[0] as f64,
@@ -985,6 +1010,7 @@ impl HeadlessContext {
             image: file_name,
             width,
             height,
+            sample_count:self.samples,
             world_viewport: viewport,
             actor_count,
             vertex_count: vertices.len()
@@ -1008,8 +1034,7 @@ impl HeadlessContext {
                 + if magic { self.characters.stats.upload_bytes } else { 0 },
             estimated_resource_bytes: vertex_upload_bytes
                 + readback_size as usize
-                + (width as usize * height as usize * 4)
-                + (width as usize * height as usize * 4)
+                + width as usize * height as usize * if self.samples>1 {4+8*self.samples as usize} else {8}
                 + if magic {
                     self.characters.stats.resident_bytes
                 } else {
@@ -1028,7 +1053,11 @@ fn build_scene(
     width: u32,
     height: u32,
 ) -> (Vec<Vertex>, Vec<RenderEntity>, Globals, [f32; 4]) {
-    let palette = capture_palette(config.palette);
+    let mut palette = capture_palette(config.palette);
+    if matches!(scenario,Scenario::Hero {..}) {
+        palette.sky=color(0xf3ece0);
+        palette.ground=color(0xe1d9c9);
+    }
     let mut vertices = Vec::with_capacity(50 * 10 * 36);
     let mut rounded_mesh_cache = super::rounded_geometry::RoundedMeshCache::default();
     add_cuboid(
@@ -1164,6 +1193,10 @@ fn build_scene(
                 ..Default::default()
             });
         }
+        Scenario::Hero {..} => {
+            actors.push(hero::actor(config.pose_time));
+            super::add_soft_support_shadow(&mut vertices,Vec3::new(0.0,0.011,-0.04),0.92,[0.13,0.18,0.16,0.32]);
+        }
     }
     if raised {
         add_cuboid(
@@ -1258,7 +1291,7 @@ fn build_scene(
             (position, target)
         }
     };
-    let (camera_position, look_target) = if let Scenario::Orbit { yaw, pitch, distance, .. } = scenario {
+    let (camera_position, look_target) = if let Scenario::Orbit { yaw, pitch, distance, .. } | Scenario::Hero { yaw, pitch, distance, .. } = scenario {
         super::camera::orbit(Vec3::ZERO, crate::character::BodyId::Person, yaw, pitch, distance)
     } else { (camera_position, look_target) };
     let aspect = viewport_aspect(width, height);

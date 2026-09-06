@@ -2,6 +2,11 @@
 
 Status: official Phase 8 starter-world guide, version `soft-cubism.v1`.
 
+The [green-hoodie hero review](art/green-hoodie/README.md) extends the person
+hoodie fit with authored surface profiles and coordinated face/material work.
+Its contour meshes share the existing rig, LOD policy, and fixed catalog;
+the older rounded-box proportions below remain the baseline for other fits.
+
 Soft Cubism is the shared visual language for official characters and the
 small set of starter-world assets that accompany them. It describes decisions
 that can be validated in data; it is not permission to round every collision

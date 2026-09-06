@@ -21,13 +21,16 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
     let mut local = part.anchor.local;
     match part.feature {
         Feature::None => {}
-        Feature::Eye(_side) => {
+        Feature::Cloth => { local *= Mat4::from_rotation_x(entity.secondary.cloth_sway); }
+        Feature::Eye(side) => {
+            let look = if is_hero(entity) { glam::Vec2::ZERO } else { face.look };
             local = local
-                * Mat4::from_translation(glam::Vec3::new(face.look.x, face.look.y, 0.0))
-                * Mat4::from_scale(glam::Vec3::new(1.0, face.eye_opening, 1.0));
+                * Mat4::from_translation(glam::Vec3::new(look.x, look.y, 0.0))
+                * Mat4::from_scale(glam::Vec3::new(1.0, (face.eye_opening + side * face.eye_asymmetry).clamp(0.05,1.25), 1.0));
         }
         Feature::Brow(side) => {
-            local = local * Mat4::from_quat(Quat::from_rotation_z(side * face.brow_tilt));
+            local = local * Mat4::from_translation(Vec3::Y * side * face.brow_asymmetry)
+                * Mat4::from_quat(Quat::from_rotation_z(side * face.brow_tilt));
         }
         Feature::Mouth => {
             local = local
@@ -82,7 +85,14 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 ));
         }
     }
+    if part.shape != super::hero_geometry::Shape::Rounded {
+        local *= Mat4::from_scale(part.spec.size);
+    }
     local
+}
+
+fn is_hero(entity: RenderEntity) -> bool {
+    entity.body == BodyId::Person && entity.outfit == OutfitId::EverydayHoodie
 }
 
 struct Mesh {
@@ -172,15 +182,20 @@ impl CharacterRenderer {
                     );
                     for part in pieces.into_iter().filter(|part| part_visible(*part, lod)) {
                         let mesh_recipe = character::mesh_recipe_with_subdivisions(
-                            part.spec,
+                            if part.shape == super::hero_geometry::Shape::Rounded {part.spec}
+                            else {crate::character::BodyPart::new(Vec3::ONE,0.0)},
                             lod.subdivisions(),
                         );
                         let mesh_index = recipes
                             .iter()
-                            .position(|key| *key == mesh_recipe)
+                            .position(|key| *key == (mesh_recipe, part.shape))
                             .unwrap_or_else(|| {
                                 assert!(meshes.len() < MAX_MESHES);
-                                let mesh = cache.get_or_build(mesh_recipe).expect("bundled mesh");
+                                let mesh = if part.shape == super::hero_geometry::Shape::Rounded {
+                                    cache.get_or_build(mesh_recipe).expect("bundled mesh")
+                                } else {
+                                    std::sync::Arc::new(super::hero_geometry::build(part.shape, Vec3::ONE, lod.subdivisions()))
+                                };
                                 let vertices: Vec<_> = mesh
                                     .vertices
                                     .iter()
@@ -210,7 +225,7 @@ impl CharacterRenderer {
                                     ),
                                     index_count: mesh.indices.len() as u32,
                                 });
-                                recipes.push(mesh_recipe);
+                                recipes.push((mesh_recipe, part.shape));
                                 meshes.len() - 1
                             });
                         let material = part.tint.material();
@@ -329,6 +344,8 @@ impl CharacterRenderer {
             || !entity.walk_cycle.is_finite()
             || ![
                 entity.face.eye_opening,
+                entity.face.eye_asymmetry,
+                entity.face.brow_asymmetry,
                 entity.face.look.x,
                 entity.face.look.y,
                 entity.face.brow_tilt,
@@ -339,6 +356,7 @@ impl CharacterRenderer {
                 entity.secondary.wing_flap,
                 entity.secondary.gap_expansion,
                 entity.secondary.spark_life,
+                entity.secondary.cloth_sway,
             ]
             .iter()
             .all(|value| value.is_finite())
@@ -396,12 +414,34 @@ impl CharacterRenderer {
             }
             tint[3] *= 1.0 - entity.camera_fade.clamp(0.0, 1.0);
             let mut instance = CharacterInstance::new(transform, tint, batch.material);
+            if is_hero(entity) {
+                match part.tint {
+                    character::Tint::Shirt => instance.material = [0.9,0.035,0.0,
+                        if part.shape == super::hero_geometry::Shape::Hood {12.0}
+                        else if part.shape==super::hero_geometry::Shape::Pocket {14.0}
+                        else if part.shape==super::hero_geometry::Shape::Rib {16.0} else {8.0}],
+                    character::Tint::Skin => instance.material = [0.65,0.06,0.0,11.0],
+                    character::Tint::Shoes => instance.material=[0.8,0.04,0.0,15.0],
+                    character::Tint::Blush => instance.tint=[style.skin[0]*0.96,style.skin[1]*0.85,style.skin[2]*0.80,tint[3]],
+                    character::Tint::Hair => {
+                        instance.tint = [0.31,0.14,0.065,tint[3]];
+                        instance.material = [0.74,0.045,0.0,13.0];
+                    }
+                    _ => {}
+                }
+            }
             match part.feature {
-                Feature::Eye(_) => instance.material = [1.0, 0.0, 0.0, 4.0],
+                Feature::Eye(side) => instance.material = if is_hero(entity) {
+                    [entity.face.look.x * 3.0, entity.face.look.y * 3.0,
+                        -(entity.face.eye_opening+side*entity.face.eye_asymmetry).clamp(0.05,1.25),9.0]
+                } else { [1.0, 0.0, 0.0, 4.0] },
                 Feature::Mouth => {
                     instance.material = [entity.face.mouth_curve, entity.face.mouth_opening, 0.0, 5.0]
                 }
-                Feature::Brow(_) => instance.material = [1.0, 0.0, 0.0, 6.0],
+                Feature::Brow(_) => {
+                    instance.material = [1.0, 0.0, 0.0, if is_hero(entity) {10.0} else {6.0}];
+                    if is_hero(entity) { instance.tint=[0.19,0.095,0.04,tint[3]]; }
+                }
                 Feature::Cheek(_) => instance.material = [1.0, 0.0, 0.0, 7.0],
                 _ => {}
             }

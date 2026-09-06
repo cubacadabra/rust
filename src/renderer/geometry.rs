@@ -12,6 +12,60 @@ fn faded(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
     color
 }
 
+// A receiver-aligned disc with interpolated opacity, shared by gameplay and
+// the hero review. It has no opaque edge and needs no texture or shadow map.
+fn add_soft_support_shadow(vertices: &mut Vec<Vertex>, center: Vec3, radius: f32, tint: [f32; 4]) {
+    const SEGMENTS: usize = 24;
+    let vertex = |r: f32, angle: f32| Vertex {
+        position: (center + Vec3::new(angle.cos() * radius * r, 0.0, angle.sin() * radius * r))
+            .to_array(),
+        normal: Vec3::Y.to_array(),
+        color: [
+            tint[0],
+            tint[1],
+            tint[2],
+            tint[3]
+                * (((-6.0 * r * r).exp() - (-6.0_f32).exp()) / (1.0 - (-6.0_f32).exp())).max(0.0),
+        ],
+        tex_coords: [0.0, 0.0],
+        image_invert: 0.0,
+    };
+    for ring in 0..4 {
+        let inner = ring as f32 / 4.0;
+        let outer = (ring + 1) as f32 / 4.0;
+        for segment in 0..SEGMENTS {
+            let a = segment as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            let b = (segment + 1) as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
+            if ring > 0 {
+                vertices.extend_from_slice(&[vertex(inner, a), vertex(inner, b), vertex(outer, a)]);
+            }
+            vertices.extend_from_slice(&[vertex(outer, a), vertex(inner, b), vertex(outer, b)]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod support_shadow_mesh_tests {
+    use super::*;
+
+    #[test]
+    fn gradient_shadow_stays_on_its_receiver_and_fades_at_the_edge() {
+        let center = Vec3::new(2.0, 3.011, -4.0);
+        let mut vertices = Vec::new();
+        add_soft_support_shadow(&mut vertices, center, 0.72, [0.1, 0.2, 0.15, 0.4]);
+        assert_eq!(vertices.len(), 504);
+        assert!(vertices.iter().all(|v| v.position[1] == center.y));
+        assert!(vertices.iter().all(|v| (0.0..=0.4).contains(&v.color[3])));
+        for vertex in vertices {
+            let distance = Vec3::from_array(vertex.position).distance(center);
+            assert!(distance <= 0.72001);
+            if distance > 0.719 {
+                assert!(vertex.color[3] < 0.0001);
+            }
+        }
+    }
+}
+
 fn add_cuboid(vertices: &mut Vec<Vertex>, center: Vec3, size: Vec3, color: [f32; 4]) {
     add_transformed_cuboid(vertices, Mat4::from_translation(center), size, color);
 }

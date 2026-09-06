@@ -118,6 +118,7 @@ pub(super) struct Part {
     pub spec: BodyPart,
     pub tint: Tint,
     pub feature: Feature,
+    pub shape: super::hero_geometry::Shape,
 }
 #[derive(Clone, Copy)]
 pub(super) enum Feature {
@@ -131,6 +132,7 @@ pub(super) enum Feature {
     Wing(f32),
     Seam(f32),
     Spark(f32),
+    Cloth,
 }
 fn camera_anchors(body: BodyId) -> (Vec3, Vec3) {
     static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 3]> = std::sync::OnceLock::new();
@@ -231,6 +233,9 @@ pub(super) fn parts_for(recipe: &BodyRecipe, outfit: OutfitId) -> Vec<Part> {
     // geometry keys from entering the GPU cache.
     apply_outfit(&mut vertices, recipe, outfit);
     finish_outfit(&mut vertices, recipe, outfit);
+    if recipe.id == BodyId::Person && outfit == OutfitId::EverydayHoodie {
+        super::hero_character::finish(&mut vertices);
+    }
     vertices
 }
 
@@ -356,6 +361,7 @@ fn apply_outfit(vertices: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId)
                 spec: BodyPart::new(size, radius),
                 tint,
                 feature: Feature::None,
+                shape: super::hero_geometry::Shape::Rounded,
             });
         };
     let torso = Anchor::new(JointId::Torso);
@@ -567,6 +573,7 @@ fn add_part(vertices: &mut Vec<Part>, anchor: Anchor, spec: BodyPart, tint: Tint
         spec,
         tint,
         feature: Feature::None,
+        shape: super::hero_geometry::Shape::Rounded,
     });
 }
 

@@ -1,0 +1,64 @@
+{
+  "fixture": "green-hoodie-hero-v1",
+  "adapter": {
+    "name": "Apple M4 Max",
+    "backend": "Metal",
+    "device_type": "IntegratedGpu",
+    "driver": "",
+    "driver_info": "",
+    "gpu_timestamps": false
+  },
+  "capture_count": 308,
+  "hero": {
+    "name": "hero-three-quarter",
+    "image": "hero-three-quarter.png",
+    "width": 1440,
+    "height": 900,
+    "sample_count": 4,
+    "world_viewport": [
+      0,
+      0,
+      1440,
+      900
+    ],
+    "actor_count": 1,
+    "vertex_count": 82908,
+    "triangle_count": 27636,
+    "render_mode": "magic",
+    "character_draws": 21,
+    "character_instances": 44,
+    "character_mesh_uploads": 365,
+    "character_resident_bytes": 4438424,
+    "estimated_vertex_upload_bytes": 33712,
+    "estimated_resource_bytes": 56421704,
+    "cpu_build_ms": 1.349417,
+    "gpu_submit_and_readback_ms": 3.780292,
+    "gpu_timestamp_ms": null
+  },
+  "validation": {
+    "metal": {
+      "surface_color_max_error": 0,
+      "legacy_color_max_error": 0,
+      "occlusion_max_error": 0,
+      "effect_depth_write_max_error": 0,
+      "mesh_count": 365,
+      "resident_bytes": 4438424
+    },
+    "webgpu": {
+      "surface_color_max_error": 0,
+      "legacy_color_max_error": 0,
+      "occlusion_max_error": 0,
+      "effect_depth_write_max_error": 0,
+      "mesh_count": 365,
+      "resident_bytes": 4438424
+    },
+    "gl": {
+      "surface_color_max_error": 0,
+      "legacy_color_max_error": 0,
+      "occlusion_max_error": 0,
+      "effect_depth_write_max_error": 0,
+      "mesh_count": 365,
+      "resident_bytes": 4438424
+    }
+  }
+}

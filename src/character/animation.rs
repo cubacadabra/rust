@@ -25,6 +25,7 @@ pub(crate) struct SecondaryMotion {
     pub(crate) gap_expansion: f32,
     /// Seconds remaining in a short event burst; zero during steady travel.
     pub(crate) spark_life: f32,
+    pub(crate) cloth_sway: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,6 +47,7 @@ pub(crate) struct CharacterPresentationState {
     landing_timer: f32,
     gap_spring: f32,
     spark_life: f32,
+    cloth_sway: f32,
     head_look: f32,
     face: FaceParameters,
     expression: FacePreset,
@@ -72,6 +74,7 @@ impl CharacterPresentationState {
             landing_timer: 0.0,
             gap_spring: 0.0,
             spark_life: 0.0,
+            cloth_sway: 0.0,
             head_look: 0.0,
             face: FaceParameters::preset(expression),
             expression,
@@ -141,6 +144,7 @@ impl CharacterPresentationState {
             self.gap_spring = 0.0;
             self.head_look = 0.0;
             self.spark_life = 0.0;
+            self.cloth_sway = 0.0;
             self.wave_until = 0.0;
         }
         let time = if sample.time.is_finite() {
@@ -304,6 +308,17 @@ impl CharacterPresentationState {
             0.0,
         );
         rotate(&mut pose, JointId::Torso, 0.0, self.head_look * 0.14, 0.0);
+        if body == BodyId::Person {
+            // Relaxed arms and a slight weight shift give the hero a stance
+            // before an emote starts; hands stay clear of the roomy garment.
+            rotate(&mut pose, JointId::LeftUpperArm, 0.04, 0.0, -0.12);
+            rotate(&mut pose, JointId::RightUpperArm, 0.04, 0.0, 0.12);
+            rotate(&mut pose, JointId::LeftLowerArm, 0.18, 0.0, 0.0);
+            rotate(&mut pose, JointId::RightLowerArm, 0.18, 0.0, 0.0);
+            let idle = 1.0 - self.locomotion_blend;
+            rotate(&mut pose, JointId::Torso, 0.0, 0.0, 0.025 * idle);
+            rotate(&mut pose, JointId::Head, 0.0, 0.0, -0.025 * idle);
+        }
 
         // Air poses are driven by explicit support/vertical velocity. A raised
         // block therefore reads as ground, while a ledge fall still animates.
@@ -419,7 +434,14 @@ impl CharacterPresentationState {
         }
 
         let secondary_scale = if reduced_effects { 0.5 } else { 1.0 };
+        self.cloth_sway = damp(
+            self.cloth_sway,
+            (vertical_velocity * 0.008 + swing * 0.09 + breath).clamp(-0.14, 0.14),
+            8.0,
+            delta,
+        );
         let secondary = SecondaryMotion {
+            cloth_sway: self.cloth_sway * secondary_scale,
             tail_sway: (time * 2.3 + seed_unit(self.seed) * 5.0).sin() * 0.16 * secondary_scale,
             ear_tilt: (time * 1.7 + 1.0).sin() * 0.07 * secondary_scale,
             wing_flap: (time * 2.0 + 2.0).sin() * 0.10 * secondary_scale,
@@ -454,6 +476,7 @@ impl CharacterPresentationState {
         let mut face = self.face;
         if time < self.blink_until {
             face.eye_opening = 0.06;
+            face.eye_asymmetry = 0.0;
         }
         let look_idle = (1.0 - self.locomotion_blend).clamp(0.0, 1.0);
         face.look.x = (self.head_look * 0.10
@@ -487,6 +510,8 @@ fn blend_face(current: FaceParameters, target: FaceParameters, delta: f32) -> Fa
     let amount = 1.0 - (-delta * 14.0).exp();
     let mix = |a: f32, b: f32| a + (b - a) * amount;
     FaceParameters {
+        eye_asymmetry: mix(current.eye_asymmetry, target.eye_asymmetry),
+        brow_asymmetry: mix(current.brow_asymmetry, target.brow_asymmetry),
         eye_opening: mix(current.eye_opening, target.eye_opening),
         look: Vec2::new(
             mix(current.look.x, target.look.x),

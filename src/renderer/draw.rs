@@ -3,7 +3,7 @@ use super::character_quality;
 use glam::{Mat4, Vec3};
 
 use super::{
-    Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline, add_cylinder, add_launch_pad,
+    Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline, add_launch_pad,
     add_pixel_text, add_spawn_pad, faded,
 };
 use super::CharacterRenderMode;
@@ -441,7 +441,7 @@ impl Renderer {
     }
 
     fn build_support_shadows(&self, view: Mat4, aspect: f32) -> Vec<Vertex> {
-        let mut shadows = Vec::with_capacity(24 * (1 + self.scene.agents.len() + self.scene.remote_players.len()));
+        let mut shadows = Vec::with_capacity(504 * (1 + self.scene.agents.len() + self.scene.remote_players.len()));
         let mut add = |entity: RenderEntity| {
             if !entity.position.iter().all(|value| value.is_finite()) {
                 return;
@@ -464,26 +464,16 @@ impl Renderer {
                 let edge_z = (block.size[2] * 0.5 - (entity.position[2] - block.position[2]).abs()).max(0.04);
                 radius = radius.min(edge_x.min(edge_z) * 0.88);
             }
-            // Two receiver-aligned layers provide a cheap soft/contact shadow:
-            // the wider layer fades into the receiver and the smaller layer
-            // keeps the feet grounded. Both remain depth-tested and never
-            // write depth through the translucent world pipeline.
+            // Interpolated opacity keeps the contact shadow soft at every
+            // camera distance, within the existing receiver/edge constraints.
             let height_gap = (entity.position[1] - height).max(0.0);
             alpha *= (radius / 0.72).clamp(0.15, 1.0)
                 * (1.0 - height_gap * 0.28).clamp(0.35, 1.0);
-            add_cylinder(
+            super::add_soft_support_shadow(
                 &mut shadows,
                 Vec3::new(entity.position[0], height + 0.011, entity.position[2]),
-                radius * 1.10,
-                0.012,
-                super::faded(self.scene.world.palette.ink, alpha * 0.32),
-            );
-            add_cylinder(
-                &mut shadows,
-                Vec3::new(entity.position[0], height + 0.015, entity.position[2]),
-                radius * 0.78,
-                0.014,
-                super::faded(self.scene.world.palette.ink, alpha * 0.58),
+                radius,
+                super::faded(self.scene.world.palette.ink, alpha),
             );
         };
         if self.scene.camera[2] > 0.75 {
