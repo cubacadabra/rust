@@ -190,8 +190,10 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
             }
         }
         Shape::HairCap => {
-            p.y += (-sin).max(0.0).powi(3) * (1.0 - t) * 0.68;
-            p.y += (1.0 + (angle * 5.0 + 0.6).sin()) * 0.07 * (1.0 - t).powi(3);
+            let front = (-sin).max(0.0).powi(3);
+            p.y += front * (1.0 - t) * (0.40 + cos * 0.08);
+            p.y +=
+                (1.0 + (angle * 5.0 + 0.6).sin()) * 0.04 * (1.0 - t).powi(3);
             // Two broad, shallow contour changes keep the back cap from
             // reading as a perfectly smooth helmet without adding strand
             // noise to the silhouette.
@@ -199,9 +201,9 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
         }
         Shape::HairLock => {
             // The authored transform supplies the root-to-tip sweep. This
-            // small cross-section bow keeps the lock soft without turning it
-            // into a second banana-shaped centerline.
-            p.x += (t * std::f32::consts::PI).sin() * 0.045;
+            // art-directed centerline bow keeps the lock soft without turning
+            // it into a detailed strand simulation.
+            p.x += (t * std::f32::consts::PI).sin() * 0.16;
         }
         Shape::Shoe => {
             p.z = (p.z + t * 0.14 - 0.03) * 0.95;
@@ -348,8 +350,15 @@ mod tests {
                         .all(|i| (*i as usize) < mesh.vertices.len())
                 );
                 assert!(mesh.bounds_min.cmpge(Vec3::splat(-0.51)).all());
+                let maximum_extent = if shape == Shape::HairLock {
+                    0.55
+                } else {
+                    0.51
+                };
                 assert!(
-                    mesh.bounds_max.cmple(Vec3::splat(0.51)).all(),
+                    mesh.bounds_max
+                        .cmple(Vec3::splat(maximum_extent))
+                        .all(),
                     "{shape:?}: {:?}",
                     mesh.bounds_max
                 );

@@ -165,15 +165,27 @@ fn piece(
 }
 
 /// Add one chunky lock with an explicit buried root and free tip. Hair is
-/// authored in head-local coordinates so its attachment remains legible when
-/// the cap or face is reviewed from another camera.
-fn hair_lock(parts: &mut Vec<Part>, root: Vec3, tip: Vec3, width: f32, depth: f32) {
+/// authored in head-local coordinates, with a roll that chooses the plane of
+/// its modeled bow, so its attachment remains legible from another camera.
+fn hair_lock(
+    parts: &mut Vec<Part>,
+    root: Vec3,
+    tip: Vec3,
+    width: f32,
+    depth: f32,
+    bend_roll: f32,
+) {
     let direction = tip - root;
     let length = direction.length();
-    if !direction.is_finite() || !length.is_finite() || length <= 0.0001 {
+    if !direction.is_finite()
+        || !length.is_finite()
+        || length <= 0.0001
+        || !bend_roll.is_finite()
+    {
         return;
     }
-    let rotation = Quat::from_rotation_arc(Vec3::Y, direction / length);
+    let rotation = Quat::from_rotation_arc(Vec3::Y, direction / length)
+        * Quat::from_rotation_y(bend_roll);
     parts.push(Part {
         anchor: Anchor {
             joint: JointId::Head,
@@ -349,8 +361,8 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
     );
     add(
         Head,
-        Vec3::new(0.0, 0.18, 0.10),
-        Vec3::new(1.08, 0.80, 0.91),
+        Vec3::new(0.0, 0.18, 0.06),
+        Vec3::new(1.08, 0.80, 0.99),
         Shape::HairCap,
         Tint::Hair,
         0.0,
@@ -360,24 +372,27 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
     // casual direction instead of five detached forehead leaves.
     hair_lock(
         parts,
-        Vec3::new(-0.34, 0.42, -0.31),
-        Vec3::new(0.22, 0.13, -0.48),
-        0.25,
-        0.23,
+        Vec3::new(-0.38, 0.38, -0.22),
+        Vec3::new(0.02, 0.04, -0.45),
+        0.22,
+        0.32,
+        0.05,
     );
     hair_lock(
         parts,
-        Vec3::new(-0.18, 0.43, -0.31),
-        Vec3::new(-0.34, 0.17, -0.47),
+        Vec3::new(-0.15, 0.34, -0.19),
+        Vec3::new(-0.38, 0.15, -0.38),
         0.20,
-        0.18,
+        0.26,
+        -0.55,
     );
     hair_lock(
         parts,
-        Vec3::new(0.20, 0.43, -0.28),
-        Vec3::new(0.36, 0.17, -0.43),
+        Vec3::new(0.20, 0.39, -0.22),
+        Vec3::new(0.38, 0.20, -0.32),
         0.19,
-        0.18,
+        0.25,
+        0.45,
     );
     hair_lock(
         parts,
@@ -385,6 +400,7 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
         Vec3::new(-0.54, 0.03, 0.46),
         0.14,
         0.22,
+        -0.30,
     );
     hair_lock(
         parts,
@@ -392,6 +408,7 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
         Vec3::new(0.54, 0.08, 0.43),
         0.14,
         0.22,
+        0.35,
     );
 }
 
@@ -483,7 +500,7 @@ mod tests {
     }
 
     #[test]
-    fn authored_hair_locks_have_buried_roots_and_bounded_transforms() {
+    fn authored_hair_locks_have_bounded_roots_and_finite_transforms() {
         let recipe = body_recipe(BodyId::Person);
         let parts = super::super::character::parts_for(
             &recipe,
