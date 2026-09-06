@@ -44,8 +44,8 @@ const TORSO: &[[f32; 3]] = &[
     [0.09, 0.44, 0.44],
     [0.25, 0.48, 0.47],
     [0.55, 0.47, 0.45],
-    [0.74, 0.46, 0.39],
-    [0.91, 0.36, 0.29],
+    [0.74, 0.48, 0.40],
+    [0.91, 0.40, 0.31],
     [1.0, 0.19, 0.23],
 ];
 // Hair wraps the back/sides of the skull with an uneven lower edge. It is
@@ -76,13 +76,13 @@ const POCKET: &[[f32; 3]] = &[
     [1.0, 0.27, 0.20],
 ];
 const LOCK: &[[f32; 3]] = &[
-    [0.0, 0.40, 0.42],
-    [0.16, 0.44, 0.45],
-    [0.38, 0.39, 0.41],
-    [0.62, 0.30, 0.34],
-    [0.82, 0.19, 0.23],
-    [0.94, 0.10, 0.13],
-    [1.0, 0.045, 0.060],
+    [0.0, 0.39, 0.40],
+    [0.16, 0.48, 0.47],
+    [0.38, 0.46, 0.44],
+    [0.62, 0.36, 0.37],
+    [0.82, 0.23, 0.26],
+    [0.94, 0.12, 0.15],
+    [1.0, 0.035, 0.055],
 ];
 const SHOE: &[[f32; 3]] = &[
     [0.0, 0.43, 0.46],
@@ -135,7 +135,7 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
         }
         Shape::HairCap => {
             let (x, z) = profile(HAIR, t);
-            (x, z, 0.65)
+            (x, z, 0.82)
         }
         Shape::Torso => {
             let (x, z) = profile(TORSO, t);
@@ -190,18 +190,23 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
             }
         }
         Shape::HairCap => {
-            p.y += (-sin).max(0.0).powi(3) * (1.0 - t) * 0.68;
-            p.y += (1.0 + (angle * 5.0 + 0.6).sin()) * 0.07 * (1.0 - t).powi(3);
-            // Two broad, shallow contour changes keep the back cap from
-            // reading as a perfectly smooth helmet without adding strand
-            // noise to the silhouette.
-            p.y += (0.012 + (angle * 2.0 + 0.7).sin() * 0.010) * (1.0 - t).powi(2);
+            p.y += (-sin).max(0.0).powi(3) * (1.0 - t) * 0.56;
+            p.y += (1.0 + (angle * 5.0 + 0.6).sin()) * 0.045 * (1.0 - t).powi(3);
+            // Broad combed lobes are geometry, so the hair catches light and
+            // retains an irregular silhouette from the rear and low camera.
+            let sweep = angle * 7.0 + t * 3.2 + 0.7;
+            let lobe = sweep.cos() * 0.018 * (t * std::f32::consts::PI).sin();
+            p.x += cos * lobe + (t * std::f32::consts::PI).sin() * 0.025;
+            p.z += sin * lobe;
+            p.y += (angle * 3.0 + t * 2.0).sin() * 0.018 * t * (1.0 - t);
         }
         Shape::HairLock => {
-            // The authored transform supplies the root-to-tip sweep. This
-            // small cross-section bow keeps the lock soft without turning it
-            // into a second banana-shaped centerline.
-            p.x += (t * std::f32::consts::PI).sin() * 0.045;
+            let arch = (t * std::f32::consts::PI).sin();
+            p.x += arch * 0.07;
+            p.z += arch * 0.045;
+            let groove = (angle * 3.0 + t * 1.3).cos() * 0.012 * arch;
+            p.x += cos * groove;
+            p.z += sin * groove;
         }
         Shape::Shoe => {
             p.z = (p.z + t * 0.14 - 0.03) * 0.95;

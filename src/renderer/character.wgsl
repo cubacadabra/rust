@@ -182,7 +182,16 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
         let visibility=1.0-smoothstep(0.35,1.0,uv_footprint*48.0);
         lit *= 0.94+sin(input.uv.x*301.5929)*0.075*visibility;
     }
-    if input.material.w == 1.0 || input.material.w == 8.0 || input.material.w == 12.0 || input.material.w == 14.0 {
+    if input.material.w == 13.0 {
+        // Broad, filtered comb marks support the sculpted locks. Their warm
+        // highlights stay tied to lighting instead of painted white stripes.
+        let visibility = 1.0-smoothstep(0.22,0.85,uv_footprint*18.0);
+        let comb = 0.5+0.5*cos(input.uv.x*37.6991+input.uv.y*3.0);
+        lit *= 1.0-(1.0-comb)*0.10*visibility;
+        lit += base*vec3<f32>(0.20,0.12,0.065)
+            *pow(max(dot(normal,half_vector),0.0),18.0)*visibility;
+    }
+    if input.material.w == 1.0 || input.material.w == 8.0 || input.material.w == 12.0 || input.material.w == 14.0 || input.material.w == 17.0 {
         // A low-frequency weave cue rewards close inspection without adding a
         // texture binding or high-frequency sparkle to distant characters.
         let frequency = 90.0;

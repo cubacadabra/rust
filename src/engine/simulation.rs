@@ -121,8 +121,7 @@ impl Engine {
         self.view_yaw = portal.destination_yaw;
         self.player.facing_yaw = portal.destination_yaw;
         self.target_yaw = portal.destination_yaw;
-        self.view_pitch = -0.095;
-        self.target_pitch = -0.095;
+        // Portals reset heading but preserve the user's orbit elevation.
         self.agents.clear();
         self.remote_players.clear();
         self.next_spawn_at = f32::MAX;

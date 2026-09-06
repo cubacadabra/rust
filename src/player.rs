@@ -5,8 +5,10 @@ use crate::engine::{
 use crate::math::{Vec2, damp};
 use crate::world::overlaps_obstacle;
 
-pub(crate) const WALK_CYCLE_DISTANCE: f32 = 2.65;
+#[allow(dead_code)]
+pub(crate) const WALK_CYCLE_DISTANCE: f32 = crate::character::gait::WALK_DISTANCE;
 
+#[allow(dead_code)]
 pub(crate) fn walk_cycle_delta(distance: f32) -> f32 {
     distance.max(0.0) / WALK_CYCLE_DISTANCE * std::f32::consts::TAU
 }
@@ -51,8 +53,9 @@ impl Engine {
             self.player.facing_yaw += turn * (1.0 - (-16.0 * delta).exp());
         }
         let speed = if sprinting { RUN_SPEED } else { WALK_SPEED };
-        let target_x = direction.x * speed;
-        let target_z = direction.z * speed;
+        let input_amount = if moving { input_length.min(1.0) } else { 0.0 };
+        let target_x = direction.x * speed * input_amount;
+        let target_z = direction.z * speed * input_amount;
         let acceleration = if self.player.grounded {
             ACCELERATION
         } else {
@@ -71,13 +74,18 @@ impl Engine {
         self.input.look_y = 0.0;
         self.input.zoom_delta = 0.0;
 
+        let previous_position = self.player.position;
         self.move_player_horizontally(delta);
         // The stride phase follows distance actually travelled. If an input
         // is held against a wall, collision zeros the velocity and the feet
         // stop cycling instead of running on a treadmill.
-        let travelled = self.player.velocity[0].hypot(self.player.velocity[2]) * delta;
-        if travelled > 0.0 {
-            self.player.walk_cycle += walk_cycle_delta(travelled);
+        let travelled = (self.player.position[0] - previous_position[0])
+            .hypot(self.player.position[2] - previous_position[2]);
+        if travelled > 0.0 && self.player.grounded {
+            let actual_speed = travelled / delta.max(0.0001);
+            let run = crate::character::gait::run_amount(actual_speed);
+            self.player.walk_cycle += travelled / crate::character::gait::cycle_distance(run)
+                * std::f32::consts::TAU;
         }
         self.player.velocity[1] -= GRAVITY * delta;
         self.move_player_vertically(delta);

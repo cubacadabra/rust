@@ -167,6 +167,12 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
                 secondary.right_foot_target = secondary
                     .right_foot_target
                     .map(|target| target + lineup);
+                secondary.left_ankle_target = secondary
+                    .left_ankle_target
+                    .map(|target| target + lineup);
+                secondary.right_ankle_target = secondary
+                    .right_ankle_target
+                    .map(|target| target + lineup);
             }
             RenderEntity {
                 position: root.to_array(),

@@ -4,10 +4,10 @@
 //! position, velocity, or gameplay state, which keeps cosmetic motion safe to
 //! run at a different rate from simulation and rendering.
 
-use super::{
-    BodyId, FaceParameters, FacePreset, JointId, Pose, STANCE_ANKLE_HEIGHT, body_recipe,
-    foot_is_planted,
-};
+#[cfg(test)]
+use super::STANCE_ANKLE_HEIGHT;
+use super::gait::{self, FootPlant};
+use super::{BodyId, FaceParameters, FacePreset, JointId, Pose, body_recipe};
 use crate::math::damp;
 use crate::types::{
     CharacterEmote, CharacterEntityKey, CharacterMotionEvent, CharacterMotionSample,
@@ -18,6 +18,33 @@ use glam::{EulerRot, Quat, Vec2, Vec3};
 const MAX_PRESENTATION_DELTA: f32 = 0.05;
 const TELEPORT_DISTANCE: f32 = 5.0;
 const LANDING_DURATION: f32 = 0.24;
+const WAVE_DURATION: f32 = 1.35;
+
+/// Exact damped spring response for a constant target over one presentation
+/// tick. Bounded inputs and no numerical integration keep pauses/low FPS calm.
+#[derive(Clone, Copy, Debug, Default)]
+struct MotionSpring {
+    value: Vec3,
+    velocity: Vec3,
+}
+
+impl MotionSpring {
+    fn advance(&mut self, target: Vec3, frequency: f32, damping: f32, delta: f32) -> Vec3 {
+        let omega = frequency * std::f32::consts::TAU;
+        let drag = omega * damping;
+        let oscillation = omega * (1.0 - damping * damping).sqrt();
+        let (sin, cos) = (oscillation * delta).sin_cos();
+        let decay = (-drag * delta).exp();
+        let offset = self.value - target;
+        let velocity = self.velocity;
+        self.value =
+            target + (offset * cos + (velocity + offset * drag) * (sin / oscillation)) * decay;
+        self.velocity = (velocity * cos
+            - (velocity * drag + offset * omega * omega) * (sin / oscillation))
+            * decay;
+        self.value
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct SecondaryMotion {
@@ -32,6 +59,9 @@ pub(crate) struct SecondaryMotion {
     pub(crate) cloth_sway: f32,
     /// Smoothed travel amount, also used by fitted garments/foot placement.
     pub(crate) stride_blend: f32,
+    pub(crate) run_blend: f32,
+    /// Head-local angular lag. Roots remain buried in the hair cap.
+    pub(crate) hair_sway: Vec3,
     /// Normalized envelope for the accepted landing event. Hero leg fitting
     /// consumes this to place the hips before solving planted feet.
     pub(crate) landing_compression: f32,
@@ -39,6 +69,9 @@ pub(crate) struct SecondaryMotion {
     /// converts them back to local space before solving the grounded legs.
     pub(crate) left_foot_target: Option<Vec3>,
     pub(crate) right_foot_target: Option<Vec3>,
+    /// Continuous targets also cover recovery and the final settling step.
+    pub(crate) left_ankle_target: Option<Vec3>,
+    pub(crate) right_ankle_target: Option<Vec3>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -57,16 +90,18 @@ pub(crate) struct CharacterPresentationState {
     last_time: f32,
     last_position: [f32; 3],
     locomotion_blend: f32,
+    run_blend: f32,
+    last_velocity: Vec3,
+    last_facing: f32,
+    body_spring: MotionSpring,
+    hair_spring: MotionSpring,
     landing_timer: f32,
     gap_spring: f32,
     spark_life: f32,
     cloth_sway: f32,
     head_look: f32,
-    last_stride_phase: f32,
-    last_moving: bool,
     last_support_height: Option<f32>,
-    left_foot_target: Option<Vec3>,
-    right_foot_target: Option<Vec3>,
+    feet: [FootPlant; 2],
     face: FaceParameters,
     expression: FacePreset,
     blink_until: f32,
@@ -89,16 +124,18 @@ impl CharacterPresentationState {
             last_time: 0.0,
             last_position: [0.0; 3],
             locomotion_blend: 0.0,
+            run_blend: 0.0,
+            last_velocity: Vec3::ZERO,
+            last_facing: 0.0,
+            body_spring: MotionSpring::default(),
+            hair_spring: MotionSpring::default(),
             landing_timer: 0.0,
             gap_spring: 0.0,
             spark_life: 0.0,
             cloth_sway: 0.0,
             head_look: 0.0,
-            last_stride_phase: 0.0,
-            last_moving: false,
             last_support_height: None,
-            left_foot_target: None,
-            right_foot_target: None,
+            feet: [FootPlant::default(); 2],
             face: FaceParameters::preset(expression),
             expression,
             blink_until: 0.0,
@@ -163,16 +200,18 @@ impl CharacterPresentationState {
         };
         if discontinuity {
             self.locomotion_blend = 0.0;
+            self.run_blend = 0.0;
+            self.last_velocity = Vec3::ZERO;
+            self.body_spring = MotionSpring::default();
+            self.hair_spring = MotionSpring::default();
             self.landing_timer = 0.0;
             self.gap_spring = 0.0;
             self.head_look = 0.0;
             self.spark_life = 0.0;
             self.cloth_sway = 0.0;
             self.wave_until = 0.0;
-            self.last_stride_phase = 0.0;
             self.last_support_height = None;
-            self.left_foot_target = None;
-            self.right_foot_target = None;
+            self.feet = [FootPlant::default(); 2];
         }
         let time = if sample.time.is_finite() {
             sample.time.max(0.0)
@@ -201,7 +240,11 @@ impl CharacterPresentationState {
                 }
             });
         let speed_factor = (speed / 11.5).clamp(0.0, 1.0);
-        let target_blend = if sample.moving {
+        let target_blend = if body == BodyId::Person {
+            // Actual travel includes braking after stick release and excludes
+            // pushing into a wall. A normal-speed person uses the full stride.
+            (speed / crate::engine::WALK_SPEED).clamp(0.0, 1.0)
+        } else if sample.moving {
             if sample.planar_velocity.is_some() {
                 speed_factor
             } else {
@@ -210,7 +253,8 @@ impl CharacterPresentationState {
         } else {
             0.0
         };
-        self.locomotion_blend = damp(self.locomotion_blend, target_blend, 16.0, delta);
+        self.locomotion_blend = damp(self.locomotion_blend, target_blend, 12.0, delta);
+        self.run_blend = damp(self.run_blend, gait::run_amount(speed), 9.0, delta);
 
         if accept_event && sample.event == CharacterMotionEvent::Landing {
             self.landing_timer = LANDING_DURATION;
@@ -237,7 +281,32 @@ impl CharacterPresentationState {
         } else {
             0.0
         };
-        self.head_look = damp(self.head_look, look_delta, 12.0, delta);
+        self.head_look = damp(self.head_look, look_delta, 9.0, delta);
+        let facing = Quat::from_rotation_y(sample.facing_yaw.finite_or_zero());
+        let velocity = sample
+            .planar_velocity
+            .map(|v| Vec3::new(v[0].finite_or_zero(), 0.0, v[1].finite_or_zero()))
+            .unwrap_or(facing * Vec3::new(0.0, 0.0, -speed));
+        let (acceleration, turn_rate) = if delta > 0.0001 && accept_event {
+            (
+                (facing.conjugate() * ((velocity - self.last_velocity) / delta))
+                    .clamp(Vec3::splat(-35.0), Vec3::splat(35.0)),
+                (shortest_angle(sample.facing_yaw.finite_or_zero() - self.last_facing) / delta)
+                    .clamp(-8.0, 8.0),
+            )
+        } else {
+            (Vec3::ZERO, 0.0)
+        };
+        let inertia = self.body_spring.advance(
+            Vec3::new(
+                acceleration.z * 0.0035,
+                -turn_rate * 0.018,
+                turn_rate * speed.min(11.5) * 0.0025 - acceleration.x * 0.003,
+            ),
+            3.2,
+            0.82,
+            delta,
+        );
         let gap_target: f32 = if sample.moving {
             0.20 + if sample.sprinting { 0.08 } else { 0.0 }
         } else {
@@ -269,7 +338,13 @@ impl CharacterPresentationState {
         } else {
             0.0
         };
-        let run = if sample.sprinting { 1.0 } else { 0.0 };
+        let run = if body == BodyId::Person {
+            self.run_blend
+        } else if sample.sprinting {
+            1.0
+        } else {
+            0.0
+        };
         let grounded_height = match sample.support {
             CharacterSupport::Grounded { height } if height.is_finite() => Some(height),
             _ => None,
@@ -279,45 +354,41 @@ impl CharacterPresentationState {
             (None, None) => false,
             _ => true,
         };
-        let movement_changed = self.last_moving != sample.moving;
         if body != BodyId::Person
             || grounded_height.is_none()
             || sample.event == CharacterMotionEvent::Takeoff
             || support_changed
-            || movement_changed
         {
-            self.left_foot_target = None;
-            self.right_foot_target = None;
+            self.feet = [FootPlant::default(); 2];
         }
         if body == BodyId::Person
             && grounded_height.is_some()
             && sample.event != CharacterMotionEvent::Takeoff
             && !discontinuity
         {
-            let previous_grounded = !movement_changed && self.last_support_height.is_some();
-            for (offset, side, target) in [
-                (0.0, -1.0, &mut self.left_foot_target),
-                (std::f32::consts::PI, 1.0, &mut self.right_foot_target),
-            ] {
-                let stance = foot_is_planted(phase + offset);
-                let was_stance = previous_grounded && foot_is_planted(self.last_stride_phase + offset);
-                if !stance {
-                    *target = None;
-                } else if target.is_none() || !was_stance {
-                    *target = foot_target(
-                        &sample,
-                        phase + offset,
-                        side,
-                        self.locomotion_blend,
-                    );
-                }
+            for (foot, (offset, side)) in self
+                .feet
+                .iter_mut()
+                .zip([(0.0, -1.0), (std::f32::consts::PI, 1.0)])
+            {
+                foot.update(
+                    &sample,
+                    gait::footfall(phase + offset, self.locomotion_blend, run),
+                    side,
+                    speed > 0.15,
+                    delta,
+                );
             }
         }
-        self.last_stride_phase = phase;
-        self.last_moving = sample.moving;
         self.last_support_height = grounded_height;
         let swing = phase.sin() * (0.34 + run * 0.22) * self.locomotion_blend;
-        let stride_bob = phase.sin().abs() * 0.038 * self.locomotion_blend;
+        let stride_bob = if body == BodyId::Person {
+            (phase - run * std::f32::consts::PI * 0.34).sin().powi(2)
+                * (0.032 + run * 0.024)
+                * self.locomotion_blend
+        } else {
+            phase.sin().abs() * 0.038 * self.locomotion_blend
+        };
         pose.transforms[JointId::Torso.index()].translation.y += stride_bob;
         // Everyday people remain connected. Existing creature fits retain
         // their authored clearances until their separate art review.
@@ -385,20 +456,70 @@ impl CharacterPresentationState {
         );
         rotate(&mut pose, JointId::Torso, 0.0, self.head_look * 0.14, 0.0);
         if body == BodyId::Person {
-            // Relaxed arms and a slight weight shift give the hero a stance
-            // before an emote starts; hands stay clear of the roomy garment.
-            rotate(&mut pose, JointId::LeftUpperArm, 0.04, 0.0, -0.12);
-            rotate(&mut pose, JointId::RightUpperArm, 0.04, 0.0, 0.12);
-            rotate(&mut pose, JointId::LeftLowerArm, 0.18, 0.0, 0.0);
-            rotate(&mut pose, JointId::RightLowerArm, 0.18, 0.0, 0.0);
-            let idle = 1.0 - self.locomotion_blend;
-            rotate(&mut pose, JointId::Torso, 0.0, 0.0, 0.025 * idle);
-            rotate(&mut pose, JointId::Head, 0.0, 0.0, -0.025 * idle);
+            let amount = self.locomotion_blend;
+            let idle = 1.0 - amount;
+            let counterturn = phase.cos() * amount * (0.045 + run * 0.035);
+            let weight_shift = (phase - 0.35).sin() * amount * 0.018;
+            // Keep shoulders and hips connected while the chest counterturns.
+            pose.transforms[JointId::Torso.index()].translation.x += weight_shift;
+            pose.transforms[JointId::Torso.index()].rotation = Quat::from_euler(
+                EulerRot::XYZ,
+                breath - amount * (0.055 + run * 0.065) + inertia.x,
+                counterturn + self.head_look * 0.12 + inertia.y,
+                0.018 * idle - weight_shift * 0.7 + inertia.z,
+            );
+            pose.transforms[JointId::Head.index()].rotation = Quat::from_euler(
+                EulerRot::XYZ,
+                -breath * 1.2 + amount * (0.035 + run * 0.05) - inertia.x * 0.65,
+                self.head_look * 0.72 - counterturn * 0.75 - inertia.y * 0.5,
+                -0.018 * idle + weight_shift * 0.5 - inertia.z * 0.70,
+            );
+            for (offset, side, arm, elbow, hand) in [
+                (
+                    0.0,
+                    -1.0,
+                    JointId::LeftUpperArm,
+                    JointId::LeftLowerArm,
+                    JointId::LeftHand,
+                ),
+                (
+                    std::f32::consts::PI,
+                    1.0,
+                    JointId::RightUpperArm,
+                    JointId::RightLowerArm,
+                    JointId::RightHand,
+                ),
+            ] {
+                // A forward foot (-Z) pairs with a backward arm. The elbow
+                // folds on the forward stroke; the wrist follows a beat later.
+                let stroke = -(phase + offset - 0.12).cos();
+                let forward = stroke.max(0.0);
+                pose.transforms[arm.index()].rotation = Quat::from_euler(
+                    EulerRot::XYZ,
+                    0.04 + stroke * (0.42 + run * 0.24) * amount,
+                    -side * 0.035 * amount,
+                    side * (0.10 + run * 0.035) - inertia.z * 0.25,
+                );
+                pose.transforms[elbow.index()].rotation = Quat::from_euler(
+                    EulerRot::XYZ,
+                    0.20 + amount * (0.28 + run * 0.42 + forward * 0.28),
+                    0.0,
+                    side * 0.025,
+                );
+                pose.transforms[hand.index()].rotation = Quat::from_euler(
+                    EulerRot::XYZ,
+                    -0.08 - (phase + offset - 0.42).cos() * amount * 0.07,
+                    side * 0.10,
+                    -side * 0.035,
+                );
+            }
         }
 
         // Air poses are driven by explicit support/vertical velocity. A raised
         // block therefore reads as ground, while a ledge fall still animates.
-        if matches!(sample.support, CharacterSupport::Airborne) || vertical_velocity.abs() > 0.5 {
+        if matches!(sample.support, CharacterSupport::Airborne)
+            || (sample.support == CharacterSupport::Unknown && vertical_velocity.abs() > 0.5)
+        {
             let rising = (vertical_velocity / 10.5).clamp(-1.0, 1.0);
             pose.transforms[JointId::Torso.index()].translation.y += rising * 0.026;
             rotate(&mut pose, JointId::Torso, -rising * 0.10, 0.0, 0.0);
@@ -430,11 +551,53 @@ impl CharacterPresentationState {
                 0.0,
                 0.0,
             );
+            if body == BodyId::Person {
+                let tuck = rising.max(0.0);
+                let reach = (-rising).max(0.0);
+                for (side, arm, elbow, thigh, knee, foot) in [
+                    (
+                        -1.0,
+                        JointId::LeftUpperArm,
+                        JointId::LeftLowerArm,
+                        JointId::LeftUpperLeg,
+                        JointId::LeftLowerLeg,
+                        JointId::LeftFoot,
+                    ),
+                    (
+                        1.0,
+                        JointId::RightUpperArm,
+                        JointId::RightLowerArm,
+                        JointId::RightUpperLeg,
+                        JointId::RightLowerLeg,
+                        JointId::RightFoot,
+                    ),
+                ] {
+                    pose.transforms[arm.index()].rotation = Quat::from_euler(
+                        EulerRot::XYZ,
+                        0.30 + tuck * 0.32,
+                        0.0,
+                        side * (0.24 + reach * 0.18),
+                    );
+                    pose.transforms[elbow.index()].rotation = Quat::from_rotation_x(0.50);
+                    pose.transforms[thigh.index()].rotation = Quat::from_rotation_x(
+                        0.30 + tuck * 0.30 + side * 0.10 * self.locomotion_blend,
+                    );
+                    pose.transforms[knee.index()].rotation =
+                        Quat::from_rotation_x(-0.45 - tuck * 0.55 + reach * 0.20);
+                    pose.transforms[foot.index()].rotation = Quat::from_rotation_x(0.10);
+                }
+            }
         }
         let landing_compression = normalized_landing_compression(self.landing_timer);
         if landing_compression > 0.0 {
             pose.transforms[JointId::Torso.index()].translation.y -= landing_compression * 0.075;
-            rotate(&mut pose, JointId::Torso, landing_compression * 0.15, 0.0, 0.0);
+            rotate(
+                &mut pose,
+                JointId::Torso,
+                landing_compression * if body == BodyId::Person { -0.15 } else { 0.15 },
+                0.0,
+                0.0,
+            );
             rotate(
                 &mut pose,
                 JointId::LeftUpperLeg,
@@ -469,35 +632,35 @@ impl CharacterPresentationState {
         if new_emote {
             self.last_emote_sequence = sample.emote_sequence;
             if accept_event && sample.emote == CharacterEmote::Wave {
-                self.wave_until = time + 0.85;
+                self.wave_until = time + WAVE_DURATION;
                 self.spark_life = 0.36;
             }
         }
         let waving = time < self.wave_until;
         if waving {
-            let wave_age = 0.85 - (self.wave_until - time);
+            let wave_age = WAVE_DURATION - (self.wave_until - time);
             let envelope =
-                wave_age.smoothstep(0.0, 0.14) * (self.wave_until - time).smoothstep(0.0, 0.20);
-            let wave = (wave_age * 18.0).sin() * 0.24;
+                wave_age.smoothstep(0.0, 0.24) * (self.wave_until - time).smoothstep(0.0, 0.30);
+            let wave = ((wave_age - 0.20) * 14.0).sin() * 0.22;
             rotate(
                 &mut pose,
                 JointId::RightUpperArm,
                 0.20 * envelope,
                 0.0,
-                (2.25 + wave * 0.3) * envelope,
+                (2.10 + wave * 0.22) * envelope,
             );
             rotate(
                 &mut pose,
                 JointId::RightLowerArm,
                 0.15 * envelope,
                 0.0,
-                (0.25 + wave) * envelope,
+                (0.32 + wave) * envelope,
             );
             rotate(
                 &mut pose,
                 JointId::RightHand,
-                0.0,
-                0.0,
+                -0.12 * envelope,
+                -0.30 * envelope,
                 wave * 1.4 * envelope,
             );
             rotate(
@@ -512,15 +675,36 @@ impl CharacterPresentationState {
         let secondary_scale = if reduced_effects { 0.5 } else { 1.0 };
         self.cloth_sway = damp(
             self.cloth_sway,
-            (vertical_velocity * 0.008 + swing * 0.09 + breath).clamp(-0.14, 0.14),
+            (vertical_velocity * 0.006 - acceleration.z * 0.002 + swing * 0.07 + breath)
+                .clamp(-0.14, 0.14),
             8.0,
             delta,
         );
+        let hair_sway = self
+            .hair_spring
+            .advance(
+                Vec3::new(
+                    acceleration.z * 0.0025
+                        - vertical_velocity * 0.003
+                        - landing_compression * 0.065
+                        + phase.sin() * self.locomotion_blend * 0.018,
+                    -turn_rate * 0.022,
+                    -acceleration.x * 0.002 - inertia.z * 0.25,
+                ),
+                4.0,
+                0.68,
+                delta,
+            )
+            .clamp(Vec3::splat(-0.13), Vec3::splat(0.13));
         let secondary = SecondaryMotion {
             stride_blend: self.locomotion_blend,
+            run_blend: run,
+            hair_sway: hair_sway * secondary_scale,
             landing_compression,
-            left_foot_target: self.left_foot_target,
-            right_foot_target: self.right_foot_target,
+            left_foot_target: self.feet[0].contact,
+            right_foot_target: self.feet[1].contact,
+            left_ankle_target: self.feet[0].ankle,
+            right_ankle_target: self.feet[1].ankle,
             cloth_sway: self.cloth_sway * secondary_scale,
             tail_sway: (time * 2.3 + seed_unit(self.seed) * 5.0).sin() * 0.16 * secondary_scale,
             ear_tilt: (time * 1.7 + 1.0).sin() * 0.07 * secondary_scale,
@@ -537,7 +721,13 @@ impl CharacterPresentationState {
             },
         };
 
-        let reactive_expression = if waving {
+        let reactive_expression = if body == BodyId::Person {
+            if waving {
+                FacePreset::Grin
+            } else {
+                self.expression
+            }
+        } else if waving {
             FacePreset::Excited
         } else if self.landing_timer > 0.0 {
             FacePreset::Surprised
@@ -550,7 +740,16 @@ impl CharacterPresentationState {
         } else {
             self.expression
         };
-        let target_face = FaceParameters::preset(reactive_expression).clamped();
+        let mut target_face = FaceParameters::preset(reactive_expression).clamped();
+        if body == BodyId::Person {
+            // Keep the chosen personality during travel; effort and impact
+            // modify it gently instead of switching to a scowl or gasp.
+            target_face.eye_opening *= 1.0 - run * 0.07 - landing_compression * 0.12;
+            if matches!(sample.support, CharacterSupport::Airborne) {
+                target_face.eye_opening += 0.07;
+                target_face.mouth_opening += 0.08;
+            }
+        }
         self.face = blend_face(self.face, target_face, delta);
         if time >= self.next_blink && time >= self.blink_until {
             self.blink_count = self.blink_count.wrapping_add(1);
@@ -559,8 +758,14 @@ impl CharacterPresentationState {
         }
         let mut face = self.face;
         if time < self.blink_until {
-            face.eye_opening = 0.06;
-            face.eye_asymmetry = 0.0;
+            let age = (0.12 - (self.blink_until - time)) / 0.12;
+            let closure = if age < 0.38 {
+                gait::ease(age / 0.38)
+            } else {
+                1.0 - gait::ease((age - 0.38) / 0.62)
+            };
+            face.eye_opening = face.eye_opening * (1.0 - closure) + 0.06 * closure;
+            face.eye_asymmetry *= 1.0 - closure;
         }
         let look_idle = (1.0 - self.locomotion_blend).clamp(0.0, 1.0);
         face.look.x = (self.head_look * 0.10
@@ -580,26 +785,11 @@ impl CharacterPresentationState {
         self.last_sequence = Some(sample.sequence);
         self.last_time = time;
         self.last_position = sample.position;
+        self.last_velocity = velocity;
+        self.last_facing = sample.facing_yaw.finite_or_zero();
         self.output = Some(output);
         output
     }
-}
-
-fn foot_target(
-    sample: &CharacterMotionSample,
-    phase: f32,
-    side: f32,
-    stride_blend: f32,
-) -> Option<Vec3> {
-    if !sample.facing_yaw.is_finite()
-        || !sample.position.iter().all(|value| value.is_finite())
-        || !phase.is_finite()
-    {
-        return None;
-    }
-    let z = -phase.cos() * stride_blend.clamp(0.0, 1.0) * 0.28 - 0.04;
-    let local = Vec3::new(side * 0.28, STANCE_ANKLE_HEIGHT, z);
-    Some(Vec3::from_array(sample.position) + Quat::from_rotation_y(sample.facing_yaw) * local)
 }
 
 fn normalized_landing_compression(landing_timer: f32) -> f32 {
@@ -748,25 +938,32 @@ mod tests {
         let mut takeoff = sample(2, 1.0 / 60.0);
         takeoff.event = CharacterMotionEvent::Takeoff;
         takeoff.support = CharacterSupport::Airborne;
-        assert!(state
-            .evaluate(takeoff, BodyId::Person, false)
-            .secondary
-            .left_foot_target
-            .is_none());
+        assert!(
+            state
+                .evaluate(takeoff, BodyId::Person, false)
+                .secondary
+                .left_foot_target
+                .is_none()
+        );
 
         let mut teleport = sample(3, 2.0 / 60.0);
         teleport.position = [20.0, 0.0, 0.0];
-        assert!(state
-            .evaluate(teleport, BodyId::Person, false)
-            .secondary
-            .left_foot_target
-            .is_none());
+        assert!(
+            state
+                .evaluate(teleport, BodyId::Person, false)
+                .secondary
+                .left_foot_target
+                .is_none()
+        );
 
         let mut raised = sample(1, 0.0);
         raised.position[1] = 2.0;
         raised.support = CharacterSupport::Grounded { height: 2.0 };
-        let raised_output = CharacterPresentationState::new(raised.key, BodyId::Person)
-            .evaluate(raised, BodyId::Person, false);
+        let raised_output = CharacterPresentationState::new(raised.key, BodyId::Person).evaluate(
+            raised,
+            BodyId::Person,
+            false,
+        );
         assert!(
             (raised_output
                 .secondary

@@ -22,7 +22,10 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
     match part.feature {
         Feature::None | Feature::Sole => {}
         Feature::Cloth => {
-            local *= Mat4::from_rotation_x(entity.secondary.cloth_sway);
+            let pivot = Vec3::Y * part.spec.size.y * 0.42;
+            local = local * Mat4::from_translation(pivot)
+                * Mat4::from_rotation_x(entity.secondary.cloth_sway)
+                * Mat4::from_translation(-pivot);
         }
         Feature::Eye(side) => {
             let look = face.look * if is_hero(entity) { 0.45 } else { 1.0 };
@@ -30,7 +33,8 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 * Mat4::from_translation(glam::Vec3::new(look.x, look.y, 0.0))
                 * Mat4::from_scale(glam::Vec3::new(
                     1.0,
-                    (face.eye_opening + side * face.eye_asymmetry).clamp(0.05, 1.25),
+                    (face.eye_opening + side * face.eye_asymmetry)
+                        .clamp(if is_hero(entity) { 0.20 } else { 0.05 }, 1.25),
                     1.0,
                 ));
         }
@@ -85,6 +89,20 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                     1.0 + intensity * 1.8,
                 ));
         }
+    }
+    if is_hero(entity) && part.shape == super::hero_geometry::Shape::HairLock {
+        let (_, orientation, _) = local.to_scale_rotation_translation();
+        let turn = orientation.conjugate() * entity.secondary.hair_sway;
+        let pivot = Vec3::NEG_Y * part.spec.size.y * 0.5;
+        local = local * Mat4::from_translation(pivot)
+            * Mat4::from_quat(Quat::from_scaled_axis(turn))
+            * Mat4::from_translation(-pivot);
+    } else if is_hero(entity) && part.shape == super::hero_geometry::Shape::Cord {
+        let pivot = Vec3::Y * part.spec.size.y * 0.5;
+        local = local * Mat4::from_translation(pivot)
+            * Mat4::from_rotation_x(entity.secondary.cloth_sway * 1.3)
+            * Mat4::from_rotation_z(entity.secondary.hair_sway.z * 0.6)
+            * Mat4::from_translation(-pivot);
     }
     if part.shape != super::hero_geometry::Shape::Rounded {
         local *= Mat4::from_scale(part.spec.size);
@@ -370,18 +388,16 @@ impl CharacterRenderer {
                 entity.secondary.spark_life,
                 entity.secondary.cloth_sway,
                 entity.secondary.stride_blend,
+                entity.secondary.run_blend,
                 entity.secondary.landing_compression,
             ]
             .iter()
             .all(|value| value.is_finite())
-            && entity
-                .secondary
-                .left_foot_target
-                .is_none_or(|target| target.is_finite())
-            && entity
-                .secondary
-                .right_foot_target
-                .is_none_or(|target| target.is_finite())
+            || !entity.secondary.hair_sway.is_finite()
+            || [
+                entity.secondary.left_foot_target, entity.secondary.right_foot_target,
+                entity.secondary.left_ankle_target, entity.secondary.right_ankle_target,
+            ].into_iter().flatten().any(|target| !target.is_finite())
         {
             return;
         }
@@ -482,8 +498,8 @@ impl CharacterRenderer {
                         ]
                     }
                     character::Tint::Hair => {
-                        instance.tint = [0.31, 0.14, 0.065, tint[3]];
-                        instance.material = [0.74, 0.045, 0.0, 13.0];
+                        instance.tint = [0.30, 0.155, 0.085, tint[3]];
+                        instance.material = [0.52, 0.11, 0.0, 13.0];
                     }
                     _ => {}
                 }

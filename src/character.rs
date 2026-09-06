@@ -5,11 +5,14 @@ pub(crate) mod animation;
 pub(crate) mod catalog;
 pub(crate) mod definition;
 pub(crate) mod face;
+pub(crate) mod gait;
 pub(crate) mod rig;
 
 pub(crate) const STANCE_ANKLE_HEIGHT: f32 = 0.05;
-pub(crate) const GAIT_STANCE_PHASE: f32 = std::f32::consts::PI * 0.40;
+#[cfg(any(test, feature = "dev-showcase"))]
+pub(crate) const GAIT_STANCE_PHASE: f32 = std::f32::consts::PI;
 
+#[cfg(any(test, feature = "dev-showcase"))]
 pub(crate) fn foot_is_planted(phase: f32) -> bool {
     phase.rem_euclid(std::f32::consts::TAU) < GAIT_STANCE_PHASE
 }

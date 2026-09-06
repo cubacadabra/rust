@@ -30,7 +30,8 @@ pub(super) fn orbit(
     // Ease out from the eye instead of jumping behind the head on entry.
     let radius = distance * ((distance - 0.75) / 0.75).clamp(0.0, 1.0);
     let mut position = target + outward * radius;
-    position.y = position.y.max(0.15);
+    // Low-angle orbits also stay above a raised support under the character.
+    position.y = position.y.max(player.y + 0.15);
     (position, target)
 }
 

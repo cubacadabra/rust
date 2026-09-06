@@ -147,8 +147,12 @@ impl Engine {
             time: self.elapsed,
             position: self.player.position,
             facing_yaw: self.player.facing_yaw,
-            look_yaw: if self.player.moving || self.camera_distance <= 0.75 {
+            look_yaw: if self.camera_distance <= 0.75 {
                 self.view_yaw
+            } else if self.player.velocity[0].hypot(self.player.velocity[2]) > 0.15 {
+                // Let the gaze lead travel through a turn. Orbiting the
+                // camera must not pull a running person's head sideways.
+                (-self.player.velocity[0]).atan2(-self.player.velocity[2])
             } else {
                 self.player.facing_yaw
             },

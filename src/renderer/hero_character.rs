@@ -2,11 +2,10 @@
 //! required to expose the joints or resemble manufactured toy components.
 use super::character::{Anchor, Feature, Part, Tint};
 use super::hero_geometry::Shape;
-use crate::character::{
-    BodyPart, GAIT_STANCE_PHASE, JointId, Pose, STANCE_ANKLE_HEIGHT, foot_is_planted,
-};
+#[cfg(test)]
+use crate::character::foot_is_planted;
+use crate::character::{BodyPart, JointId, Pose, STANCE_ANKLE_HEIGHT, gait};
 use glam::{Mat4, Quat, Vec3};
-use std::sync::OnceLock;
 
 /// Review alternatives share the actual production meshes and lighting.
 /// These are art studies, not new persistent appearance IDs.
@@ -33,30 +32,6 @@ fn sole_center_y() -> f32 {
     -STANCE_ANKLE_HEIGHT - super::hero_geometry::SHOE_MIN_NORMALIZED_Y * SOLE_HEIGHT
 }
 
-fn sole_contact_offset() -> Vec3 {
-    static OFFSET: OnceLock<Vec3> = OnceLock::new();
-    *OFFSET.get_or_init(|| {
-        let part_transform = Mat4::from_translation(Vec3::new(0.0, sole_center_y(), -0.09))
-            * Mat4::from_scale(Vec3::new(0.51, SOLE_HEIGHT, 0.77));
-        let mesh = super::hero_geometry::build(
-            Shape::Shoe,
-            Vec3::ONE,
-            super::character_quality::CharacterLod::Mid.subdivisions(),
-        );
-        let vertices: Vec<Vec3> = mesh
-            .vertices
-            .iter()
-            .map(|vertex| part_transform.transform_point3(vertex.position))
-            .collect();
-        let minimum_y = vertices.iter().map(|vertex| vertex.y).fold(f32::INFINITY, f32::min);
-        let contacts: Vec<Vec3> = vertices
-            .into_iter()
-            .filter(|vertex| vertex.y <= minimum_y + 0.0005)
-            .collect();
-        contacts.iter().copied().sum::<Vec3>() / contacts.len().max(1) as f32
-    })
-}
-
 /// Refit the shared hierarchy without changing collision, camera height, or
 /// stored appearance. Keep animated offsets relative to the shared rest rig.
 pub(super) fn fit_pose(
@@ -67,9 +42,9 @@ pub(super) fn fit_pose(
     use JointId::*;
     let mut pose = entity.pose;
     let (leg, hip, torso, head) = match study {
-        Study::Everyday => (0.53, 1.105, 1.81, 1.08),
-        Study::LongerLegs => (0.59, 1.225, 1.93, 1.04),
-        Study::SoftShoulders => (0.49, 1.025, 1.73, 1.10),
+        Study::Everyday => (0.62, 1.235, 1.91, 1.04),
+        Study::LongerLegs => (0.66, 1.315, 1.99, 1.02),
+        Study::SoftShoulders => (0.58, 1.155, 1.83, 1.06),
     };
     let mut place = |joint: JointId, at: Vec3| {
         pose.transforms[joint.index()].translation +=
@@ -109,85 +84,88 @@ pub(super) fn fit_pose(
         place(knee, Vec3::new(0.0, -leg, 0.0));
         place(foot, Vec3::new(0.0, -leg, 0.0));
     }
-    if matches!(entity.support, crate::types::CharacterSupport::Grounded {..}) {
+    if let crate::types::CharacterSupport::Grounded { height } = entity.support {
         let blend = entity.secondary.stride_blend.clamp(0.0, 1.0);
-        let landing_compression = if entity.secondary.landing_compression.is_finite() {
-            entity.secondary.landing_compression.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let landing_drop = landing_compression * 0.075;
-        for (offset, thigh, knee, foot) in [
-            (0.0, LeftUpperLeg, LeftLowerLeg, LeftFoot),
+        let run = entity.secondary.run_blend.clamp(0.0, 1.0);
+        let root = Mat4::from_rotation_translation(
+            Quat::from_rotation_y(entity.yaw),
+            Vec3::from_array(entity.position),
+        );
+        let inverse_root = root.inverse();
+        let support_y = height - entity.position[1];
+        // The pelvis follows the chest vertically. Compressing the knees also
+        // lowers the hoodie, rather than opening a gap at the waist.
+        pose.transforms[Torso.index()].translation.y -= blend * (0.17 + run * 0.055);
+        let pelvis_drop = pose.transforms[Torso.index()].translation.y - torso;
+        let pelvis_sway = pose.transforms[Torso.index()].translation.x;
+        for (offset, side, thigh, knee, foot, ankle_target, contact_target) in [
+            (
+                0.0,
+                -1.0,
+                LeftUpperLeg,
+                LeftLowerLeg,
+                LeftFoot,
+                entity.secondary.left_ankle_target,
+                entity.secondary.left_foot_target,
+            ),
             (
                 std::f32::consts::PI,
+                1.0,
                 RightUpperLeg,
                 RightLowerLeg,
                 RightFoot,
+                entity.secondary.right_ankle_target,
+                entity.secondary.right_foot_target,
             ),
         ] {
-            let phase = entity.walk_cycle + offset;
-            // The authored stance interval keeps the sole planted; the rest
-            // of the cycle lifts the foot for its return. Both knees bend
-            // toward +Z.
-            let swing_phase = phase.rem_euclid(std::f32::consts::TAU);
-            let swing_t = ((swing_phase - GAIT_STANCE_PHASE)
-                / (std::f32::consts::TAU - GAIT_STANCE_PHASE))
-                .clamp(0.0, 1.0);
-            let lift = (swing_t * std::f32::consts::PI).sin()
-                * blend
-                * if entity.sprinting { 0.24 } else { 0.16 };
-            let target = if foot_is_planted(phase) {
-                if foot == LeftFoot {
-                    entity.secondary.left_foot_target
-                } else {
-                    entity.secondary.right_foot_target
-                }
-            } else {
-                None
-            };
-            let target_local = target.and_then(|world| {
-                let root = Mat4::from_rotation_translation(
-                    Quat::from_rotation_y(entity.yaw),
-                    Vec3::from_array(entity.position),
-                );
-                let local = root.inverse().transform_point3(world);
+            let step = gait::footfall(entity.walk_cycle + offset, blend, run);
+            let target_local = ankle_target.or(contact_target).and_then(|world| {
+                let local = inverse_root.transform_point3(world);
                 local.is_finite().then_some(local)
             });
-            let hip_y = hip - blend * 0.065 - landing_drop;
-            pose.transforms[thigh.index()].translation.y = hip_y;
-            let z = target_local.map_or(
-                -phase.cos() * blend * 0.28 - 0.04,
-                |local| local.z,
+            let hip_position = Vec3::new(
+                side * gait::FOOT_SPACING + pelvis_sway,
+                hip + pelvis_drop,
+                0.0,
             );
-            let ankle_y = target_local.map_or(STANCE_ANKLE_HEIGHT + lift, |local| local.y);
-            let down = hip_y - ankle_y;
-            let d = down.hypot(z).min(leg * 2.0 - 0.001);
-            let hip_angle = (-z).atan2(down) + (d / (2.0 * leg)).clamp(-1.0, 1.0).acos();
-            let knee_angle = -((d * d - 2.0 * leg * leg) / (2.0 * leg * leg))
-                .clamp(-1.0, 1.0)
-                .acos();
-            pose.transforms[thigh.index()].rotation = Quat::from_rotation_x(hip_angle);
-            pose.transforms[knee.index()].rotation = Quat::from_rotation_x(knee_angle);
-            pose.transforms[foot.index()].rotation = Quat::from_rotation_x(-hip_angle - knee_angle);
-            if let Some(target) = target_local {
-                // The target is the planted ankle. Compensate the foot joint's
-                // local translation for the rotated outsole so the generated
-                // sole contact, rather than only the rig ankle, remains fixed.
-                let joints = rest.world_matrices(&pose.transforms);
-                let foot_world = joints[foot.index()];
-                let lower_leg_world = joints[knee.index()];
-                let contact = foot_world.transform_point3(Vec3::ZERO)
-                    + foot_world.transform_vector3(sole_contact_offset());
-                let desired_contact = Vec3::new(
-                    target.x,
-                    target.y - STANCE_ANKLE_HEIGHT,
-                    target.z,
-                );
-                let correction = desired_contact - contact;
-                pose.transforms[foot.index()].translation +=
-                    lower_leg_world.inverse().transform_vector3(correction);
-            }
+            pose.transforms[thigh.index()].translation = hip_position;
+            let mut ankle = target_local.unwrap_or(Vec3::new(
+                side * gait::FOOT_SPACING,
+                support_y + STANCE_ANKLE_HEIGHT + step.lift + step.pitch.sin().abs() * 0.38,
+                step.travel,
+            ));
+            // Keep both chains anatomical during tight turns and world
+            // corrections. Limit reach without changing either bone length.
+            ankle.x = side * (side * ankle.x).max(0.13);
+            ankle.y = ankle
+                .y
+                .max(support_y + STANCE_ANKLE_HEIGHT)
+                .min(hip_position.y - 0.12);
+            let down = hip_position.y - ankle.y;
+            let reach = leg * 2.0 - 0.002;
+            let max_planar = (reach * reach - down * down).max(0.0).sqrt();
+            let planar =
+                glam::Vec2::new(ankle.x - hip_position.x, ankle.z).clamp_length_max(max_planar);
+            ankle.x = hip_position.x + planar.x;
+            ankle.z = planar.y;
+            let to_ankle = ankle - hip_position;
+            let distance = to_ankle.length().clamp(0.001, reach);
+            let axis = to_ankle.normalize_or_zero();
+            let bend = (Vec3::NEG_Z - axis * axis.dot(Vec3::NEG_Z)).normalize_or_zero();
+            let knee_position = hip_position
+                + axis * distance * 0.5
+                + bend * (leg * leg - distance * distance * 0.25).max(0.0).sqrt();
+            let upper = Quat::from_rotation_arc(
+                Vec3::NEG_Y,
+                (knee_position - hip_position).normalize_or_zero(),
+            );
+            let lower =
+                Quat::from_rotation_arc(Vec3::NEG_Y, (ankle - knee_position).normalize_or_zero());
+            pose.transforms[thigh.index()].rotation = upper;
+            pose.transforms[knee.index()].rotation = upper.conjugate() * lower;
+            let clearance = ((ankle.y - support_y - STANCE_ANKLE_HEIGHT) / 0.12).clamp(0.0, 1.0);
+            pose.transforms[foot.index()].rotation =
+                lower.conjugate() * Quat::from_rotation_x(step.pitch * clearance);
         }
     }
     pose
@@ -228,7 +206,7 @@ fn piece(
         spec: BodyPart::new(size, 0.0),
         tint,
         shape,
-        feature: if joint == JointId::Torso && position.z > 0.3 {
+        feature: if joint == JointId::Torso && position.z >= 0.3 {
             Feature::Cloth
         } else {
             Feature::None
@@ -276,7 +254,7 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
         match (joint, p.tint, p.feature) {
             (Torso, Tint::Shirt, _) => {
                 p.shape = Shape::Torso;
-                p.spec = BodyPart::new(Vec3::new(1.08, 1.04, 0.73), 0.0);
+                p.spec = BodyPart::new(Vec3::new(1.10, 1.04, 0.73), 0.0);
             }
             (Head, Tint::Skin, Feature::None) if p.spec.size.x > 0.5 => {
                 p.shape = Shape::Head;
@@ -295,19 +273,19 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
             }
             (LeftHand | RightHand, Tint::Skin, _) => {
                 p.shape = Shape::Pebble;
-                p.spec = BodyPart::new(Vec3::new(0.25, 0.31, 0.21), 0.0);
+                p.spec = BodyPart::new(Vec3::new(0.26, 0.32, 0.23), 0.0);
                 p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.055, -0.025));
             }
             (LeftUpperLeg | RightUpperLeg, Tint::Pants, _) => {
                 p.shape = Shape::Shorts;
-                p.spec = BodyPart::new(Vec3::new(0.47, 0.59, 0.49), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.10, 0.0));
+                p.spec = BodyPart::new(Vec3::new(0.46, 0.66, 0.47), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.15, 0.0));
             }
             (LeftLowerLeg | RightLowerLeg, Tint::Pants, _) => {
                 p.shape = Shape::Limb;
                 p.tint = Tint::Skin;
-                p.spec = BodyPart::new(Vec3::new(0.26, 0.66, 0.28), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.20, 0.0));
+                p.spec = BodyPart::new(Vec3::new(0.28, 0.76, 0.30), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.25, 0.0));
             }
             (LeftFoot | RightFoot, Tint::Shoes, _) => {
                 p.shape = Shape::Shoe;
@@ -316,12 +294,8 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
             }
             (LeftFoot | RightFoot, Tint::Ivory, Feature::Sole) => {
                 p.shape = Shape::Shoe;
-                p.spec = BodyPart::new(
-                    Vec3::new(0.51, SOLE_HEIGHT, 0.77),
-                    0.0,
-                );
-                p.anchor.local =
-                    Mat4::from_translation(Vec3::new(0.0, sole_center_y(), -0.09));
+                p.spec = BodyPart::new(Vec3::new(0.51, SOLE_HEIGHT, 0.77), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, sole_center_y(), -0.09));
             }
             (LeftFoot | RightFoot, Tint::Ivory, _) => {
                 p.shape = Shape::Laces;
@@ -329,7 +303,7 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
                 p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.26, -0.24));
             }
             (_, _, Feature::Eye(side)) => {
-                p.spec = BodyPart::new(Vec3::new(0.125, 0.185, 0.025), 0.0);
+                p.spec = BodyPart::new(Vec3::new(0.115, 0.170, 0.025), 0.0);
                 p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.205, 0.015, -0.423))
                     * Mat4::from_rotation_y(-side * 0.14);
             }
@@ -413,66 +387,91 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
     }
     add(
         Torso,
-        Vec3::new(0.0, 0.58, 0.0),
-        Vec3::new(0.29, 0.38, 0.30),
+        Vec3::new(0.0, 0.56, 0.0),
+        Vec3::new(0.29, 0.34, 0.30),
         Shape::Limb,
         Tint::Skin,
         0.0,
     );
     add(
         Head,
-        Vec3::new(0.0, 0.18, 0.10),
-        Vec3::new(1.08, 0.80, 0.91),
+        Vec3::new(0.0, 0.18, 0.065),
+        Vec3::new(1.10, 0.83, 0.96),
         Shape::HairCap,
         Tint::Hair,
         0.0,
     );
-    // Roots sit inside the cap and the tips fall toward the face/temples.
-    // The deliberately asymmetric sweep gives the paused silhouette a soft,
-    // casual direction instead of five detached forehead leaves.
+    // Overlapping broad roots form one swept hairstyle. Free tips sit above
+    // the eyes, with shorter temple locks and a layered back silhouette.
     hair_lock(
         parts,
-        Vec3::new(-0.34, 0.42, -0.31),
-        Vec3::new(0.22, 0.13, -0.48),
-        0.25,
-        0.23,
+        Vec3::new(-0.23, 0.46, -0.26),
+        Vec3::new(0.28, 0.22, -0.47),
+        0.36,
+        0.29,
     );
     hair_lock(
         parts,
-        Vec3::new(-0.18, 0.43, -0.31),
-        Vec3::new(-0.34, 0.17, -0.47),
-        0.20,
-        0.18,
+        Vec3::new(-0.19, 0.43, -0.25),
+        Vec3::new(-0.41, 0.12, -0.43),
+        0.27,
+        0.24,
     );
     hair_lock(
         parts,
-        Vec3::new(0.20, 0.43, -0.28),
-        Vec3::new(0.36, 0.17, -0.43),
-        0.19,
-        0.18,
+        Vec3::new(0.09, 0.48, -0.21),
+        Vec3::new(0.44, 0.11, -0.36),
+        0.28,
+        0.26,
     );
     hair_lock(
         parts,
-        Vec3::new(-0.43, 0.28, 0.06),
-        Vec3::new(-0.54, 0.03, 0.46),
-        0.14,
-        0.22,
+        Vec3::new(-0.38, 0.37, 0.02),
+        Vec3::new(-0.51, -0.045, 0.18),
+        0.24,
+        0.28,
     );
     hair_lock(
         parts,
-        Vec3::new(0.43, 0.30, 0.10),
-        Vec3::new(0.54, 0.08, 0.43),
-        0.14,
-        0.22,
+        Vec3::new(0.38, 0.36, 0.05),
+        Vec3::new(0.52, -0.015, 0.21),
+        0.24,
+        0.27,
     );
+    for (root, tip, width, depth) in [
+        (
+            Vec3::new(-0.13, 0.49, 0.03),
+            Vec3::new(0.28, 0.40, -0.25),
+            0.32,
+            0.27,
+        ),
+        (
+            Vec3::new(-0.27, 0.40, 0.29),
+            Vec3::new(-0.34, -0.10, 0.44),
+            0.26,
+            0.24,
+        ),
+        (
+            Vec3::new(0.0, 0.43, 0.35),
+            Vec3::new(0.09, -0.15, 0.49),
+            0.32,
+            0.25,
+        ),
+        (
+            Vec3::new(0.26, 0.38, 0.29),
+            Vec3::new(0.38, -0.08, 0.42),
+            0.25,
+            0.24,
+        ),
+    ] {
+        hair_lock(parts, root, tip, width, depth);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::character::{
-        AnimationOutput, BodyId, CharacterPresentationState, body_recipe,
-    };
+    use crate::character::{AnimationOutput, BodyId, CharacterPresentationState, body_recipe};
     use crate::types::{
         CharacterEmote, CharacterEntityKey, CharacterEntityKind, CharacterMotionEvent,
         CharacterMotionSample, CharacterMotionSource, CharacterSupport,
@@ -542,12 +541,13 @@ mod tests {
             * joints[part.anchor.joint.index()]
             * part.anchor.local
             * Mat4::from_scale(part.spec.size);
-        assert!(transform.to_cols_array().iter().all(|value| value.is_finite()));
-        let mesh = super::super::hero_geometry::build(
-            part.shape,
-            Vec3::ONE,
-            lod.subdivisions(),
+        assert!(
+            transform
+                .to_cols_array()
+                .iter()
+                .all(|value| value.is_finite())
         );
+        let mesh = super::super::hero_geometry::build(part.shape, Vec3::ONE, lod.subdivisions());
         mesh.vertices
             .iter()
             .map(|vertex| transform.transform_point3(vertex.position).y)
@@ -557,10 +557,8 @@ mod tests {
     #[test]
     fn authored_hair_locks_have_bounded_roots_and_finite_transforms() {
         let recipe = body_recipe(BodyId::Person);
-        let parts = super::super::character::parts_for(
-            &recipe,
-            crate::character::OutfitId::EverydayHoodie,
-        );
+        let parts =
+            super::super::character::parts_for(&recipe, crate::character::OutfitId::EverydayHoodie);
         let cap = parts
             .iter()
             .find(|part| part.shape == Shape::HairCap)
@@ -585,14 +583,14 @@ mod tests {
                     .iter()
                     .all(|value| value.is_finite())
             );
-            let root = lock
-                .anchor
-                .local
-                .transform_point3(Vec3::new(0.0, -lock.spec.size.y * 0.5, 0.0));
-            let tip = lock
-                .anchor
-                .local
-                .transform_point3(Vec3::new(0.0, lock.spec.size.y * 0.5, 0.0));
+            let root =
+                lock.anchor
+                    .local
+                    .transform_point3(Vec3::new(0.0, -lock.spec.size.y * 0.5, 0.0));
+            let tip =
+                lock.anchor
+                    .local
+                    .transform_point3(Vec3::new(0.0, lock.spec.size.y * 0.5, 0.0));
             assert!(root.is_finite() && tip.is_finite());
             assert!((tip - root).length() > 0.0001);
             let root_offset = (root - cap_center).abs();
@@ -609,9 +607,11 @@ mod tests {
                     Vec3::ONE,
                     lod.subdivisions(),
                 );
-                assert!(mesh.vertices.iter().all(|vertex| {
-                    transform.transform_point3(vertex.position).is_finite()
-                }));
+                assert!(
+                    mesh.vertices
+                        .iter()
+                        .all(|vertex| { transform.transform_point3(vertex.position).is_finite() })
+                );
             }
         }
     }
@@ -661,10 +661,8 @@ mod tests {
     #[test]
     fn generated_soles_touch_support_through_all_person_studies_lods_and_strides() {
         let recipe = body_recipe(BodyId::Person);
-        let parts = super::super::character::parts_for(
-            &recipe,
-            crate::character::OutfitId::EverydayHoodie,
-        );
+        let parts =
+            super::super::character::parts_for(&recipe, crate::character::OutfitId::EverydayHoodie);
         let soles: Vec<_> = parts
             .iter()
             .copied()
@@ -710,9 +708,7 @@ mod tests {
                                     minimum >= support_height - 0.001,
                                     "sole penetrates support: study={study:?} lod={lod:?} moving={moving} sprinting={sprinting} height={support_height} phase={phase} minimum={minimum}"
                                 );
-                                if stride_blend == 0.0
-                                    || foot_is_planted(phase + offset)
-                                {
+                                if stride_blend == 0.0 || foot_is_planted(phase + offset) {
                                     assert!(
                                         (minimum - support_height).abs() < 0.001,
                                         "stance sole misses support: study={study:?} lod={lod:?} moving={moving} sprinting={sprinting} height={support_height} phase={phase} minimum={minimum}"
@@ -758,10 +754,8 @@ mod tests {
     #[test]
     fn landing_presentation_compresses_grounded_hero_and_keeps_soles_planted() {
         let recipe = body_recipe(BodyId::Person);
-        let parts = super::super::character::parts_for(
-            &recipe,
-            crate::character::OutfitId::EverydayHoodie,
-        );
+        let parts =
+            super::super::character::parts_for(&recipe, crate::character::OutfitId::EverydayHoodie);
         let soles: Vec<_> = parts
             .iter()
             .copied()
@@ -781,13 +775,7 @@ mod tests {
             };
             let mut presentation = CharacterPresentationState::new(key, BodyId::Person);
             presentation.evaluate(
-                sample(
-                    key,
-                    0,
-                    0.0,
-                    support_height,
-                    CharacterMotionEvent::None,
-                ),
+                sample(key, 0, 0.0, support_height, CharacterMotionEvent::None),
                 BodyId::Person,
                 false,
             );
@@ -863,7 +851,8 @@ mod tests {
             for entity in [peak_entity, recovery_entity, settled_entity] {
                 for lod in super::super::character_quality::CharacterLod::ALL {
                     for part in &soles {
-                        let minimum = actual_sole_min_y(entity, Study::Everyday, &recipe, *part, lod);
+                        let minimum =
+                            actual_sole_min_y(entity, Study::Everyday, &recipe, *part, lod);
                         assert!(
                             (minimum - support_height).abs() < 0.001,
                             "landing sole misses support: lod={lod:?} height={support_height} minimum={minimum}"

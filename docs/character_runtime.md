@@ -34,6 +34,14 @@ on roster reorder. Discontinuities reset cosmetic state. Reduced effects
 suppress event sparks. People do not expand joint gaps in ordinary movement.
 
 Local appearance changes are bounded and atomic, with monotonic revisions.
+The person's gait shares distance/phase timing between simulation and fitted
+presentation. Walking uses half-cycle contacts; running lengthens the stride
+and adds flight time. World ankle targets continue through recovery and settle
+after stopping. Both leg bones retain their lengths during the 3D solve;
+unreachable targets are bounded instead of stretching the ankle attachment.
+Torso/head and hair lag use bounded analytic springs. The hair cap remains
+attached to the head; individual locks rotate around buried roots.
+
 The version-1 remote JSON envelope is capped at 64 KiB and 17 remote slots.
 Packets carry stable opaque IDs, generation, sequence, optional motion/support
 data and appearance revisions. Older packet/motion sequences are rejected;

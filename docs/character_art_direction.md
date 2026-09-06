@@ -2,6 +2,24 @@
 
 Status: active direction; one person in development, visual approval open.
 
+September 6 motion pass: `10.mov` was reviewed with ffmpeg at 2 fps across
+the 9.53-second clip, with a 12 fps crop of the running/turning sequence.
+The reference has a steady elevated-to-low orbit, opposing arm/leg strokes,
+folded elbows, clear heel recovery, full layered hair and a stable graphic
+smile. It does not demonstrate a jump or a range of facial expressions.
+
+The green-hoodie person now uses shared contact/recovery timing, longer legs,
+fixed-length leg solving, a final settling step, acceleration/turn lean,
+head stabilization, root-attached hair follow-through and hanging drawstrings.
+Hair has broad overlapping locks and restrained comb highlights. Travel keeps
+the selected face with subtle effort/blink changes; the greeting eases in and
+out. Jump and landing refinements extend this direction using the existing
+physics. The initial orbit is slightly elevated; user orbit controls remain.
+
+This is a one-shot implementation awaiting hands-on review. Earlier images
+and test measurements in `art/person/` predate this pass. No new tests or
+sample scenes were rendered for this change, as requested.
+
 Cubacadabra characters are **friendly, expressive adventurers with a soft-cube
 influence**. They should read as people and creatures wearing recognizable
 clothes. Appeal in an ordinary paused gameplay view is the design goal.

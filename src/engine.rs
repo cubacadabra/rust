@@ -46,6 +46,9 @@ const LOOK_SENSITIVITY: f32 = 0.0062;
 const MAX_PITCH: f32 = 1.45;
 // Leave enough room for a genuinely high bird's-eye view of the world.
 const MAX_CAMERA_DISTANCE: f32 = 120.0;
+// Slightly elevated, full-body framing leaves room to read footfalls and turns.
+pub(crate) const DEFAULT_ORBIT_PITCH: f32 = 0.26;
+pub(crate) const DEFAULT_ORBIT_DISTANCE: f32 = 7.6;
 
 pub struct Engine {
     pub(crate) player: Player,

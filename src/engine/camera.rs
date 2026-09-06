@@ -13,11 +13,11 @@ impl Engine {
 
     pub fn reset_showcase_view(&mut self) {
         self.view_yaw = 0.0;
-        self.view_pitch = -0.095;
+        self.view_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
         self.target_yaw = 0.0;
-        self.target_pitch = -0.095;
-        self.camera_distance = 8.0;
-        self.target_camera_distance = 8.0;
+        self.target_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
+        self.camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
+        self.target_camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
     }
 
     /// Apply a server correction to the locally predicted player. The server
@@ -63,7 +63,7 @@ impl Engine {
         self.view_yaw -= turns;
         self.target_yaw -= turns;
         self.view_yaw = damp(self.view_yaw, self.target_yaw, 18.0, delta);
-        self.view_pitch = damp(self.view_pitch, self.target_pitch, 10.0, delta);
+        self.view_pitch = damp(self.view_pitch, self.target_pitch, 14.0, delta);
         self.camera_distance = damp(
             self.camera_distance,
             self.target_camera_distance,
