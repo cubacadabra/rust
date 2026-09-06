@@ -370,6 +370,7 @@ impl CharacterRenderer {
                 entity.secondary.spark_life,
                 entity.secondary.cloth_sway,
                 entity.secondary.stride_blend,
+                entity.secondary.landing_compression,
             ]
             .iter()
             .all(|value| value.is_finite())

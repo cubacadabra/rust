@@ -85,6 +85,12 @@ pub(super) fn fit_pose(
     }
     if matches!(entity.support, crate::types::CharacterSupport::Grounded {..}) {
         let blend = entity.secondary.stride_blend.clamp(0.0, 1.0);
+        let landing_compression = if entity.secondary.landing_compression.is_finite() {
+            entity.secondary.landing_compression.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let landing_drop = landing_compression * 0.075;
         for (offset, thigh, knee, foot) in [
             (0.0, LeftUpperLeg, LeftLowerLeg, LeftFoot),
             (
@@ -99,7 +105,7 @@ pub(super) fn fit_pose(
             // half lifts the foot for its return. Both knees bend toward +Z.
             let lift = (-phase.sin()).max(0.0) * blend * if entity.sprinting { 0.24 } else { 0.16 };
             let z = -phase.cos() * blend * 0.28 - 0.04;
-            let hip_y = hip - blend * 0.065;
+            let hip_y = hip - blend * 0.065 - landing_drop;
             pose.transforms[thigh.index()].translation.y = hip_y;
             let down = hip_y - STANCE_ANKLE_HEIGHT - lift;
             let d = down.hypot(z).min(leg * 2.0 - 0.001);
@@ -361,8 +367,89 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::character::{BodyId, body_recipe};
-    use crate::types::CharacterSupport;
+    use crate::character::{
+        AnimationOutput, BodyId, CharacterPresentationState, body_recipe,
+    };
+    use crate::types::{
+        CharacterEmote, CharacterEntityKey, CharacterEntityKind, CharacterMotionEvent,
+        CharacterMotionSample, CharacterMotionSource, CharacterSupport,
+    };
+
+    fn sample(
+        key: CharacterEntityKey,
+        sequence: u64,
+        time: f32,
+        support_height: f32,
+        event: CharacterMotionEvent,
+    ) -> CharacterMotionSample {
+        CharacterMotionSample {
+            key,
+            sequence,
+            time,
+            position: [0.0, support_height, 0.0],
+            facing_yaw: 0.0,
+            look_yaw: 0.0,
+            planar_velocity: Some([0.0, 0.0]),
+            vertical_velocity: Some(0.0),
+            support: CharacterSupport::Grounded {
+                height: support_height,
+            },
+            stride_phase: 0.0,
+            moving: false,
+            sprinting: false,
+            source: CharacterMotionSource::Simulation,
+            event,
+            emote: CharacterEmote::None,
+            emote_sequence: 0,
+            appearance_revision: 0,
+        }
+    }
+
+    fn render_entity(
+        animation: AnimationOutput,
+        support_height: f32,
+    ) -> super::super::RenderEntity {
+        super::super::RenderEntity {
+            body: BodyId::Person,
+            outfit: crate::character::OutfitId::EverydayHoodie,
+            position: [0.0, support_height, 0.0],
+            pose: animation.pose,
+            secondary: animation.secondary,
+            support: CharacterSupport::Grounded {
+                height: support_height,
+            },
+            ..Default::default()
+        }
+    }
+
+    fn actual_sole_min_y(
+        entity: super::super::RenderEntity,
+        study: Study,
+        recipe: &crate::character::BodyRecipe,
+        part: Part,
+        lod: super::super::character_quality::CharacterLod,
+    ) -> f32 {
+        let pose = fit_pose(entity, study, &recipe.rig);
+        let joints = recipe.rig.world_matrices(&pose.transforms);
+        let root = Mat4::from_rotation_translation(
+            Quat::from_rotation_y(entity.yaw),
+            Vec3::from_array(entity.position),
+        );
+        let transform = root
+            * joints[part.anchor.joint.index()]
+            * part.anchor.local
+            * Mat4::from_scale(part.spec.size);
+        assert!(transform.to_cols_array().iter().all(|value| value.is_finite()));
+        let mesh = super::super::hero_geometry::build(
+            part.shape,
+            Vec3::ONE,
+            lod.subdivisions(),
+        );
+        mesh.vertices
+            .iter()
+            .map(|vertex| transform.transform_point3(vertex.position).y)
+            .fold(f32::INFINITY, f32::min)
+    }
 
     #[test]
     fn fitted_stance_joints_are_level_and_separated_through_the_stride() {
@@ -423,33 +510,6 @@ mod tests {
             .collect();
         assert_eq!(soles.len(), 2);
 
-        let sole_min_y = |entity: super::super::RenderEntity,
-                          study: Study,
-                          part: Part,
-                          lod: super::super::character_quality::CharacterLod|
-         -> f32 {
-            let pose = fit_pose(entity, study, &recipe.rig);
-            let joints = recipe.rig.world_matrices(&pose.transforms);
-            let root = Mat4::from_rotation_translation(
-                Quat::from_rotation_y(entity.yaw),
-                Vec3::from_array(entity.position),
-            );
-            let transform = root
-                * joints[part.anchor.joint.index()]
-                * part.anchor.local
-                * Mat4::from_scale(part.spec.size);
-            assert!(transform.to_cols_array().iter().all(|value| value.is_finite()));
-            let mesh = super::super::hero_geometry::build(
-                part.shape,
-                Vec3::ONE,
-                lod.subdivisions(),
-            );
-            mesh.vertices
-                .iter()
-                .map(|vertex| transform.transform_point3(vertex.position).y)
-                .fold(f32::INFINITY, f32::min)
-        };
-
         for study in [Study::Everyday, Study::LongerLegs, Study::SoftShoulders] {
             for lod in super::super::character_quality::CharacterLod::ALL {
                 for (moving, sprinting, stride_blend) in [
@@ -480,7 +540,7 @@ mod tests {
                                 } else {
                                     std::f32::consts::PI
                                 };
-                                let minimum = sole_min_y(entity, study, *part, lod);
+                                let minimum = actual_sole_min_y(entity, study, &recipe, *part, lod);
                                 assert!(
                                     minimum >= support_height - 0.001,
                                     "sole penetrates support: study={study:?} lod={lod:?} moving={moving} sprinting={sprinting} height={support_height} phase={phase} minimum={minimum}"
@@ -517,13 +577,132 @@ mod tests {
                                     ..Default::default()
                                 };
                                 entity.secondary.stride_blend = stride_blend;
-                                let minimum = sole_min_y(entity, study, *part, lod);
+                                let minimum = actual_sole_min_y(entity, study, &recipe, *part, lod);
                                 assert!(
                                     minimum > support_height + 0.001,
                                     "mid-swing sole must clear support: study={study:?} lod={lod:?} height={support_height} minimum={minimum}"
                                 );
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn landing_presentation_compresses_grounded_hero_and_keeps_soles_planted() {
+        let recipe = body_recipe(BodyId::Person);
+        let parts = super::super::character::parts_for(
+            &recipe,
+            crate::character::OutfitId::EverydayHoodie,
+        );
+        let soles: Vec<_> = parts
+            .iter()
+            .copied()
+            .filter(|part| {
+                matches!(part.feature, Feature::Sole)
+                    && matches!(part.anchor.joint, JointId::LeftFoot | JointId::RightFoot)
+            })
+            .collect();
+        assert_eq!(soles.len(), 2);
+
+        for support_height in [0.0, 2.0] {
+            let key = CharacterEntityKey {
+                kind: CharacterEntityKind::LocalPlayer,
+                slot: 0,
+                generation: support_height as u32 + 1,
+                identity: 17,
+            };
+            let mut presentation = CharacterPresentationState::new(key, BodyId::Person);
+            presentation.evaluate(
+                sample(
+                    key,
+                    0,
+                    0.0,
+                    support_height,
+                    CharacterMotionEvent::None,
+                ),
+                BodyId::Person,
+                false,
+            );
+            let peak = presentation.evaluate(
+                sample(
+                    key,
+                    1,
+                    1.0 / 60.0,
+                    support_height,
+                    CharacterMotionEvent::Landing,
+                ),
+                BodyId::Person,
+                false,
+            );
+            assert!(peak.secondary.landing_compression > 0.0);
+            assert!(peak.secondary.landing_compression <= 1.0);
+
+            let recovery = presentation.evaluate(
+                sample(
+                    key,
+                    7,
+                    7.0 / 60.0,
+                    support_height,
+                    CharacterMotionEvent::None,
+                ),
+                BodyId::Person,
+                false,
+            );
+            assert!(recovery.secondary.landing_compression > 0.0);
+            assert!(recovery.secondary.landing_compression < peak.secondary.landing_compression);
+
+            let mut settled = recovery;
+            for sequence in 8..=30 {
+                settled = presentation.evaluate(
+                    sample(
+                        key,
+                        sequence,
+                        sequence as f32 / 60.0,
+                        support_height,
+                        CharacterMotionEvent::None,
+                    ),
+                    BodyId::Person,
+                    false,
+                );
+            }
+            assert_eq!(settled.secondary.landing_compression, 0.0);
+
+            let peak_entity = render_entity(peak, support_height);
+            let recovery_entity = render_entity(recovery, support_height);
+            let settled_entity = render_entity(settled, support_height);
+            let peak_pose = fit_pose(peak_entity, Study::Everyday, &recipe.rig);
+            let recovery_pose = fit_pose(recovery_entity, Study::Everyday, &recipe.rig);
+            let settled_pose = fit_pose(settled_entity, Study::Everyday, &recipe.rig);
+            let peak_world = recipe.rig.world_matrices(&peak_pose.transforms);
+            let recovery_world = recipe.rig.world_matrices(&recovery_pose.transforms);
+            let settled_world = recipe.rig.world_matrices(&settled_pose.transforms);
+            let peak_hip = peak_world[JointId::LeftUpperLeg.index()].w_axis.y;
+            let recovery_hip = recovery_world[JointId::LeftUpperLeg.index()].w_axis.y;
+            let settled_hip = settled_world[JointId::LeftUpperLeg.index()].w_axis.y;
+            assert!((settled_hip - peak_hip - 0.075).abs() < 0.0001);
+            assert!(peak_hip < recovery_hip && recovery_hip < settled_hip);
+            assert!(
+                peak_pose.transforms[JointId::LeftLowerLeg.index()]
+                    .rotation
+                    .to_scaled_axis()
+                    .x
+                    < settled_pose.transforms[JointId::LeftLowerLeg.index()]
+                        .rotation
+                        .to_scaled_axis()
+                        .x
+            );
+
+            for entity in [peak_entity, recovery_entity, settled_entity] {
+                for lod in super::super::character_quality::CharacterLod::ALL {
+                    for part in &soles {
+                        let minimum = actual_sole_min_y(entity, Study::Everyday, &recipe, *part, lod);
+                        assert!(
+                            (minimum - support_height).abs() < 0.001,
+                            "landing sole misses support: lod={lod:?} height={support_height} minimum={minimum}"
+                        );
                     }
                 }
             }

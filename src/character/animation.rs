@@ -14,6 +14,7 @@ use glam::{EulerRot, Quat, Vec2};
 
 const MAX_PRESENTATION_DELTA: f32 = 0.05;
 const TELEPORT_DISTANCE: f32 = 5.0;
+const LANDING_DURATION: f32 = 0.24;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct SecondaryMotion {
@@ -28,6 +29,9 @@ pub(crate) struct SecondaryMotion {
     pub(crate) cloth_sway: f32,
     /// Smoothed travel amount, also used by fitted garments/foot placement.
     pub(crate) stride_blend: f32,
+    /// Normalized envelope for the accepted landing event. Hero leg fitting
+    /// consumes this to place the hips before solving planted feet.
+    pub(crate) landing_compression: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -188,7 +192,7 @@ impl CharacterPresentationState {
         self.locomotion_blend = damp(self.locomotion_blend, target_blend, 16.0, delta);
 
         if accept_event && sample.event == CharacterMotionEvent::Landing {
-            self.landing_timer = 0.24;
+            self.landing_timer = LANDING_DURATION;
             self.spark_life = 0.36;
         } else if accept_event && sample.event == CharacterMotionEvent::Takeoff {
             self.landing_timer = 0.0;
@@ -360,35 +364,35 @@ impl CharacterPresentationState {
                 0.0,
             );
         }
-        if self.landing_timer > 0.0 {
-            let compression = (self.landing_timer / 0.24).smoothstep(0.0, 1.0);
-            pose.transforms[JointId::Torso.index()].translation.y -= compression * 0.075;
-            rotate(&mut pose, JointId::Torso, compression * 0.15, 0.0, 0.0);
+        let landing_compression = normalized_landing_compression(self.landing_timer);
+        if landing_compression > 0.0 {
+            pose.transforms[JointId::Torso.index()].translation.y -= landing_compression * 0.075;
+            rotate(&mut pose, JointId::Torso, landing_compression * 0.15, 0.0, 0.0);
             rotate(
                 &mut pose,
                 JointId::LeftUpperLeg,
-                -compression * 0.20,
+                -landing_compression * 0.20,
                 0.0,
                 0.0,
             );
             rotate(
                 &mut pose,
                 JointId::RightUpperLeg,
-                -compression * 0.20,
+                -landing_compression * 0.20,
                 0.0,
                 0.0,
             );
             rotate(
                 &mut pose,
                 JointId::LeftUpperArm,
-                compression * 0.15,
+                landing_compression * 0.15,
                 0.0,
                 0.0,
             );
             rotate(
                 &mut pose,
                 JointId::RightUpperArm,
-                compression * 0.15,
+                landing_compression * 0.15,
                 0.0,
                 0.0,
             );
@@ -447,6 +451,7 @@ impl CharacterPresentationState {
         );
         let secondary = SecondaryMotion {
             stride_blend: self.locomotion_blend,
+            landing_compression,
             cloth_sway: self.cloth_sway * secondary_scale,
             tail_sway: (time * 2.3 + seed_unit(self.seed) * 5.0).sin() * 0.16 * secondary_scale,
             ear_tilt: (time * 1.7 + 1.0).sin() * 0.07 * secondary_scale,
@@ -508,6 +513,17 @@ impl CharacterPresentationState {
         self.last_position = sample.position;
         self.output = Some(output);
         output
+    }
+}
+
+fn normalized_landing_compression(landing_timer: f32) -> f32 {
+    if landing_timer.is_finite() {
+        (landing_timer / LANDING_DURATION)
+            .clamp(0.0, 1.0)
+            .smoothstep(0.0, 1.0)
+            .clamp(0.0, 1.0)
+    } else {
+        0.0
     }
 }
 
@@ -630,6 +646,108 @@ mod tests {
         let first = state.evaluate(sample(1, 0.0), BodyId::Person, false);
         let repeated = state.evaluate(sample(1, 1.0), BodyId::Person, false);
         assert_eq!(first, repeated);
+    }
+
+    #[test]
+    fn landing_compression_is_event_driven_and_clears_on_reset_paths() {
+        let mut state = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+        assert_eq!(
+            state
+                .evaluate(sample(0, 0.0), BodyId::Person, false)
+                .secondary
+                .landing_compression,
+            0.0
+        );
+
+        let mut landing = sample(1, 1.0 / 60.0);
+        landing.event = CharacterMotionEvent::Landing;
+        let peak = state.evaluate(landing, BodyId::Person, false);
+        assert_eq!(peak.secondary.landing_compression, 1.0);
+
+        // A duplicate sequence returns the cached output even if a caller
+        // supplies a later wall-clock value.
+        let repeated = state.evaluate(sample(1, 1.0), BodyId::Person, false);
+        assert_eq!(repeated, peak);
+
+        let decayed = state.evaluate(sample(2, 2.0 / 60.0), BodyId::Person, false);
+        assert!(decayed.secondary.landing_compression > 0.0);
+        assert!(decayed.secondary.landing_compression < 1.0);
+        assert!(decayed.secondary.landing_compression.is_finite());
+
+        let mut takeoff = sample(3, 3.0 / 60.0);
+        takeoff.event = CharacterMotionEvent::Takeoff;
+        assert_eq!(
+            state
+                .evaluate(takeoff, BodyId::Person, false)
+                .secondary
+                .landing_compression,
+            0.0
+        );
+
+        let mut landing_again = sample(4, 4.0 / 60.0);
+        landing_again.event = CharacterMotionEvent::Landing;
+        assert_eq!(
+            state
+                .evaluate(landing_again, BodyId::Person, false)
+                .secondary
+                .landing_compression,
+            1.0
+        );
+        let mut teleport = sample(5, 5.0 / 60.0);
+        teleport.position = [20.0, 0.0, 0.0];
+        assert_eq!(
+            state
+                .evaluate(teleport, BodyId::Person, false)
+                .secondary
+                .landing_compression,
+            0.0
+        );
+
+        let mut replacement = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+        replacement.evaluate(sample(0, 0.0), BodyId::Person, false);
+        let mut replacement_landing = sample(1, 1.0 / 60.0);
+        replacement_landing.event = CharacterMotionEvent::Landing;
+        assert_eq!(
+            replacement
+                .evaluate(replacement_landing, BodyId::Person, false)
+                .secondary
+                .landing_compression,
+            1.0
+        );
+        let mut roster_replacement = sample(2, 2.0 / 60.0);
+        roster_replacement.key.generation = 2;
+        assert_eq!(
+            replacement
+                .evaluate(roster_replacement, BodyId::Person, false)
+                .secondary
+                .landing_compression,
+            0.0
+        );
+
+        state.reset(BodyId::Person);
+        assert_eq!(
+            state
+                .evaluate(sample(0, 0.0), BodyId::Person, false)
+                .secondary
+                .landing_compression,
+            0.0
+        );
+    }
+
+    #[test]
+    fn landing_leg_rotation_remains_for_non_hero_presentations() {
+        let mut state = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Cat);
+        state.evaluate(sample(0, 0.0), BodyId::Cat, false);
+        let mut landing = sample(1, 1.0 / 60.0);
+        landing.event = CharacterMotionEvent::Landing;
+        let output = state.evaluate(landing, BodyId::Cat, false);
+        assert!(
+            output.pose.transforms[JointId::LeftUpperLeg.index()]
+                .rotation
+                .to_scaled_axis()
+                .x
+                < -0.19
+        );
     }
 
     #[test]
