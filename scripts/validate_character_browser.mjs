@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 
 const backend = process.argv[2] ?? 'webgpu';
 if (!['webgpu', 'gl'].includes(backend)) throw new Error('Expected webgpu or gl');
-const output = resolve(process.argv[3] ?? `docs/baselines/magic-characters/phase3/${backend}`);
+const output = resolve(process.argv[3] ?? `target/character-review/phase3/${backend}`);
 const bindings = resolve('target/phase3-browser');
 const chrome = process.env.CHARACTER_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const profile = await mkdtemp(join(tmpdir(), 'character-gpu-chrome-'));

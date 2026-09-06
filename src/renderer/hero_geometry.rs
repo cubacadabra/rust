@@ -43,14 +43,24 @@ const TORSO: &[[f32; 3]] = &[
     [0.91, 0.30, 0.29],
     [1.0, 0.19, 0.23],
 ];
+// Hair wraps the back/sides of the skull with an uneven lower edge. It is
+// deliberately not another copy of the cheek/jaw profile.
+const HAIR: &[[f32; 3]] = &[
+    [0.0, 0.40, 0.39],
+    [0.22, 0.47, 0.46],
+    [0.48, 0.49, 0.49],
+    [0.74, 0.43, 0.43],
+    [0.91, 0.28, 0.29],
+    [1.0, 0.025, 0.025],
+];
 const SLEEVE: &[[f32; 3]] = &[
-    [0.0, 0.28, 0.29],
-    [0.12, 0.34, 0.34],
-    [0.32, 0.46, 0.45],
-    [0.57, 0.47, 0.46],
-    [0.80, 0.39, 0.40],
-    [0.95, 0.26, 0.29],
-    [1.0, 0.19, 0.22],
+    [0.0, 0.31, 0.32],
+    [0.12, 0.37, 0.38],
+    [0.35, 0.40, 0.41],
+    [0.57, 0.43, 0.43],
+    [0.80, 0.47, 0.47],
+    [0.93, 0.40, 0.40],
+    [1.0, 0.12, 0.14],
 ];
 const POCKET: &[[f32; 3]] = &[
     [0.0, 0.34, 0.20],
@@ -113,9 +123,13 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
         );
     }
     let (rx, rz, exponent) = match shape {
-        Shape::Head | Shape::HairCap => {
+        Shape::Head => {
             let (x, z) = profile(HEAD, t);
             (x, z, 0.58)
+        }
+        Shape::HairCap => {
+            let (x, z) = profile(HAIR, t);
+            (x, z, 0.65)
         }
         Shape::Torso => {
             let (x, z) = profile(TORSO, t);
@@ -161,8 +175,8 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
             // surface normals as well as silhouette, with no texture noise.
             let hem = (-((t - 0.18) / 0.16).powi(2)).exp();
             let elbow = (-((t - 0.68) / 0.19).powi(2)).exp();
-            let fold = (angle * 5.0 + t * 19.0).sin() * hem * 0.016
-                + (angle * 3.0 - t * 23.0).sin() * elbow * 0.011;
+            let fold = (angle * 5.0 + t * 19.0).sin() * hem * 0.007
+                + (angle * 3.0 - t * 23.0).sin() * elbow * 0.004;
             p.x += cos * fold;
             p.z += sin * fold;
             if shape == Shape::Sleeve {
@@ -170,7 +184,8 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
             }
         }
         Shape::HairCap => {
-            p.y += (-sin).max(0.0).powi(3) * (1.0 - t) * 0.45;
+            p.y += (-sin).max(0.0).powi(3) * (1.0 - t) * 0.68;
+            p.y += (1.0 + (angle * 5.0 + 0.6).sin()) * 0.07 * (1.0 - t).powi(3);
         }
         Shape::HairLock => {
             p.x += (t * std::f32::consts::PI).sin() * 0.10;

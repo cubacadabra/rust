@@ -59,8 +59,8 @@ pub(super) struct RenderEntity {
 pub(crate) enum CharacterRenderMode {
     /// The compatibility renderer: hard cuboids and legacy colors.
     Legacy = 0,
-    /// The production rigid-piece renderer: rounded meshes, outfits and
-    /// character-only material/effect passes.
+    /// The production character renderer: authored meshes, fitted garments
+    /// and character-only material/effect passes. The name is ABI-compatible.
     #[default]
     Magic = 1,
 }

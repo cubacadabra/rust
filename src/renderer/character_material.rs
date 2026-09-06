@@ -22,7 +22,8 @@ impl CharacterVertex {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub(super) struct CharacterInstance {
-    // Affine rows pack translation into w; normal rows contain inverse transpose.
+    // Affine rows pack translation into w; normal xyz rows are inverse transpose.
+    // For the continuous hoodie sleeve only, normal w lanes carry elbow axis-angle.
     pub transform: [[f32; 4]; 3],
     pub normal: [[f32; 4]; 3],
     pub tint: [f32; 4],

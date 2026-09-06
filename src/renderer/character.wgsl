@@ -24,12 +24,39 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
     let c = max(v, vec3<f32>(0.0));
     return select(1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3<f32>(0.0031308));
 }
+fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
+    return v*cos(angle) + cross(axis,v)*sin(angle) + axis*dot(axis,v)*(1.0-cos(angle));
+}
 @vertex fn vs_main(input: Input) -> Output {
     var output: Output;
-    let p = vec4<f32>(input.position, 1.0);
+    var position = input.position;
+    var normal = input.normal;
+    if input.material.w == 17.0 {
+        // One continuous sleeve, weighted around the existing elbow. The three
+        // normal-row w lanes carry axis-angle; no new attributes/bones/uploads.
+        // Dimensions/pivot match hero_character::{SLEEVE_SIZE,SLEEVE_CENTER,ELBOW}.
+        let size = vec3<f32>(0.46,1.13,0.49);
+        let pivot = vec3<f32>(0.0,-0.12,0.0);
+        let turn = vec3<f32>(input.normal0.w,input.normal1.w,input.normal2.w);
+        let angle = length(turn);
+        let axis = turn / max(angle,0.00001);
+        let physical = position*size;
+        let f = clamp((physical.y+0.22)/0.24,0.0,1.0);
+        let weight = 1.0-f*f*(3.0-2.0*f);
+        let delta = turn_vector(physical-pivot,axis,angle)-(physical-pivot);
+        position = (physical+weight*delta)/size;
+        // Inverse-transpose of the deformation Jacobian, including the weight
+        // gradient. This keeps the bent cloth shading continuous at the elbow.
+        let x = mix(vec3<f32>(1,0,0),turn_vector(vec3<f32>(1,0,0),axis,angle),weight);
+        let y = mix(vec3<f32>(0,1,0),turn_vector(vec3<f32>(0,1,0),axis,angle),weight)
+            + delta*(-6.0*f*(1.0-f)/0.24);
+        let z = mix(vec3<f32>(0,0,1),turn_vector(vec3<f32>(0,0,1),axis,angle),weight);
+        normal = (mat3x3<f32>(cross(y,z),cross(z,x),cross(x,y))*(normal/size))*size;
+    }
+    let p = vec4<f32>(position, 1.0);
     output.world = vec3<f32>(dot(input.row0, p), dot(input.row1, p), dot(input.row2, p));
     output.position = globals.view_projection * vec4<f32>(output.world, 1.0);
-    output.normal = vec3<f32>(dot(input.normal0.xyz, input.normal), dot(input.normal1.xyz, input.normal), dot(input.normal2.xyz, input.normal));
+    output.normal = vec3<f32>(dot(input.normal0.xyz, normal), dot(input.normal1.xyz, normal), dot(input.normal2.xyz, normal));
     output.tint = input.tint;
     output.material = input.material;
     output.uv = input.uv;
@@ -67,13 +94,12 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
             let radius = dot(p,p);
             if radius > 0.94 { discard; }
             coverage=1.0-smoothstep(0.94-max(uv_footprint*4.0,0.008),0.94,radius);
-            color = vec3<f32>(0.98,0.96,0.86) * (0.91 + 0.09 * (1.0-radius));
-            let pupil = p - vec2<f32>(input.material.x + 0.12,input.material.y - 0.06);
-            let iris = dot(pupil / vec2<f32>(0.56,0.63),pupil / vec2<f32>(0.56,0.63));
-            if iris < 1.0 { color = mix(vec3<f32>(0.06,0.20,0.18),vec3<f32>(0.12,0.43,0.36),clamp(-pupil.y + 0.4,0.0,1.0)); }
-            if dot(pupil / vec2<f32>(0.34,0.46),pupil / vec2<f32>(0.34,0.46)) < 1.0 { color=vec3<f32>(0.035,0.045,0.05); }
-            if dot((pupil-vec2<f32>(-0.16,0.26))/0.15,(pupil-vec2<f32>(-0.16,0.26))/0.15)<1.0 { color=vec3<f32>(1.0,0.99,0.93); }
-            if radius>0.81 && p.y>0.0 { color=vec3<f32>(0.16,0.09,0.055); }
+            color = vec3<f32>(0.12,0.085,0.065);
+            // The soft-shoulder study tests one quiet highlight on the same
+            // head/light. The everyday resting face is just dark graphic eyes.
+            if input.material.x > 0.5 && distance(p,vec2<f32>(-0.24,0.30)) < 0.12 {
+                color=vec3<f32>(0.72,0.68,0.59);
+            }
             // Negative z packs eyelid opening for the hero's graphic face.
             // A closing eye becomes a lid stroke, rather than a tiny iris.
             if input.material.z > -0.30 {

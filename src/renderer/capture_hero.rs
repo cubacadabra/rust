@@ -1,4 +1,5 @@
 //! Coordinated hero review: the production model, materials, and animator.
+use super::super::hero_character::Study;
 use super::*;
 use crate::character::{BodyId, CharacterPresentationState, FacePreset};
 use crate::types::{
@@ -57,6 +58,7 @@ pub(super) fn actor(time: f32) -> RenderEntity {
         result.pose = output.pose;
         result.face = output.face;
         result.secondary = output.secondary;
+        result.support = CharacterSupport::Grounded { height: 0.0 };
     }
     result
 }
@@ -86,6 +88,8 @@ pub fn capture_phase9_hero(
         ("hero-face", 2.90, 0.06, 2.3, 2.4),
         ("hero-curious", 2.90, 0.06, 2.3, 1.0),
         ("hero-wink", 2.90, 0.06, 2.3, 5.9),
+        ("hero-wave", 2.70, 0.22, 4.8, 3.4),
+        ("hero-wave-silhouette", 2.70, 0.22, 4.8, 3.4),
     ] {
         let mut frame = config;
         frame.pose_time = time;
@@ -97,43 +101,124 @@ pub fn capture_phase9_hero(
                 yaw,
                 pitch,
                 distance,
+                study: Study::Everyday,
+                silhouette: name == "hero-wave-silhouette",
+                motion: false,
             },
         )?);
     }
-    for frame in 0..=300 {
-        let mut settings = config;
-        settings.pose_time = frame as f32 / 30.0;
-        let mut capture = context.capture(
-            output_dir,
-            settings,
-            Scenario::Hero {
-                name: "hero-motion",
-                yaw: 2.70,
-                pitch: 0.22,
-                distance: 4.8,
-            },
-        )?;
-        let name = format!("hero-{frame:04}");
-        let image = format!("{name}.png");
-        fs::rename(output_dir.join(&capture.image), output_dir.join(&image))
-            .map_err(|e| format!("save hero frame: {e}"))?;
-        capture.name = name;
-        capture.image = image;
-        captures.push(capture);
+    // Comparable views reopen proportion/face review without multiplying
+    // wardrobe IDs or substituting generated illustration for engine evidence.
+    for (study, names) in [
+        (
+            Study::Everyday,
+            [
+                "hero-study-front",
+                "hero-study-side",
+                "hero-study-back",
+                "hero-study-three-quarter",
+                "hero-study-face",
+                "hero-study-silhouette",
+                "hero-study-gameplay",
+            ],
+        ),
+        (
+            Study::LongerLegs,
+            [
+                "longer-front",
+                "longer-side",
+                "longer-back",
+                "longer-three-quarter",
+                "longer-face",
+                "longer-silhouette",
+                "longer-gameplay",
+            ],
+        ),
+        (
+            Study::SoftShoulders,
+            [
+                "soft-front",
+                "soft-side",
+                "soft-back",
+                "soft-three-quarter",
+                "soft-face",
+                "soft-silhouette",
+                "soft-gameplay",
+            ],
+        ),
+    ] {
+        for (index, (yaw, pitch, distance)) in [
+            (std::f32::consts::PI, 0.18, 4.8),
+            (std::f32::consts::FRAC_PI_2, 0.12, 4.8),
+            (0.0, 0.16, 4.8),
+            (2.70, 0.22, 4.8),
+            (2.90, 0.06, 2.3),
+            (2.70, 0.22, 4.8),
+            (0.0, 0.22, 9.0),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut settings = config;
+            settings.pose_time = 2.4;
+            captures.push(context.capture(
+                output_dir,
+                settings,
+                Scenario::Hero {
+                    name: names[index],
+                    yaw,
+                    pitch,
+                    distance,
+                    study,
+                    silhouette: index == 5,
+                    motion: false,
+                },
+            )?);
+        }
+    }
+    for motion in [false, true] {
+        for frame in 0..=300 {
+            let mut settings = config;
+            settings.pose_time = frame as f32 / 30.0;
+            let mut capture = context.capture(
+                output_dir,
+                settings,
+                Scenario::Hero {
+                    name: "hero-motion",
+                    yaw: if motion {
+                        std::f32::consts::FRAC_PI_2
+                    } else {
+                        2.70
+                    },
+                    pitch: 0.22,
+                    distance: if motion { 7.2 } else { 4.8 },
+                    study: Study::Everyday,
+                    silhouette: false,
+                    motion,
+                },
+            )?;
+            let name = format!("{}-{frame:04}", if motion { "gait" } else { "hero" });
+            let image = format!("{name}.png");
+            fs::rename(output_dir.join(&capture.image), output_dir.join(&image))
+                .map_err(|e| format!("save hero frame: {e}"))?;
+            capture.name = name;
+            capture.image = image;
+            captures.push(capture);
+        }
     }
     let report = CaptureReport {
         format_version: FORMAT_VERSION,
-        fixture: "green-hoodie-hero-v1".to_owned(),
+        fixture: "person-direction-studies-v2".to_owned(),
         config,
         adapter,
         captures,
         engine_capacity_characters: 18,
         render_only_stress_characters: 50,
         notes: vec![
-            "Seven static views plus 301 motion frames at 30 fps; production presentation evaluates at 60 Hz.",
+            "30 static views plus two 301-frame timelines (greeting and side-on gait) at 30 fps; presentation evaluates at 60 Hz.",
             "0–1.6s notice; 1.6–3s turn and smile; 3s wave; 4–5.5s grin; 5.5–6.1s wink; settle through 10s.",
             "Studio palette and camera are review-only; geometry, materials, face controls, animation and soft-shadow mesh also run in gameplay.",
-            "The generated concept sheet is a visual target, not a renderer screenshot. This report describes rendered assets only.",
+            "All views are engine renders. Everyday is the working default, not an approved final design. LongerLegs and SoftShoulders are capture-only comparisons.",
         ],
     };
     fs::write(

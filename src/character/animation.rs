@@ -26,6 +26,8 @@ pub(crate) struct SecondaryMotion {
     /// Seconds remaining in a short event burst; zero during steady travel.
     pub(crate) spark_life: f32,
     pub(crate) cloth_sway: f32,
+    /// Smoothed travel amount, also used by fitted garments/foot placement.
+    pub(crate) stride_blend: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -246,10 +248,13 @@ impl CharacterPresentationState {
         let swing = phase.sin() * (0.34 + run * 0.22) * self.locomotion_blend;
         let stride_bob = phase.sin().abs() * 0.038 * self.locomotion_blend;
         pose.transforms[JointId::Torso.index()].translation.y += stride_bob;
-        // These offsets are cosmetic clearances. The gameplay collider and
-        // root position remain authoritative while the pieces visibly float
-        // apart when the toy is moving or airborne.
-        let gap = self.gap_spring * if reduced_effects { 0.35 } else { 1.0 };
+        // Everyday people remain connected. Existing creature fits retain
+        // their authored clearances until their separate art review.
+        let gap = if body == BodyId::Person {
+            0.0
+        } else {
+            self.gap_spring * if reduced_effects { 0.35 } else { 1.0 }
+        };
         pose.transforms[JointId::Head.index()].translation.y += gap * 0.032;
         pose.transforms[JointId::LeftUpperArm.index()].translation.x -= gap * 0.028;
         pose.transforms[JointId::RightUpperArm.index()]
@@ -276,14 +281,14 @@ impl CharacterPresentationState {
         rotate(
             &mut pose,
             JointId::LeftLowerLeg,
-            swing.abs() * 0.24,
+            -swing.max(0.0) * 0.65,
             0.0,
             0.0,
         );
         rotate(
             &mut pose,
             JointId::RightLowerLeg,
-            -swing.abs() * 0.24,
+            -(-swing).max(0.0) * 0.65,
             0.0,
             0.0,
         );
@@ -441,11 +446,16 @@ impl CharacterPresentationState {
             delta,
         );
         let secondary = SecondaryMotion {
+            stride_blend: self.locomotion_blend,
             cloth_sway: self.cloth_sway * secondary_scale,
             tail_sway: (time * 2.3 + seed_unit(self.seed) * 5.0).sin() * 0.16 * secondary_scale,
             ear_tilt: (time * 1.7 + 1.0).sin() * 0.07 * secondary_scale,
             wing_flap: (time * 2.0 + 2.0).sin() * 0.10 * secondary_scale,
-            gap_expansion: self.gap_spring,
+            gap_expansion: if body == BodyId::Person {
+                0.0
+            } else {
+                self.gap_spring
+            },
             spark_life: if reduced_effects {
                 0.0
             } else {
@@ -652,7 +662,7 @@ mod tests {
             }
             let settled = state.output.unwrap();
             assert_eq!(settled.secondary.spark_life, 0.0);
-            assert!(settled.secondary.gap_expansion > 0.0);
+            assert_eq!(settled.secondary.gap_expansion, 0.0);
         }
     }
 
@@ -712,22 +722,22 @@ mod tests {
     }
 
     #[test]
-    fn reduced_effects_suppress_bursts_and_shrink_gaps() {
-        let mut full = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
-        let mut reduced = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+    fn reduced_effects_suppress_bursts_and_shrink_creature_gaps() {
+        let mut full = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Cat);
+        let mut reduced = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Cat);
         for tick in 0..30 {
             let mut input = sample(tick, tick as f32 / 60.0);
             if tick == 29 {
                 input.event = CharacterMotionEvent::Takeoff;
             }
-            full.evaluate(input, BodyId::Person, false);
-            reduced.evaluate(input, BodyId::Person, true);
+            full.evaluate(input, BodyId::Cat, false);
+            reduced.evaluate(input, BodyId::Cat, true);
         }
         let a = full.output.unwrap();
         let b = reduced.output.unwrap();
         assert!(a.secondary.spark_life > 0.0);
         assert_eq!(b.secondary.spark_life, 0.0);
-        let rest = body_recipe(BodyId::Person).rig.joints[JointId::Head.index()]
+        let rest = body_recipe(BodyId::Cat).rig.joints[JointId::Head.index()]
             .rest
             .translation
             .y;

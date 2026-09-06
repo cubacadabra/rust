@@ -105,6 +105,7 @@ pub(super) fn actors(time: f32) -> Vec<RenderEntity> {
                 moving: motion.moving,
                 sprinting: motion.sprinting,
                 walk_cycle: motion.stride_phase,
+                support: motion.support,
                 pose: output.pose,
                 face: output.face,
                 secondary: output.secondary,

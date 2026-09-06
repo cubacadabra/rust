@@ -68,7 +68,7 @@ pub(crate) struct JointDefinition {
     pub(crate) id: JointId,
     pub(crate) parent: Option<JointId>,
     pub(crate) rest: JointTransform,
-    /// The intended visible clearance around this joint in engine units.
+    /// Legacy fit clearance in engine units; not a required visible gap.
     pub(crate) clearance: f32,
 }
 
@@ -173,8 +173,8 @@ impl Pose {
         pose.rotate(JointId::RightUpperArm, -swing * 0.65);
         pose.rotate(JointId::LeftUpperLeg, -swing);
         pose.rotate(JointId::RightUpperLeg, swing);
-        pose.rotate(JointId::LeftLowerLeg, swing.abs() * 0.28);
-        pose.rotate(JointId::RightLowerLeg, -swing.abs() * 0.28);
+        pose.rotate(JointId::LeftLowerLeg, -swing.max(0.0) * 0.65);
+        pose.rotate(JointId::RightLowerLeg, -(-swing).max(0.0) * 0.65);
         pose
     }
 

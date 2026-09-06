@@ -60,19 +60,7 @@ fn main() {
         }
     }
 
-    let output = output.unwrap_or_else(|| {
-        PathBuf::from(if phase == 3 {
-            "docs/baselines/magic-characters/phase3/native".to_owned()
-        } else if phase == 5 {
-            "docs/baselines/magic-characters/phase5".to_owned()
-        } else if phase == 6 {
-            "docs/baselines/magic-characters/phase6".to_owned()
-        } else if phase == 8 {
-            "docs/baselines/magic-characters/phase8".to_owned()
-        } else {
-            format!("docs/baselines/magic-characters/phase{phase}")
-        })
-    });
+    let output = output.unwrap_or_else(|| PathBuf::from(format!("target/character-review/phase{phase}")));
     if phase == 3 {
         match capture_phase3(&output) {
             Ok(report) => println!(

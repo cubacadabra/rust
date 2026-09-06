@@ -288,7 +288,8 @@ enum Scenario {
     },
     WardrobeLineup { name: &'static str, camera_yaw: f32 },
     MotionLineup,
-    Hero { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
+    Hero { name: &'static str, yaw: f32, pitch: f32, distance: f32,
+        study: super::hero_character::Study, silhouette: bool, motion: bool },
     Orbit { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
 }
 
@@ -764,12 +765,21 @@ impl HeadlessContext {
         let actor_count = actors.len();
         let magic = matches!(config.avatar, CaptureAvatar::Magic | CaptureAvatar::Wardrobe);
         if magic {
+            self.characters.hero_study = if let Scenario::Hero {study,..} = scenario {
+                study
+            } else { super::hero_character::Study::Everyday };
             self.characters.begin();
             let palette = capture_palette(config.palette);
             for (rank, actor) in actors.iter().enumerate() {
                 let mut entity = *actor;
                 let recipe = body_recipe(entity.body);
                 if !matches!(scenario, Scenario::MotionLineup | Scenario::Hero {..}) {
+                    entity.secondary.stride_blend = if entity.moving {
+                        if entity.sprinting {1.0} else {6.4/11.5}
+                    } else {0.0};
+                    entity.support = if matches!(scenario, Scenario::Single {pose:Pose::Jump,..}) {
+                        crate::types::CharacterSupport::Airborne
+                    } else {crate::types::CharacterSupport::Grounded {height:entity.position[1]}};
                     entity.pose = CharacterPose::locomotion(
                         &recipe.rig,
                         entity.walk_cycle,
@@ -831,7 +841,7 @@ impl HeadlessContext {
                     false,
                 );
             }
-            if matches!(scenario, Scenario::ShapeLineup { silhouette: true, .. }) {
+            if matches!(scenario, Scenario::ShapeLineup { silhouette: true, .. } | Scenario::Hero {silhouette:true,..}) {
                 self.characters.make_silhouette();
             }
             self.characters.upload(&self.queue);
@@ -1193,9 +1203,13 @@ fn build_scene(
                 ..Default::default()
             });
         }
-        Scenario::Hero {..} => {
-            actors.push(hero::actor(config.pose_time));
-            super::add_soft_support_shadow(&mut vertices,Vec3::new(0.0,0.011,-0.04),0.92,[0.13,0.18,0.16,0.32]);
+        Scenario::Hero {motion,..} => {
+            let mut actor = if motion {motion::actors(config.pose_time)[0]} else {hero::actor(config.pose_time)};
+            actor.position[0]=0.0;
+            actor.position[2]=0.0;
+            let alpha=0.32/(1.0+actor.position[1].max(0.0)*0.8);
+            actors.push(actor);
+            super::add_soft_support_shadow(&mut vertices,Vec3::new(0.0,0.011,-0.04),0.92,[0.13,0.18,0.16,alpha]);
         }
     }
     if raised {

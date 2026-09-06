@@ -1,8 +1,127 @@
-//! One coordinated hero fit, authored against docs/art/green-hoodie/concept-v1.png.
+//! Casual person study. Shapes serve hair, clothing and anatomy; they are not
+//! required to expose the joints or resemble manufactured toy components.
 use super::character::{Anchor, Feature, Part, Tint};
 use super::hero_geometry::Shape;
-use crate::character::{BodyPart, JointId};
-use glam::{Mat4, Vec3};
+use crate::character::{BodyPart, JointId, Pose};
+use glam::{Mat4, Quat, Vec3};
+
+/// Review alternatives share the actual production meshes and lighting.
+/// These are art studies, not new persistent appearance IDs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Study {
+    #[default]
+    Everyday,
+    #[allow(dead_code)]
+    LongerLegs,
+    #[allow(dead_code)]
+    SoftShoulders,
+}
+
+pub(super) const SLEEVE_SIZE: Vec3 = Vec3::new(0.46, 1.13, 0.49);
+pub(super) const SLEEVE_CENTER: f32 = -0.40;
+pub(super) const ELBOW: f32 = -0.52;
+
+/// Refit the shared hierarchy without changing collision, camera height, or
+/// stored appearance. Keep animated offsets relative to the shared rest rig.
+pub(super) fn fit_pose(
+    entity: super::RenderEntity,
+    study: Study,
+    rest: &crate::character::rig::RigDefinition,
+) -> Pose {
+    use JointId::*;
+    let mut pose = entity.pose;
+    let (leg, hip, torso, head) = match study {
+        Study::Everyday => (0.53, 1.105, 1.81, 1.08),
+        Study::LongerLegs => (0.59, 1.225, 1.93, 1.04),
+        Study::SoftShoulders => (0.49, 1.025, 1.73, 1.10),
+    };
+    let mut place = |joint: JointId, at: Vec3| {
+        pose.transforms[joint.index()].translation +=
+            at - rest.joints[joint.index()].rest.translation;
+    };
+    place(Torso, Vec3::new(0.0, torso, 0.0));
+    place(Head, Vec3::new(0.0, head, 0.0));
+    for (side, arm, elbow, hand, thigh, knee, foot) in [
+        (
+            -1.0,
+            LeftUpperArm,
+            LeftLowerArm,
+            LeftHand,
+            LeftUpperLeg,
+            LeftLowerLeg,
+            LeftFoot,
+        ),
+        (
+            1.0,
+            RightUpperArm,
+            RightLowerArm,
+            RightHand,
+            RightUpperLeg,
+            RightLowerLeg,
+            RightFoot,
+        ),
+    ] {
+        let (shoulder, drop) = if study == Study::SoftShoulders {
+            (0.51, 0.27)
+        } else {
+            (0.49, 0.32)
+        };
+        place(arm, Vec3::new(side * shoulder, drop, 0.0));
+        place(elbow, Vec3::new(0.0, ELBOW, 0.0));
+        place(hand, Vec3::new(0.0, -0.44, -0.01));
+        place(thigh, Vec3::new(side * 0.28, hip, 0.0));
+        place(knee, Vec3::new(0.0, -leg, 0.0));
+        place(foot, Vec3::new(0.0, -leg, 0.0));
+    }
+    if matches!(entity.support, crate::types::CharacterSupport::Grounded {..}) {
+        let blend = entity.secondary.stride_blend.clamp(0.0, 1.0);
+        for (offset, thigh, knee, foot) in [
+            (0.0, LeftUpperLeg, LeftLowerLeg, LeftFoot),
+            (
+                std::f32::consts::PI,
+                RightUpperLeg,
+                RightLowerLeg,
+                RightFoot,
+            ),
+        ] {
+            let phase = entity.walk_cycle + offset;
+            // First half is stance: sole stays on the support plane. Second
+            // half lifts the foot for its return. Both knees bend toward +Z.
+            let lift = (-phase.sin()).max(0.0) * blend * if entity.sprinting { 0.24 } else { 0.16 };
+            let z = -phase.cos() * blend * 0.28 - 0.04;
+            let hip_y = hip - blend * 0.065;
+            pose.transforms[thigh.index()].translation.y = hip_y;
+            let down = hip_y - 0.05 - lift;
+            let d = down.hypot(z).min(leg * 2.0 - 0.001);
+            let hip_angle = (-z).atan2(down) + (d / (2.0 * leg)).clamp(-1.0, 1.0).acos();
+            let knee_angle = -((d * d - 2.0 * leg * leg) / (2.0 * leg * leg))
+                .clamp(-1.0, 1.0)
+                .acos();
+            pose.transforms[thigh.index()].rotation = Quat::from_rotation_x(hip_angle);
+            pose.transforms[knee.index()].rotation = Quat::from_rotation_x(knee_angle);
+            pose.transforms[foot.index()].rotation = Quat::from_rotation_x(-hip_angle - knee_angle);
+        }
+    }
+    pose
+}
+
+pub(super) fn study_part(mut part: Part, study: Study) -> Part {
+    if part.anchor.joint == JointId::Torso && study == Study::SoftShoulders {
+        part.anchor.local = Mat4::from_scale(Vec3::new(1.09, 1.0, 1.03)) * part.anchor.local;
+    }
+    if part.anchor.joint == JointId::Head {
+        let scale = match study {
+            Study::Everyday => Vec3::ONE,
+            Study::LongerLegs => Vec3::new(0.90, 0.92, 0.94),
+            Study::SoftShoulders => Vec3::new(1.07, 1.03, 1.02),
+        };
+        part.anchor.local = Mat4::from_scale(scale) * part.anchor.local;
+        if matches!(part.feature, Feature::Eye(_)) && study == Study::SoftShoulders {
+            part.anchor.local *= Mat4::from_scale(Vec3::new(1.18, 1.12, 1.0));
+        }
+    }
+    part
+}
 
 fn piece(
     parts: &mut Vec<Part>,
@@ -38,85 +157,82 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
             && !(p.anchor.joint == Torso
                 && matches!(p.feature, Feature::None)
                 && p.anchor.local.w_axis.truncate() != Vec3::ZERO)
-            && !(matches!(p.anchor.joint, LeftUpperArm | RightUpperArm)
-                && matches!(p.feature, Feature::Seam(_)))
+            && !matches!(p.feature, Feature::Seam(_) | Feature::Cheek(_))
+            && !(matches!(p.anchor.joint, LeftLowerArm | RightLowerArm)
+                && matches!(p.tint, Tint::Shirt))
     });
     for p in parts.iter_mut() {
         let joint = p.anchor.joint;
         match (joint, p.tint, p.feature) {
             (Torso, Tint::Shirt, _) => {
                 p.shape = Shape::Torso;
-                p.spec = BodyPart::new(Vec3::new(1.18, 1.10, 0.84), 0.0);
+                p.spec = BodyPart::new(Vec3::new(1.08, 1.04, 0.73), 0.0);
             }
             (Head, Tint::Skin, Feature::None) if p.spec.size.x > 0.5 => {
                 p.shape = Shape::Head;
-                p.spec = BodyPart::new(Vec3::new(1.17, 1.04, 0.91), 0.0);
+                p.spec = BodyPart::new(Vec3::new(1.02, 0.94, 0.85), 0.0);
             }
             (Head, Tint::Skin, Feature::None) => {
                 let side = p.anchor.local.w_axis.x.signum();
                 p.shape = Shape::Pebble;
-                p.spec = BodyPart::new(Vec3::new(0.19, 0.27, 0.24), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.55, 0.02, 0.0));
+                p.spec = BodyPart::new(Vec3::new(0.15, 0.23, 0.20), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.49, -0.01, 0.0));
             }
             (LeftUpperArm | RightUpperArm, Tint::Shirt, _) => {
                 p.shape = Shape::Sleeve;
-                p.spec = BodyPart::new(Vec3::new(0.52, 0.78, 0.58), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.02, 0.0));
-            }
-            (LeftLowerArm | RightLowerArm, Tint::Shirt, _) => {
-                p.shape = Shape::Sleeve;
-                p.spec = BodyPart::new(Vec3::new(0.48, 0.63, 0.54), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.02, -0.015));
+                p.spec = BodyPart::new(SLEEVE_SIZE, 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, SLEEVE_CENTER, 0.0));
             }
             (LeftHand | RightHand, Tint::Skin, _) => {
                 p.shape = Shape::Pebble;
-                p.spec = BodyPart::new(Vec3::new(0.31, 0.34, 0.32), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.04, -0.025));
+                p.spec = BodyPart::new(Vec3::new(0.25, 0.31, 0.21), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.055, -0.025));
             }
             (LeftUpperLeg | RightUpperLeg, Tint::Pants, _) => {
                 p.shape = Shape::Shorts;
-                p.spec = BodyPart::new(Vec3::new(0.50, 0.49, 0.52), 0.0);
+                p.spec = BodyPart::new(Vec3::new(0.47, 0.59, 0.49), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.10, 0.0));
             }
             (LeftLowerLeg | RightLowerLeg, Tint::Pants, _) => {
                 p.shape = Shape::Limb;
                 p.tint = Tint::Skin;
-                p.spec = BodyPart::new(Vec3::new(0.27, 0.53, 0.31), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.045, 0.0));
+                p.spec = BodyPart::new(Vec3::new(0.26, 0.66, 0.28), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.20, 0.0));
             }
             (LeftFoot | RightFoot, Tint::Shoes, _) => {
                 p.shape = Shape::Shoe;
-                p.spec = BodyPart::new(Vec3::new(0.59, 0.35, 0.83), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.175, 0.0));
+                p.spec = BodyPart::new(Vec3::new(0.50, 0.29, 0.76), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.155, -0.09));
             }
             (LeftFoot | RightFoot, Tint::Ivory, _) => {
                 let sole = p.anchor.local.w_axis.y < 0.1;
                 p.shape = if sole { Shape::Shoe } else { Shape::Laces };
                 p.spec = BodyPart::new(
                     if sole {
-                        Vec3::new(0.60, 0.095, 0.84)
+                        Vec3::new(0.51, 0.095, 0.77)
                     } else {
                         Vec3::new(0.31, 0.065, 0.24)
                     },
                     0.0,
                 );
                 p.anchor.local = Mat4::from_translation(if sole {
-                    Vec3::new(0.0, 0.017, 0.0)
+                    Vec3::new(0.0, 0.017, -0.09)
                 } else {
-                    Vec3::new(0.0, 0.285, -0.10)
+                    Vec3::new(0.0, 0.26, -0.24)
                 });
             }
             (_, _, Feature::Eye(side)) => {
-                p.spec = BodyPart::new(Vec3::new(0.29, 0.34, 0.025), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.225, 0.095, -0.452))
-                    * Mat4::from_rotation_y(-side * 0.20);
+                p.spec = BodyPart::new(Vec3::new(0.125, 0.185, 0.025), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.205, 0.015, -0.423))
+                    * Mat4::from_rotation_y(-side * 0.14);
             }
             (_, _, Feature::Brow(side)) => {
-                p.spec = BodyPart::new(Vec3::new(0.29, 0.095, 0.025), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.225, 0.325, -0.429));
+                p.spec = BodyPart::new(Vec3::new(0.17, 0.035, 0.025), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.205, 0.20, -0.414));
             }
             (_, _, Feature::Mouth) => {
-                p.spec = BodyPart::new(Vec3::new(0.37, 0.16, 0.02), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.225, -0.424));
+                p.spec = BodyPart::new(Vec3::new(0.30, 0.12, 0.02), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.19, -0.405));
             }
             (_, _, Feature::Cheek(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.11, 0.045, 0.02), 0.0);
@@ -129,16 +245,16 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
         |joint, pos, size, shape, tint, turn| piece(parts, joint, pos, size, shape, tint, turn);
     add(
         Torso,
-        Vec3::new(0.0, 0.59, 0.06),
-        Vec3::new(1.10, 0.43, 0.91),
+        Vec3::new(0.0, 0.45, 0.12),
+        Vec3::new(0.73, 0.21, 0.72),
         Shape::Hood,
         Tint::Shirt,
         0.0,
     );
     add(
         Torso,
-        Vec3::new(0.0, 0.31, 0.36),
-        Vec3::new(0.87, 0.65, 0.49),
+        Vec3::new(0.0, 0.30, 0.30),
+        Vec3::new(0.69, 0.60, 0.38),
         Shape::Pebble,
         Tint::Shirt,
         0.0,
@@ -146,15 +262,15 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
     add(
         Torso,
         Vec3::new(0.0, -0.51, 0.0),
-        Vec3::new(0.98, 0.14, 0.73),
+        Vec3::new(0.89, 0.12, 0.64),
         Shape::Rib,
         Tint::Shirt,
         0.0,
     );
     add(
         Torso,
-        Vec3::new(0.0, -0.21, -0.37),
-        Vec3::new(0.73, 0.37, 0.18),
+        Vec3::new(0.0, -0.21, -0.33),
+        Vec3::new(0.66, 0.32, 0.11),
         Shape::Pocket,
         Tint::Shirt,
         0.0,
@@ -165,62 +281,132 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
     ] {
         add(
             forearm,
-            Vec3::new(0.0, -0.26, -0.015),
-            Vec3::new(0.34, 0.13, 0.37),
+            Vec3::new(0.0, -0.40, 0.0),
+            Vec3::new(0.31, 0.11, 0.32),
             Shape::Rib,
             Tint::Shirt,
             0.0,
         );
         add(
             hand,
-            Vec3::new(-side * 0.13, 0.095, -0.09),
-            Vec3::new(0.13, 0.22, 0.15),
+            Vec3::new(-side * 0.125, 0.025, -0.04),
+            Vec3::new(0.13, 0.20, 0.14),
             Shape::Pebble,
             Tint::Skin,
             -side * 0.45,
         );
         add(
             Torso,
-            Vec3::new(side * 0.155, 0.22, -0.381),
-            Vec3::new(0.035, 0.40, 0.035),
+            Vec3::new(side * 0.135, 0.20, -0.345),
+            Vec3::new(0.027, 0.39, 0.027),
             Shape::Cord,
             Tint::Ivory,
             side * 0.05,
         );
     }
     add(
-        Head,
-        Vec3::new(0.0, -0.08, -0.474),
-        Vec3::new(0.13, 0.10, 0.115),
-        Shape::Pebble,
+        Torso,
+        Vec3::new(0.0, 0.58, 0.0),
+        Vec3::new(0.29, 0.38, 0.30),
+        Shape::Limb,
         Tint::Skin,
         0.0,
     );
     add(
         Head,
-        Vec3::new(0.0, 0.34, 0.10),
-        Vec3::new(1.22, 0.72, 0.96),
+        Vec3::new(0.0, 0.18, 0.10),
+        Vec3::new(1.08, 0.80, 0.91),
         Shape::HairCap,
         Tint::Hair,
         0.0,
     );
     for (position, size, turn) in [
         (
-            Vec3::new(-0.31, 0.39, -0.35),
-            Vec3::new(0.40, 0.70, 0.34),
-            -0.90,
+            Vec3::new(-0.27, 0.33, -0.33),
+            Vec3::new(0.24, 0.55, 0.22),
+            -1.40,
         ),
         (
-            Vec3::new(0.08, 0.49, -0.31),
-            Vec3::new(0.38, 0.78, 0.38),
-            -1.10,
+            Vec3::new(0.02, 0.39, -0.31),
+            Vec3::new(0.25, 0.66, 0.25),
+            -1.45,
         ),
         (
-            Vec3::new(0.35, 0.48, -0.12),
-            Vec3::new(0.34, 0.70, 0.42),
-            -1.0,
+            Vec3::new(0.27, 0.34, -0.23),
+            Vec3::new(0.24, 0.56, 0.28),
+            -1.00,
+        ),
+        (
+            Vec3::new(-0.45, 0.06, 0.0),
+            Vec3::new(0.16, 0.44, 0.27),
+            -0.18,
+        ),
+        (
+            Vec3::new(0.45, 0.09, 0.04),
+            Vec3::new(0.16, 0.34, 0.27),
+            0.12,
         ),
     ] {
         add(Head, position, size, Shape::HairLock, Tint::Hair, turn);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::character::{BodyId, body_recipe};
+    use crate::types::CharacterSupport;
+
+    #[test]
+    fn fitted_stance_feet_are_level_grounded_and_separated_through_the_stride() {
+        let recipe = body_recipe(BodyId::Person);
+        for study in [Study::Everyday, Study::LongerLegs, Study::SoftShoulders] {
+            for step in 0..120 {
+                let mut entity = super::super::RenderEntity {
+                    pose: Pose::rest(&recipe.rig),
+                    support: CharacterSupport::Grounded { height: 0.0 },
+                    walk_cycle: step as f32 * std::f32::consts::TAU / 120.0,
+                    moving: true,
+                    ..Default::default()
+                };
+                entity.secondary.stride_blend = 0.8;
+                let pose = fit_pose(entity, study, &recipe.rig);
+                let world = recipe.rig.world_matrices(&pose.transforms);
+                let left = world[JointId::LeftFoot.index()];
+                let right = world[JointId::RightFoot.index()];
+                assert!(right.w_axis.x - left.w_axis.x > 0.54);
+                for (offset, foot, knee) in [
+                    (0.0, JointId::LeftFoot, JointId::LeftLowerLeg),
+                    (
+                        std::f32::consts::PI,
+                        JointId::RightFoot,
+                        JointId::RightLowerLeg,
+                    ),
+                ] {
+                    let matrix = world[foot.index()];
+                    assert!(matrix.transform_vector3(Vec3::Y).distance(Vec3::Y) < 0.0001);
+                    let height = matrix.w_axis.y;
+                    assert!(height >= 0.0499);
+                    if (entity.walk_cycle + offset).sin() >= 0.0 {
+                        assert!(
+                            (height - 0.05).abs() < 0.0001,
+                            "stance sole must stay grounded"
+                        );
+                    }
+                    assert!(pose.transforms[knee.index()].rotation.to_scaled_axis().x <= 0.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn person_has_continuous_sleeves_and_event_only_magic() {
+        let parts = super::super::character::parts_for(
+            &body_recipe(BodyId::Person),
+            crate::character::OutfitId::EverydayHoodie,
+        );
+        assert_eq!(parts.iter().filter(|p| p.shape == Shape::Sleeve).count(), 2);
+        assert!(!parts.iter().any(|p| matches!(p.feature, Feature::Seam(_))));
+        assert!(parts.iter().any(|p| matches!(p.feature, Feature::Spark(_))));
     }
 }

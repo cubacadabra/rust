@@ -30,7 +30,7 @@ impl std::ops::Mul<Mat4> for Anchor {
         }
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) enum Tint {
     Skin,
     Shirt,
@@ -224,6 +224,10 @@ fn base_parts(recipe: &BodyRecipe) -> Vec<Part> {
     );
     add_species_parts(vertices, root, Anchor::new(JointId::Head), &recipe);
     add_seam_cores(vertices, recipe);
+    // Magic is an event/accessory accent, not exposed anatomy for people.
+    if recipe.id == BodyId::Person {
+        vertices.retain(|part| !matches!(part.feature, Feature::Seam(_)));
+    }
     std::mem::take(vertices)
 }
 
@@ -924,7 +928,13 @@ pub(super) fn mesh_recipe_with_subdivisions(
 /// collision dimensions.
 pub(super) fn bounds(body: BodyId, outfit: OutfitId) -> (Vec3, f32) {
     let recipe = body_recipe(body);
-    let joints = recipe.rig.world_matrices(&Pose::rest(&recipe.rig).transforms);
+    let mut pose = Pose::rest(&recipe.rig);
+    if body == BodyId::Person && outfit == OutfitId::EverydayHoodie {
+        pose = super::hero_character::fit_pose(super::RenderEntity {
+            body, outfit, pose, ..Default::default()
+        }, super::hero_character::Study::Everyday, &recipe.rig);
+    }
+    let joints = recipe.rig.world_matrices(&pose.transforms);
     let mut min = Vec3::splat(f32::INFINITY);
     let mut max = Vec3::splat(f32::NEG_INFINITY);
     for part in parts_for(&recipe, outfit) {
