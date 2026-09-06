@@ -76,12 +76,13 @@ const POCKET: &[[f32; 3]] = &[
     [1.0, 0.27, 0.20],
 ];
 const LOCK: &[[f32; 3]] = &[
-    [0.0, 0.07, 0.07],
-    [0.15, 0.23, 0.24],
-    [0.40, 0.37, 0.39],
-    [0.65, 0.32, 0.35],
-    [0.85, 0.16, 0.20],
-    [1.0, 0.045, 0.045],
+    [0.0, 0.40, 0.42],
+    [0.16, 0.44, 0.45],
+    [0.38, 0.39, 0.41],
+    [0.62, 0.30, 0.34],
+    [0.82, 0.19, 0.23],
+    [0.94, 0.10, 0.13],
+    [1.0, 0.045, 0.060],
 ];
 const SHOE: &[[f32; 3]] = &[
     [0.0, 0.43, 0.46],
@@ -191,9 +192,16 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
         Shape::HairCap => {
             p.y += (-sin).max(0.0).powi(3) * (1.0 - t) * 0.68;
             p.y += (1.0 + (angle * 5.0 + 0.6).sin()) * 0.07 * (1.0 - t).powi(3);
+            // Two broad, shallow contour changes keep the back cap from
+            // reading as a perfectly smooth helmet without adding strand
+            // noise to the silhouette.
+            p.y += (0.012 + (angle * 2.0 + 0.7).sin() * 0.010) * (1.0 - t).powi(2);
         }
         Shape::HairLock => {
-            p.x += (t * std::f32::consts::PI).sin() * 0.10;
+            // The authored transform supplies the root-to-tip sweep. This
+            // small cross-section bow keeps the lock soft without turning it
+            // into a second banana-shaped centerline.
+            p.x += (t * std::f32::consts::PI).sin() * 0.045;
         }
         Shape::Shoe => {
             p.z = (p.z + t * 0.14 - 0.03) * 0.95;

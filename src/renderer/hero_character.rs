@@ -164,6 +164,28 @@ fn piece(
     });
 }
 
+/// Add one chunky lock with an explicit buried root and free tip. Hair is
+/// authored in head-local coordinates so its attachment remains legible when
+/// the cap or face is reviewed from another camera.
+fn hair_lock(parts: &mut Vec<Part>, root: Vec3, tip: Vec3, width: f32, depth: f32) {
+    let direction = tip - root;
+    let length = direction.length();
+    if !direction.is_finite() || !length.is_finite() || length <= 0.0001 {
+        return;
+    }
+    let rotation = Quat::from_rotation_arc(Vec3::Y, direction / length);
+    parts.push(Part {
+        anchor: Anchor {
+            joint: JointId::Head,
+            local: Mat4::from_translation((root + tip) * 0.5) * Mat4::from_quat(rotation),
+        },
+        spec: BodyPart::new(Vec3::new(width, length, depth), 0.0),
+        tint: Tint::Hair,
+        feature: Feature::None,
+        shape: Shape::HairLock,
+    });
+}
+
 pub(super) fn finish(parts: &mut Vec<Part>) {
     use JointId::*;
     // Replace the old decorative boxes with garment surfaces. Hidden shoulder
@@ -333,35 +355,44 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
         Tint::Hair,
         0.0,
     );
-    for (position, size, turn) in [
-        (
-            Vec3::new(-0.27, 0.33, -0.33),
-            Vec3::new(0.24, 0.55, 0.22),
-            -1.40,
-        ),
-        (
-            Vec3::new(0.02, 0.39, -0.31),
-            Vec3::new(0.25, 0.66, 0.25),
-            -1.45,
-        ),
-        (
-            Vec3::new(0.27, 0.34, -0.23),
-            Vec3::new(0.24, 0.56, 0.28),
-            -1.00,
-        ),
-        (
-            Vec3::new(-0.45, 0.06, 0.0),
-            Vec3::new(0.16, 0.44, 0.27),
-            -0.18,
-        ),
-        (
-            Vec3::new(0.45, 0.09, 0.04),
-            Vec3::new(0.16, 0.34, 0.27),
-            0.12,
-        ),
-    ] {
-        add(Head, position, size, Shape::HairLock, Tint::Hair, turn);
-    }
+    // Roots sit inside the cap and the tips fall toward the face/temples.
+    // The deliberately asymmetric sweep gives the paused silhouette a soft,
+    // casual direction instead of five detached forehead leaves.
+    hair_lock(
+        parts,
+        Vec3::new(-0.34, 0.42, -0.31),
+        Vec3::new(0.22, 0.13, -0.48),
+        0.25,
+        0.23,
+    );
+    hair_lock(
+        parts,
+        Vec3::new(-0.18, 0.43, -0.31),
+        Vec3::new(-0.34, 0.17, -0.47),
+        0.20,
+        0.18,
+    );
+    hair_lock(
+        parts,
+        Vec3::new(0.20, 0.43, -0.28),
+        Vec3::new(0.36, 0.17, -0.43),
+        0.19,
+        0.18,
+    );
+    hair_lock(
+        parts,
+        Vec3::new(-0.43, 0.28, 0.06),
+        Vec3::new(-0.54, 0.03, 0.46),
+        0.14,
+        0.22,
+    );
+    hair_lock(
+        parts,
+        Vec3::new(0.43, 0.30, 0.10),
+        Vec3::new(0.54, 0.08, 0.43),
+        0.14,
+        0.22,
+    );
 }
 
 #[cfg(test)]
@@ -449,6 +480,68 @@ mod tests {
             .iter()
             .map(|vertex| transform.transform_point3(vertex.position).y)
             .fold(f32::INFINITY, f32::min)
+    }
+
+    #[test]
+    fn authored_hair_locks_have_buried_roots_and_bounded_transforms() {
+        let recipe = body_recipe(BodyId::Person);
+        let parts = super::super::character::parts_for(
+            &recipe,
+            crate::character::OutfitId::EverydayHoodie,
+        );
+        let cap = parts
+            .iter()
+            .find(|part| part.shape == Shape::HairCap)
+            .copied()
+            .expect("person hair cap");
+        let locks: Vec<_> = parts
+            .iter()
+            .copied()
+            .filter(|part| part.shape == Shape::HairLock)
+            .collect();
+        assert_eq!(locks.len(), 5);
+
+        let cap_center = cap.anchor.local.transform_point3(Vec3::ZERO);
+        let cap_half = cap.spec.size * 0.5;
+        for lock in locks {
+            assert!(lock.spec.size.is_finite());
+            assert!(lock.spec.size.y > 0.0001);
+            assert!(
+                lock.anchor
+                    .local
+                    .to_cols_array()
+                    .iter()
+                    .all(|value| value.is_finite())
+            );
+            let root = lock
+                .anchor
+                .local
+                .transform_point3(Vec3::new(0.0, -lock.spec.size.y * 0.5, 0.0));
+            let tip = lock
+                .anchor
+                .local
+                .transform_point3(Vec3::new(0.0, lock.spec.size.y * 0.5, 0.0));
+            assert!(root.is_finite() && tip.is_finite());
+            assert!((tip - root).length() > 0.0001);
+            let root_offset = (root - cap_center).abs();
+            assert!(root_offset.x <= cap_half.x + 0.02);
+            assert!(root_offset.y <= cap_half.y + 0.02);
+            assert!(root_offset.z <= cap_half.z + 0.02);
+            assert!((root - cap_center).length() < (tip - cap_center).length());
+            assert!(root.length() < 1.0 && tip.length() < 1.0);
+
+            let transform = lock.anchor.local * Mat4::from_scale(lock.spec.size);
+            for lod in super::super::character_quality::CharacterLod::ALL {
+                let mesh = super::super::hero_geometry::build(
+                    Shape::HairLock,
+                    Vec3::ONE,
+                    lod.subdivisions(),
+                );
+                assert!(mesh.vertices.iter().all(|vertex| {
+                    transform.transform_point3(vertex.position).is_finite()
+                }));
+            }
+        }
     }
 
     #[test]
