@@ -4,13 +4,16 @@
 //! position, velocity, or gameplay state, which keeps cosmetic motion safe to
 //! run at a different rate from simulation and rendering.
 
-use super::{BodyId, FaceParameters, FacePreset, JointId, Pose, body_recipe};
+use super::{
+    BodyId, FaceParameters, FacePreset, JointId, Pose, STANCE_ANKLE_HEIGHT, body_recipe,
+    foot_is_planted,
+};
 use crate::math::damp;
 use crate::types::{
     CharacterEmote, CharacterEntityKey, CharacterMotionEvent, CharacterMotionSample,
     CharacterSupport,
 };
-use glam::{EulerRot, Quat, Vec2};
+use glam::{EulerRot, Quat, Vec2, Vec3};
 
 const MAX_PRESENTATION_DELTA: f32 = 0.05;
 const TELEPORT_DISTANCE: f32 = 5.0;
@@ -32,6 +35,10 @@ pub(crate) struct SecondaryMotion {
     /// Normalized envelope for the accepted landing event. Hero leg fitting
     /// consumes this to place the hips before solving planted feet.
     pub(crate) landing_compression: f32,
+    /// World-space ankle targets captured at stance entry. The hero fitter
+    /// converts them back to local space before solving the grounded legs.
+    pub(crate) left_foot_target: Option<Vec3>,
+    pub(crate) right_foot_target: Option<Vec3>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,6 +62,11 @@ pub(crate) struct CharacterPresentationState {
     spark_life: f32,
     cloth_sway: f32,
     head_look: f32,
+    last_stride_phase: f32,
+    last_moving: bool,
+    last_support_height: Option<f32>,
+    left_foot_target: Option<Vec3>,
+    right_foot_target: Option<Vec3>,
     face: FaceParameters,
     expression: FacePreset,
     blink_until: f32,
@@ -82,6 +94,11 @@ impl CharacterPresentationState {
             spark_life: 0.0,
             cloth_sway: 0.0,
             head_look: 0.0,
+            last_stride_phase: 0.0,
+            last_moving: false,
+            last_support_height: None,
+            left_foot_target: None,
+            right_foot_target: None,
             face: FaceParameters::preset(expression),
             expression,
             blink_until: 0.0,
@@ -152,6 +169,10 @@ impl CharacterPresentationState {
             self.spark_life = 0.0;
             self.cloth_sway = 0.0;
             self.wave_until = 0.0;
+            self.last_stride_phase = 0.0;
+            self.last_support_height = None;
+            self.left_foot_target = None;
+            self.right_foot_target = None;
         }
         let time = if sample.time.is_finite() {
             sample.time.max(0.0)
@@ -249,6 +270,52 @@ impl CharacterPresentationState {
             0.0
         };
         let run = if sample.sprinting { 1.0 } else { 0.0 };
+        let grounded_height = match sample.support {
+            CharacterSupport::Grounded { height } if height.is_finite() => Some(height),
+            _ => None,
+        };
+        let support_changed = match (self.last_support_height, grounded_height) {
+            (Some(previous), Some(current)) => (previous - current).abs() > 0.001,
+            (None, None) => false,
+            _ => true,
+        };
+        let movement_changed = self.last_moving != sample.moving;
+        if body != BodyId::Person
+            || grounded_height.is_none()
+            || sample.event == CharacterMotionEvent::Takeoff
+            || support_changed
+            || movement_changed
+        {
+            self.left_foot_target = None;
+            self.right_foot_target = None;
+        }
+        if body == BodyId::Person
+            && grounded_height.is_some()
+            && sample.event != CharacterMotionEvent::Takeoff
+            && !discontinuity
+        {
+            let previous_grounded = !movement_changed && self.last_support_height.is_some();
+            for (offset, side, target) in [
+                (0.0, -1.0, &mut self.left_foot_target),
+                (std::f32::consts::PI, 1.0, &mut self.right_foot_target),
+            ] {
+                let stance = foot_is_planted(phase + offset);
+                let was_stance = previous_grounded && foot_is_planted(self.last_stride_phase + offset);
+                if !stance {
+                    *target = None;
+                } else if target.is_none() || !was_stance {
+                    *target = foot_target(
+                        &sample,
+                        phase + offset,
+                        side,
+                        self.locomotion_blend,
+                    );
+                }
+            }
+        }
+        self.last_stride_phase = phase;
+        self.last_moving = sample.moving;
+        self.last_support_height = grounded_height;
         let swing = phase.sin() * (0.34 + run * 0.22) * self.locomotion_blend;
         let stride_bob = phase.sin().abs() * 0.038 * self.locomotion_blend;
         pose.transforms[JointId::Torso.index()].translation.y += stride_bob;
@@ -452,6 +519,8 @@ impl CharacterPresentationState {
         let secondary = SecondaryMotion {
             stride_blend: self.locomotion_blend,
             landing_compression,
+            left_foot_target: self.left_foot_target,
+            right_foot_target: self.right_foot_target,
             cloth_sway: self.cloth_sway * secondary_scale,
             tail_sway: (time * 2.3 + seed_unit(self.seed) * 5.0).sin() * 0.16 * secondary_scale,
             ear_tilt: (time * 1.7 + 1.0).sin() * 0.07 * secondary_scale,
@@ -514,6 +583,23 @@ impl CharacterPresentationState {
         self.output = Some(output);
         output
     }
+}
+
+fn foot_target(
+    sample: &CharacterMotionSample,
+    phase: f32,
+    side: f32,
+    stride_blend: f32,
+) -> Option<Vec3> {
+    if !sample.facing_yaw.is_finite()
+        || !sample.position.iter().all(|value| value.is_finite())
+        || !phase.is_finite()
+    {
+        return None;
+    }
+    let z = -phase.cos() * stride_blend.clamp(0.0, 1.0) * 0.28 - 0.04;
+    let local = Vec3::new(side * 0.28, STANCE_ANKLE_HEIGHT, z);
+    Some(Vec3::from_array(sample.position) + Quat::from_rotation_y(sample.facing_yaw) * local)
 }
 
 fn normalized_landing_compression(landing_timer: f32) -> f32 {
@@ -646,6 +732,51 @@ mod tests {
         let first = state.evaluate(sample(1, 0.0), BodyId::Person, false);
         let repeated = state.evaluate(sample(1, 1.0), BodyId::Person, false);
         assert_eq!(first, repeated);
+    }
+
+    #[test]
+    fn planted_targets_follow_real_presentation_lifecycle() {
+        let mut state = CharacterPresentationState::new(sample(1, 0.0).key, BodyId::Person);
+        let first = state.evaluate(sample(1, 0.0), BodyId::Person, false);
+        let left_target = first.secondary.left_foot_target.expect("stance target");
+        assert!((left_target.y - STANCE_ANKLE_HEIGHT).abs() < 0.0001);
+        assert!(first.secondary.right_foot_target.is_none());
+
+        let repeated = state.evaluate(sample(1, 1.0), BodyId::Person, false);
+        assert_eq!(repeated, first);
+
+        let mut takeoff = sample(2, 1.0 / 60.0);
+        takeoff.event = CharacterMotionEvent::Takeoff;
+        takeoff.support = CharacterSupport::Airborne;
+        assert!(state
+            .evaluate(takeoff, BodyId::Person, false)
+            .secondary
+            .left_foot_target
+            .is_none());
+
+        let mut teleport = sample(3, 2.0 / 60.0);
+        teleport.position = [20.0, 0.0, 0.0];
+        assert!(state
+            .evaluate(teleport, BodyId::Person, false)
+            .secondary
+            .left_foot_target
+            .is_none());
+
+        let mut raised = sample(1, 0.0);
+        raised.position[1] = 2.0;
+        raised.support = CharacterSupport::Grounded { height: 2.0 };
+        let raised_output = CharacterPresentationState::new(raised.key, BodyId::Person)
+            .evaluate(raised, BodyId::Person, false);
+        assert!(
+            (raised_output
+                .secondary
+                .left_foot_target
+                .expect("raised target")
+                .y
+                - 2.05)
+                .abs()
+                < 0.0001
+        );
     }
 
     #[test]

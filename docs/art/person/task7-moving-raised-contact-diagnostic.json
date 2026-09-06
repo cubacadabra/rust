@@ -1,0 +1,11 @@
+{
+  "task": 7,
+  "fixture": "phase-4-gameplay-presentation-motion",
+  "support_height": 2.0,
+  "samples": 95,
+  "max_horizontal_drift": 0.0000019073486,
+  "max_vertical_error": 0.00000023841858,
+  "walk_max_horizontal_drift": 0.00000047683716,
+  "sprint_max_horizontal_drift": 0.0000019073486,
+  "capture_output": "/tmp/person-task7-moving-raised-final-20260906"
+}

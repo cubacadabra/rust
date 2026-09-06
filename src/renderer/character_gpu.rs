@@ -374,6 +374,14 @@ impl CharacterRenderer {
             ]
             .iter()
             .all(|value| value.is_finite())
+            && entity
+                .secondary
+                .left_foot_target
+                .is_none_or(|target| target.is_finite())
+            && entity
+                .secondary
+                .right_foot_target
+                .is_none_or(|target| target.is_finite())
         {
             return;
         }

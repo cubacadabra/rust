@@ -1,6 +1,8 @@
 //! Deterministic presentation review: simulate at 60 Hz, save at 30 Hz.
 use super::*;
-use crate::character::{body_recipe, BodyId, CharacterPresentationState, JointId, OutfitId};
+use crate::character::{
+    body_recipe, foot_is_planted, BodyId, CharacterPresentationState, JointId, OutfitId,
+};
 use crate::types::{
     CharacterEmote, CharacterEntityKey, CharacterEntityKind, CharacterMotionEvent,
     CharacterMotionSample, CharacterMotionSource, CharacterSupport,
@@ -157,6 +159,15 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
             } else {
                 Vec3::from_array(motion.position) + lineup
             };
+            let mut secondary = output.secondary;
+            if body == BodyId::Person {
+                secondary.left_foot_target = secondary
+                    .left_foot_target
+                    .map(|target| target + lineup);
+                secondary.right_foot_target = secondary
+                    .right_foot_target
+                    .map(|target| target + lineup);
+            }
             RenderEntity {
                 position: root.to_array(),
                 body,
@@ -171,7 +182,7 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
                 support: motion.support,
                 pose: output.pose,
                 face: output.face,
-                secondary: output.secondary,
+                secondary,
                 ..Default::default()
             }
         })
@@ -267,9 +278,10 @@ pub(super) fn measure_contact_diagnostic(raised: bool) -> ContactDiagnostic {
         let time = tick as f32 / 60.0;
         let person = moving_actors(time, raised)[0];
         let phase = person.walk_cycle;
-        for (index, part) in soles.iter().enumerate() {
+        for part in &soles {
+            let index = if part.anchor.joint == JointId::LeftFoot { 0 } else { 1 };
             let offset = if index == 0 { 0.0 } else { std::f32::consts::PI };
-            if (phase + offset).sin() < 0.0 {
+            if !foot_is_planted(phase + offset) {
                 first_contact[index] = None;
                 continue;
             }
@@ -282,7 +294,8 @@ pub(super) fn measure_contact_diagnostic(raised: bool) -> ContactDiagnostic {
             } else {
                 walk_max_horizontal_drift = walk_max_horizontal_drift.max(horizontal);
             }
-            max_vertical_error = max_vertical_error.max((landmark.y - support_height).abs());
+            let vertical_error = (landmark.y - support_height).abs();
+            max_vertical_error = max_vertical_error.max(vertical_error);
             samples += 1;
         }
     }
@@ -419,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    fn moving_review_uses_production_phase_and_reports_contact_drift() {
+    fn moving_review_locks_generated_sole_contact_on_ground_and_raised_supports() {
         let travel_at_run_start = 2.0 * 6.4;
         assert!(
             (sample(180, 0).stride_phase - crate::player::walk_cycle_delta(travel_at_run_start))
@@ -436,14 +449,15 @@ mod tests {
         assert!((moving.position[2] - staged.position[2]).abs() > 5.0);
 
         let ground = measure_contact_diagnostic(false);
-        assert!(ground.samples > 200);
-        assert!(ground.max_horizontal_drift > 0.01);
+        assert!(ground.samples > 80, "{ground:?}");
+        assert!(ground.max_horizontal_drift <= 0.01, "{ground:?}");
         assert!(ground.max_vertical_error < 0.001);
-        assert!(ground.sprint_max_horizontal_drift > 0.01);
+        assert!(ground.sprint_max_horizontal_drift <= 0.01, "{ground:?}");
 
         let raised = measure_contact_diagnostic(true);
         assert_eq!(raised.support_height, 2.0);
-        assert!(raised.max_horizontal_drift > 0.01);
-        assert!(raised.max_vertical_error < 0.001);
+        assert!(raised.samples > 80, "{raised:?}");
+        assert!(raised.max_horizontal_drift <= 0.01, "{raised:?}");
+        assert!(raised.max_vertical_error < 0.001, "{raised:?}");
     }
 }

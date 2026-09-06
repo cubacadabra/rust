@@ -2,8 +2,11 @@
 //! required to expose the joints or resemble manufactured toy components.
 use super::character::{Anchor, Feature, Part, Tint};
 use super::hero_geometry::Shape;
-use crate::character::{BodyPart, JointId, Pose};
+use crate::character::{
+    BodyPart, GAIT_STANCE_PHASE, JointId, Pose, STANCE_ANKLE_HEIGHT, foot_is_planted,
+};
 use glam::{Mat4, Quat, Vec3};
+use std::sync::OnceLock;
 
 /// Review alternatives share the actual production meshes and lighting.
 /// These are art studies, not new persistent appearance IDs.
@@ -21,7 +24,6 @@ pub(super) const SLEEVE_SIZE: Vec3 = Vec3::new(0.46, 1.13, 0.49);
 pub(super) const SLEEVE_CENTER: f32 = -0.40;
 pub(super) const ELBOW: f32 = -0.52;
 
-const STANCE_ANKLE_HEIGHT: f32 = 0.05;
 const SOLE_HEIGHT: f32 = 0.095;
 
 fn sole_center_y() -> f32 {
@@ -29,6 +31,30 @@ fn sole_center_y() -> f32 {
     // center is therefore the offset that puts the generated minimum on the
     // support plane, including the normalized mesh's actual lower bound.
     -STANCE_ANKLE_HEIGHT - super::hero_geometry::SHOE_MIN_NORMALIZED_Y * SOLE_HEIGHT
+}
+
+fn sole_contact_offset() -> Vec3 {
+    static OFFSET: OnceLock<Vec3> = OnceLock::new();
+    *OFFSET.get_or_init(|| {
+        let part_transform = Mat4::from_translation(Vec3::new(0.0, sole_center_y(), -0.09))
+            * Mat4::from_scale(Vec3::new(0.51, SOLE_HEIGHT, 0.77));
+        let mesh = super::hero_geometry::build(
+            Shape::Shoe,
+            Vec3::ONE,
+            super::character_quality::CharacterLod::Mid.subdivisions(),
+        );
+        let vertices: Vec<Vec3> = mesh
+            .vertices
+            .iter()
+            .map(|vertex| part_transform.transform_point3(vertex.position))
+            .collect();
+        let minimum_y = vertices.iter().map(|vertex| vertex.y).fold(f32::INFINITY, f32::min);
+        let contacts: Vec<Vec3> = vertices
+            .into_iter()
+            .filter(|vertex| vertex.y <= minimum_y + 0.0005)
+            .collect();
+        contacts.iter().copied().sum::<Vec3>() / contacts.len().max(1) as f32
+    })
 }
 
 /// Refit the shared hierarchy without changing collision, camera height, or
@@ -101,13 +127,41 @@ pub(super) fn fit_pose(
             ),
         ] {
             let phase = entity.walk_cycle + offset;
-            // First half is stance: sole stays on the support plane. Second
-            // half lifts the foot for its return. Both knees bend toward +Z.
-            let lift = (-phase.sin()).max(0.0) * blend * if entity.sprinting { 0.24 } else { 0.16 };
-            let z = -phase.cos() * blend * 0.28 - 0.04;
+            // The authored stance interval keeps the sole planted; the rest
+            // of the cycle lifts the foot for its return. Both knees bend
+            // toward +Z.
+            let swing_phase = phase.rem_euclid(std::f32::consts::TAU);
+            let swing_t = ((swing_phase - GAIT_STANCE_PHASE)
+                / (std::f32::consts::TAU - GAIT_STANCE_PHASE))
+                .clamp(0.0, 1.0);
+            let lift = (swing_t * std::f32::consts::PI).sin()
+                * blend
+                * if entity.sprinting { 0.24 } else { 0.16 };
+            let target = if foot_is_planted(phase) {
+                if foot == LeftFoot {
+                    entity.secondary.left_foot_target
+                } else {
+                    entity.secondary.right_foot_target
+                }
+            } else {
+                None
+            };
+            let target_local = target.and_then(|world| {
+                let root = Mat4::from_rotation_translation(
+                    Quat::from_rotation_y(entity.yaw),
+                    Vec3::from_array(entity.position),
+                );
+                let local = root.inverse().transform_point3(world);
+                local.is_finite().then_some(local)
+            });
             let hip_y = hip - blend * 0.065 - landing_drop;
             pose.transforms[thigh.index()].translation.y = hip_y;
-            let down = hip_y - STANCE_ANKLE_HEIGHT - lift;
+            let z = target_local.map_or(
+                -phase.cos() * blend * 0.28 - 0.04,
+                |local| local.z,
+            );
+            let ankle_y = target_local.map_or(STANCE_ANKLE_HEIGHT + lift, |local| local.y);
+            let down = hip_y - ankle_y;
             let d = down.hypot(z).min(leg * 2.0 - 0.001);
             let hip_angle = (-z).atan2(down) + (d / (2.0 * leg)).clamp(-1.0, 1.0).acos();
             let knee_angle = -((d * d - 2.0 * leg * leg) / (2.0 * leg * leg))
@@ -116,6 +170,24 @@ pub(super) fn fit_pose(
             pose.transforms[thigh.index()].rotation = Quat::from_rotation_x(hip_angle);
             pose.transforms[knee.index()].rotation = Quat::from_rotation_x(knee_angle);
             pose.transforms[foot.index()].rotation = Quat::from_rotation_x(-hip_angle - knee_angle);
+            if let Some(target) = target_local {
+                // The target is the planted ankle. Compensate the foot joint's
+                // local translation for the rotated outsole so the generated
+                // sole contact, rather than only the rig ankle, remains fixed.
+                let joints = rest.world_matrices(&pose.transforms);
+                let foot_world = joints[foot.index()];
+                let lower_leg_world = joints[knee.index()];
+                let contact = foot_world.transform_point3(Vec3::ZERO)
+                    + foot_world.transform_vector3(sole_contact_offset());
+                let desired_contact = Vec3::new(
+                    target.x,
+                    target.y - STANCE_ANKLE_HEIGHT,
+                    target.z,
+                );
+                let correction = desired_contact - contact;
+                pose.transforms[foot.index()].translation +=
+                    lower_leg_world.inverse().transform_vector3(correction);
+            }
         }
     }
     pose
@@ -591,7 +663,7 @@ mod tests {
                     assert!(matrix.transform_vector3(Vec3::Y).distance(Vec3::Y) < 0.0001);
                     let height = matrix.w_axis.y;
                     assert!(height >= 0.0499);
-                    if (entity.walk_cycle + offset).sin() >= 0.0 {
+                    if foot_is_planted(entity.walk_cycle + offset) {
                         assert!(
                             (height - STANCE_ANKLE_HEIGHT).abs() < 0.0001,
                             "stance ankle must stay at its fitted target"
@@ -656,7 +728,7 @@ mod tests {
                                     "sole penetrates support: study={study:?} lod={lod:?} moving={moving} sprinting={sprinting} height={support_height} phase={phase} minimum={minimum}"
                                 );
                                 if stride_blend == 0.0
-                                    || (phase + offset).sin() >= 0.0
+                                    || foot_is_planted(phase + offset)
                                 {
                                     assert!(
                                         (minimum - support_height).abs() < 0.001,
