@@ -181,7 +181,11 @@ fn add_floor_pixel_text(
     add_pixel_text_transformed(
         vertices,
         text,
-        Mat4::from_translation(origin) * Mat4::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        // Keep local +X aligned with world +X and local +Y toward -Z so the
+        // first glyph is on the viewer's left and the glyphs are upright when
+        // the default camera looks toward -Z.
+        Mat4::from_translation(origin)
+            * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2),
         max_width,
         0.24,
         color,

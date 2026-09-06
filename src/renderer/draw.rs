@@ -392,8 +392,10 @@ impl Renderer {
             super::DEBUG_GIT_SHA,
             Vec3::new(
                 world.spawn[0],
-                world.spawn[1] + if world.show_spawn_pad { 0.35 } else { 0.035 },
-                world.spawn[2],
+                world.spawn[1] + 0.035,
+                // Put the label toward the default camera, clear of the pad
+                // and the player standing on it.
+                world.spawn[2] + 5.5,
             ),
             9.0,
             world.palette.ink,
