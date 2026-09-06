@@ -1,7 +1,8 @@
 //! Opt-in, offscreen review fixtures for the character program.
 //!
 //! Legacy and magic rollout captures exercise the two renderer paths. Rounded
-//! and shape-proof captures remain historical before-images. The feature is
+//! and CPU shape-proof captures remain historical before-images. Phase 2 now
+//! reviews shapes with the production GPU materials. The feature is
 //! kept out of normal client builds so fixtures cannot change simulation
 //! capacity, public snapshots, or runtime resource lifetime.
 
@@ -26,6 +27,10 @@ const WORLD_ASPECT: f32 = 16.0 / 9.0;
 const DEFAULT_SEED: u64 = 0xC0BA_CAFE;
 const DEFAULT_WIDTH: u32 = 640;
 const DEFAULT_HEIGHT: u32 = 360;
+
+#[path = "capture_motion.rs"]
+mod motion;
+pub use motion::capture_phase4_motion;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum CaptureAvatar {
@@ -209,7 +214,7 @@ pub fn capture_phase6_report(output_dir: impl AsRef<Path>) -> Result<Phase6Quali
             reduced_effects_disables_seams: true,
         },
         cache: CachePolicyReport {
-            max_meshes: 384,
+            max_meshes: super::character_gpu::MAX_MESHES,
             max_resident_bytes: 32 * 1024 * 1024,
             render_only_stress_characters: 50,
             engine_capacity_characters: 18,
@@ -278,6 +283,7 @@ enum Scenario {
         silhouette: bool,
     },
     WardrobeLineup { name: &'static str, camera_yaw: f32 },
+    MotionLineup,
     Orbit { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
 }
 
@@ -289,6 +295,7 @@ impl Scenario {
             Self::Crowd { name, .. } => name,
             Self::ShapeLineup { name, .. } => name,
             Self::WardrobeLineup { name, .. } => name,
+            Self::MotionLineup => "motion",
             Self::Orbit { name, .. } => name,
         }
     }
@@ -480,7 +487,7 @@ pub fn capture_phase2_shape_proof(
     mut config: CaptureConfig,
 ) -> Result<CaptureReport, String> {
     let output_dir = output_dir.as_ref();
-    config.avatar = CaptureAvatar::ShapeProof;
+    config.avatar = CaptureAvatar::Magic;
     fs::create_dir_all(output_dir).map_err(|error| format!("create output directory: {error}"))?;
     let mut context = HeadlessContext::new()?;
     let adapter = AdapterRecord {
@@ -749,15 +756,31 @@ impl HeadlessContext {
             for (rank, actor) in actors.iter().enumerate() {
                 let mut entity = *actor;
                 let recipe = body_recipe(entity.body);
-                entity.pose = CharacterPose::locomotion(
-                    &recipe.rig,
-                    entity.walk_cycle,
-                    entity.moving,
-                    entity.sprinting,
-                );
+                if !matches!(scenario, Scenario::MotionLineup) {
+                    entity.pose = CharacterPose::locomotion(
+                        &recipe.rig,
+                        entity.walk_cycle,
+                        entity.moving,
+                        entity.sprinting,
+                    );
+                }
                 let mut style = palette.avatar;
                 style.body = entity.body;
                 style.outfit = entity.outfit;
+                if matches!(scenario, Scenario::ShapeLineup { .. } | Scenario::MotionLineup) {
+                    use crate::character::BodyId;
+                    match entity.body {
+                        BodyId::Person => {}
+                        BodyId::Cat => {
+                            style.skin = color(0xc98464);
+                            style.shirt = color(0xc7542b);
+                        }
+                        BodyId::Dragon => {
+                            style.skin = color(0x82b78f);
+                            style.shirt = color(0x694c88);
+                        }
+                    }
+                }
                 if matches!(scenario, Scenario::WardrobeLineup { .. }) {
                     // Explicit fixture palettes demonstrate species and material
                     // separation without overriding player-selected live colors.
@@ -788,6 +811,9 @@ impl HeadlessContext {
                     rank,
                     false,
                 );
+            }
+            if matches!(scenario, Scenario::ShapeLineup { silhouette: true, .. }) {
+                self.characters.make_silhouette();
             }
             self.characters.upload(&self.queue);
         }
@@ -1084,6 +1110,11 @@ fn build_scene(
             })
             .collect();
         }
+        Scenario::MotionLineup => {
+            distance = 8.5;
+            target = Vec3::new(0.0, 2.8, 0.0);
+            actors = motion::actors(config.pose_time);
+        }
         Scenario::WardrobeLineup { camera_yaw, .. } => {
             distance = 10.0;
             target = Vec3::new(0.0, 1.85, 0.0);
@@ -1215,6 +1246,7 @@ fn build_scene(
             let vertical = (distance * (-0.095_f32).sin()).clamp(-2.0, distance);
             let camera_yaw = match scenario {
                 Scenario::ShapeLineup { camera_yaw, .. } | Scenario::WardrobeLineup { camera_yaw, .. } => camera_yaw,
+                Scenario::MotionLineup => motion::CAMERA_YAW,
                 _ => 0.0,
             };
             let position = target

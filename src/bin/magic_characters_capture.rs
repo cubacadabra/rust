@@ -1,6 +1,6 @@
 #[cfg(not(target_arch = "wasm32"))]
 use cubacadabra_engine::dev_showcase::{
-    capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3, capture_phase5_outfits,
+    capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3, capture_phase4_motion, capture_phase5_outfits,
     capture_phase6_report, capture_phase8_rollout, CaptureAvatar, CaptureConfig, CapturePalette,
     CaptureQuality,
 };
@@ -89,17 +89,22 @@ fn main() {
         }
         return;
     }
-    if phase == 5 {
-        match capture_phase5_outfits(&output, config) {
+    if phase == 4 || phase == 5 {
+        let result = if phase == 4 {
+            capture_phase4_motion(&output, config)
+        } else {
+            capture_phase5_outfits(&output, config)
+        };
+        match result {
             Ok(report) => println!(
-                "wrote {} outfit capture(s) to {} (adapter={} backend={})",
+                "wrote {} capture(s) to {} (adapter={} backend={})",
                 report.captures.len(),
                 output.display(),
                 report.adapter.name,
                 report.adapter.backend
             ),
             Err(error) => {
-                eprintln!("Phase 5: {error}");
+                eprintln!("Phase {phase}: {error}");
                 std::process::exit(1);
             }
         }
@@ -136,7 +141,7 @@ fn main() {
         return;
     }
     if phase != 0 && phase != 2 {
-        usage("supported phases are 0, 2, 3, 5, 6 and 8");
+        usage("supported phases are 0, 2, 3, 4, 5, 6 and 8");
     }
     let result = if phase == 2 {
         capture_phase2_shape_proof(&output, config)
@@ -198,7 +203,7 @@ fn usage(error: &str) -> ! {
         eprintln!("error: {error}");
     }
     eprintln!(
-        "usage: magic_characters_capture [--phase 0|2|3|5|6|8] [--output DIR] [--seed N] [--pose-time SECONDS] \
+        "usage: magic_characters_capture [--phase 0|2|3|4|5|6|8] [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
          [--quality full|half] [--palette current|high-contrast] \
          [--avatar legacy|rounded|shape-proof|magic]"

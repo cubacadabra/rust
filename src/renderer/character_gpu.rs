@@ -13,7 +13,7 @@ use wgpu::util::DeviceExt;
 
 pub(super) const MAX_CHARACTERS: usize = 50;
 const MAX_PARTS: usize = 48;
-const MAX_MESHES: usize = 384;
+pub(super) const MAX_MESHES: usize = 384;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
 
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
@@ -67,11 +67,11 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 ));
         }
         Feature::Spark(side) => {
-            let intensity = entity.secondary.gap_expansion.clamp(0.0, 0.72);
+            let intensity = 1.0 - (entity.secondary.spark_life / 0.36).clamp(0.0, 1.0);
             local = local
                 * Mat4::from_translation(Vec3::new(
-                    side * intensity * 0.18,
-                    intensity * 0.36,
+                    side * intensity * 0.40,
+                    intensity * 0.50,
                     -intensity * 0.05,
                 ))
                 * Mat4::from_rotation_z(side * (0.7 + intensity * 1.4))
@@ -81,10 +81,6 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                     1.0 + intensity * 1.8,
                 ));
         }
-    }
-    if matches!(part.tint, character::Tint::Seam) {
-        let gap = 1.0 + entity.secondary.gap_expansion.clamp(0.0, 0.72) * 0.35;
-        local = local * Mat4::from_scale(Vec3::splat(gap));
     }
     local
 }
@@ -342,6 +338,7 @@ impl CharacterRenderer {
                 entity.secondary.ear_tilt,
                 entity.secondary.wing_flap,
                 entity.secondary.gap_expansion,
+                entity.secondary.spark_life,
             ]
             .iter()
             .all(|value| value.is_finite())
@@ -362,6 +359,9 @@ impl CharacterRenderer {
         );
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
+            if matches!(part.feature, Feature::Spark(_)) && entity.secondary.spark_life <= 0.0 {
+                continue;
+            }
             if matches!(part.tint, character::Tint::Seam) {
                 if self.stats.effects >= character_quality::MAX_EFFECTS
                     || !character_quality::admit_effect(
@@ -387,7 +387,7 @@ impl CharacterRenderer {
                 }
             });
             if matches!(part.feature, Feature::Spark(_)) {
-                tint[3] *= (entity.secondary.gap_expansion / 0.30).clamp(0.0, 1.0);
+                tint[3] *= (entity.secondary.spark_life / 0.36).clamp(0.0, 1.0);
             } else if matches!(part.feature, Feature::Seam(_)) {
                 tint[3] *= 0.62 + entity.secondary.gap_expansion.clamp(0.0, 0.72) * 0.42;
             }
@@ -413,6 +413,23 @@ impl CharacterRenderer {
             CharacterLod::Mid => self.stats.lod_mid += 1,
             CharacterLod::Far => self.stats.lod_far += 1,
         }
+    }
+
+    #[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
+    pub(super) fn make_silhouette(&mut self) {
+        // Review the opaque contour without faces, material highlights, or
+        // additive magic. Emissive black avoids even the shader's rim light.
+        for batch in &mut self.batches {
+            if matches!(batch.material, Material::Face | Material::Seam) {
+                batch.instances.clear();
+            } else {
+                for instance in &mut batch.instances {
+                    instance.tint = [0.0, 0.0, 0.0, 1.0];
+                    instance.material = [1.0, 0.0, 1.0, 0.0];
+                }
+            }
+        }
+        self.stats.effects = 0;
     }
 
     pub fn upload(&mut self, queue: &wgpu::Queue) {

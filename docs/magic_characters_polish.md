@@ -63,6 +63,9 @@ movement speed and gameplay collision dimensions are unchanged.
 
 ## Character changes
 
+For the subsequent expression/motion review and repeatable animated capture,
+see [Character review: expression and motion](magic_characters_motion_review.md).
+
 The existing Soft Cubism direction remains: rounded cube heads, separate
 rigid pieces, chunky hands and feet, and quiet magical seams. The visual
 work follows the frontend skill's guidance on restraint and consistency.

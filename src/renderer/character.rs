@@ -286,9 +286,10 @@ fn finish_outfit(parts: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId) {
         OutfitId::GlossyRaincoat => {
             parts.retain(|part| !matches!(part.tint, Tint::Hair));
             let head = Anchor::new(JointId::Head);
-            detail(parts, head, Vec3::new(0.0, 0.0, 0.35), Vec3::new(1.10, 0.87, 0.20), Tint::Outer);
+            let size = recipe.head.size;
+            detail(parts, head, Vec3::new(0.0, 0.0, size.z * 0.5), Vec3::new(size.x + 0.12, size.y + 0.10, 0.20), Tint::Outer);
             for side in [-1.0, 1.0] {
-                detail(parts, head, Vec3::new(side * 0.50, 0.0, 0.04), Vec3::new(0.16, 0.86, 0.80), Tint::Outer);
+                detail(parts, head, Vec3::new(side * (size.x * 0.5 + 0.04), 0.0, 0.04), Vec3::new(0.16, size.y + 0.10, size.z + 0.08), Tint::Outer);
             }
             for side in [-1.0, 1.0] {
                 detail(parts, torso, Vec3::new(side * 0.32, -0.20, -0.43), Vec3::new(0.25, 0.17, 0.05), Tint::Shirt);
@@ -315,8 +316,23 @@ fn finish_outfit(parts: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId) {
             detail(parts, torso, Vec3::new(-0.28, 0.16, -0.39), Vec3::new(0.22, 0.20, 0.04), Tint::Ivory);
         }
     }
-    let torso_height = parts.iter().find(|p| p.anchor.joint == JointId::Torso)
-        .map_or(recipe.torso.size.y, |p| p.spec.size.y);
+    let torso_spec = parts.iter().find(|p| p.anchor.joint == JointId::Torso)
+        .map_or(recipe.torso, |p| p.spec);
+    // Surface details follow the garment's depth and taper, including the
+    // wider animal bodies. Keep their back face just inside the cloth.
+    for part in parts.iter_mut().filter(|p| p.anchor.joint == JointId::Torso) {
+        if part.anchor.local.w_axis.z < -0.30 && matches!(part.feature, Feature::None) {
+            let extent = part.anchor.local.transform_vector3(Vec3::Y * part.spec.size.y * 0.5).y.abs();
+            let y = part.anchor.local.w_axis.y;
+            let taper_at = |y: f32| {
+                let t = (y / torso_spec.size.y + 0.5).clamp(0.0, 1.0);
+                torso_spec.taper.0 + (torso_spec.taper.1 - torso_spec.taper.0) * t
+            };
+            let depth = torso_spec.size.z * 0.5 * taper_at(y - extent).max(taper_at(y + extent));
+            part.anchor.local.w_axis.z = part.anchor.local.w_axis.z.min(-depth - part.spec.size.z * 0.5 + 0.006);
+        }
+    }
+    let torso_height = torso_spec.size.y;
     let head_bottom = recipe.rig.joints[JointId::Head.index()].rest.translation.y - recipe.head.size.y * 0.5;
     let lift = (torso_height * 0.5 + 0.04 - head_bottom).max(0.0);
     for part in parts.iter_mut().filter(|p| p.anchor.joint == JointId::Head) {
@@ -691,7 +707,7 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
         );
         add_part(
             vertices,
-            head * Mat4::from_translation(Vec3::new(0.0, recipe.face.muzzle_y + 0.01, -0.60)),
+            head * Mat4::from_translation(Vec3::new(0.0, recipe.face.muzzle_y + 0.01, -0.44 - muzzle_size.z * 0.5 - 0.022)),
             BodyPart::new(Vec3::new(0.11, 0.07, 0.045), 0.0),
             ink,
         );
@@ -795,17 +811,17 @@ fn add_seam_cores(vertices: &mut Vec<Part>, recipe: &BodyRecipe) {
     ] {
         seam(vertices, Anchor::new(joint), Vec3::ZERO, 0.058, side);
     }
-    // Sparks are dormant at rest and unfold from the body only when the seam
-    // spring is active, keeping the magic readable without constant noise.
+    // Brief event sparks emerge beside the shoulder seams, clear of shoes
+    // and heavy garments. The renderer omits them outside the burst lifetime.
     for (side, position) in [
-        (-1.0, Vec3::new(-0.34, 0.18, -0.24)),
-        (1.0, Vec3::new(0.34, 0.24, 0.08)),
+        (-1.0, Vec3::new(-0.74, 1.90, -0.48)),
+        (1.0, Vec3::new(0.74, 1.96, -0.48)),
     ] {
         let part_start = vertices.len();
         add_part(
             vertices,
             Anchor::new(JointId::Root) * Mat4::from_translation(position),
-            BodyPart::new(Vec3::new(0.035, 0.13, 0.035), 0.012),
+            BodyPart::new(Vec3::new(0.055, 0.13, 0.055), 0.018),
             Tint::Seam,
         );
         vertices[part_start].feature = Feature::Spark(side);

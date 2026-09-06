@@ -4,7 +4,7 @@
 //! position, velocity, or gameplay state, which keeps cosmetic motion safe to
 //! run at a different rate from simulation and rendering.
 
-use super::{body_recipe, BodyId, FaceParameters, FacePreset, JointId, Pose};
+use super::{BodyId, FaceParameters, FacePreset, JointId, Pose, body_recipe};
 use crate::math::damp;
 use crate::types::{
     CharacterEmote, CharacterEntityKey, CharacterMotionEvent, CharacterMotionSample,
@@ -23,6 +23,8 @@ pub(crate) struct SecondaryMotion {
     /// A small, bounded multiplier used by seam cores to make joint gaps
     /// feel springy without moving the gameplay collider.
     pub(crate) gap_expansion: f32,
+    /// Seconds remaining in a short event burst; zero during steady travel.
+    pub(crate) spark_life: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,6 +45,7 @@ pub(crate) struct CharacterPresentationState {
     locomotion_blend: f32,
     landing_timer: f32,
     gap_spring: f32,
+    spark_life: f32,
     head_look: f32,
     face: FaceParameters,
     expression: FacePreset,
@@ -68,6 +71,7 @@ impl CharacterPresentationState {
             locomotion_blend: 0.0,
             landing_timer: 0.0,
             gap_spring: 0.0,
+            spark_life: 0.0,
             head_look: 0.0,
             face: FaceParameters::preset(expression),
             expression,
@@ -122,7 +126,10 @@ impl CharacterPresentationState {
         };
         let discontinuity = self.last_sequence.is_some()
             && (position_delta > TELEPORT_DISTANCE
+                || (sample.position[1] - self.last_position[1]).abs() > TELEPORT_DISTANCE
+                || sample.time < self.last_time
                 || sample.sequence < self.last_sequence.unwrap());
+        let accept_event = self.last_sequence.is_some() && !discontinuity;
         let delta = if self.last_sequence.is_some() && !discontinuity {
             (sample.time - self.last_time).clamp(0.0, MAX_PRESENTATION_DELTA)
         } else {
@@ -133,13 +140,17 @@ impl CharacterPresentationState {
             self.landing_timer = 0.0;
             self.gap_spring = 0.0;
             self.head_look = 0.0;
+            self.spark_life = 0.0;
+            self.wave_until = 0.0;
         }
-
         let time = if sample.time.is_finite() {
             sample.time.max(0.0)
         } else {
             0.0
         };
+        // A paused tab must not resume a stale burst. Spring integration uses
+        // the capped delta above; the event lifetime uses elapsed time.
+        self.spark_life = (self.spark_life - (time - self.last_time).max(0.0)).max(0.0);
         let estimated_speed = if delta > 0.0001 {
             position_delta / delta
         } else {
@@ -153,11 +164,7 @@ impl CharacterPresentationState {
                 if self.last_sequence.is_some() {
                     estimated_speed.max(0.0)
                 } else if sample.moving {
-                    if sample.sprinting {
-                        11.5
-                    } else {
-                        6.4
-                    }
+                    if sample.sprinting { 11.5 } else { 6.4 }
                 } else {
                     0.0
                 }
@@ -174,10 +181,12 @@ impl CharacterPresentationState {
         };
         self.locomotion_blend = damp(self.locomotion_blend, target_blend, 16.0, delta);
 
-        if sample.event == CharacterMotionEvent::Landing {
+        if accept_event && sample.event == CharacterMotionEvent::Landing {
             self.landing_timer = 0.24;
-        } else if sample.event == CharacterMotionEvent::Takeoff {
+            self.spark_life = 0.36;
+        } else if accept_event && sample.event == CharacterMotionEvent::Takeoff {
             self.landing_timer = 0.0;
+            self.spark_life = 0.36;
         } else {
             self.landing_timer = (self.landing_timer - delta).max(0.0);
         }
@@ -202,20 +211,19 @@ impl CharacterPresentationState {
             0.20 + if sample.sprinting { 0.08 } else { 0.0 }
         } else {
             0.0
-        }
-            + if matches!(sample.support, CharacterSupport::Airborne) {
-                0.32
-            } else {
-                0.0
-            }
-            + if matches!(
+        } + if matches!(sample.support, CharacterSupport::Airborne) {
+            0.32
+        } else {
+            0.0
+        } + if accept_event
+            && matches!(
                 sample.event,
                 CharacterMotionEvent::Takeoff | CharacterMotionEvent::Landing
             ) {
-                0.42
-            } else {
-                0.0
-            };
+            0.42
+        } else {
+            0.0
+        };
         let spring_rate = if reduced_effects { 20.0 } else { 13.0 };
         self.gap_spring = damp(
             self.gap_spring,
@@ -237,10 +245,12 @@ impl CharacterPresentationState {
         // These offsets are cosmetic clearances. The gameplay collider and
         // root position remain authoritative while the pieces visibly float
         // apart when the toy is moving or airborne.
-        let gap = self.gap_spring;
+        let gap = self.gap_spring * if reduced_effects { 0.35 } else { 1.0 };
         pose.transforms[JointId::Head.index()].translation.y += gap * 0.032;
         pose.transforms[JointId::LeftUpperArm.index()].translation.x -= gap * 0.028;
-        pose.transforms[JointId::RightUpperArm.index()].translation.x += gap * 0.028;
+        pose.transforms[JointId::RightUpperArm.index()]
+            .translation
+            .x += gap * 0.028;
         pose.transforms[JointId::LeftFoot.index()].translation.y -= gap * 0.010;
         pose.transforms[JointId::RightFoot.index()].translation.y -= gap * 0.010;
         rotate(&mut pose, JointId::LeftUpperArm, swing * 0.72, 0.0, 0.0);
@@ -297,9 +307,7 @@ impl CharacterPresentationState {
 
         // Air poses are driven by explicit support/vertical velocity. A raised
         // block therefore reads as ground, while a ledge fall still animates.
-        if !matches!(sample.support, CharacterSupport::Grounded { .. })
-            || vertical_velocity.abs() > 0.5
-        {
+        if matches!(sample.support, CharacterSupport::Airborne) || vertical_velocity.abs() > 0.5 {
             let rising = (vertical_velocity / 10.5).clamp(-1.0, 1.0);
             pose.transforms[JointId::Torso.index()].translation.y += rising * 0.026;
             rotate(&mut pose, JointId::Torso, -rising * 0.10, 0.0, 0.0);
@@ -369,22 +377,45 @@ impl CharacterPresentationState {
         let new_emote = sample.emote_sequence > self.last_emote_sequence;
         if new_emote {
             self.last_emote_sequence = sample.emote_sequence;
-            if sample.emote == CharacterEmote::Wave {
+            if accept_event && sample.emote == CharacterEmote::Wave {
                 self.wave_until = time + 0.85;
+                self.spark_life = 0.36;
             }
         }
         let waving = time < self.wave_until;
         if waving {
-            let wave = (time * 9.0).sin() * 0.16;
-            rotate(&mut pose, JointId::RightUpperArm, -1.0 + wave, 0.0, -0.16);
+            let wave_age = 0.85 - (self.wave_until - time);
+            let envelope =
+                wave_age.smoothstep(0.0, 0.14) * (self.wave_until - time).smoothstep(0.0, 0.20);
+            let wave = (wave_age * 18.0).sin() * 0.24;
+            rotate(
+                &mut pose,
+                JointId::RightUpperArm,
+                0.20 * envelope,
+                0.0,
+                (2.25 + wave * 0.3) * envelope,
+            );
             rotate(
                 &mut pose,
                 JointId::RightLowerArm,
-                -0.55 + wave * 0.5,
+                0.15 * envelope,
                 0.0,
-                0.0,
+                (0.25 + wave) * envelope,
             );
-            rotate(&mut pose, JointId::Head, 0.0, self.head_look * 0.5, 0.08);
+            rotate(
+                &mut pose,
+                JointId::RightHand,
+                0.0,
+                0.0,
+                wave * 1.4 * envelope,
+            );
+            rotate(
+                &mut pose,
+                JointId::Head,
+                0.0,
+                self.head_look * 0.5 * envelope,
+                0.08 * envelope,
+            );
         }
 
         let secondary_scale = if reduced_effects { 0.5 } else { 1.0 };
@@ -393,6 +424,11 @@ impl CharacterPresentationState {
             ear_tilt: (time * 1.7 + 1.0).sin() * 0.07 * secondary_scale,
             wing_flap: (time * 2.0 + 2.0).sin() * 0.10 * secondary_scale,
             gap_expansion: self.gap_spring,
+            spark_life: if reduced_effects {
+                0.0
+            } else {
+                self.spark_life
+            },
         };
 
         let reactive_expression = if waving {
@@ -448,7 +484,7 @@ fn rotate(pose: &mut Pose, joint: JointId, x: f32, y: f32, z: f32) {
 }
 
 fn blend_face(current: FaceParameters, target: FaceParameters, delta: f32) -> FaceParameters {
-    let amount = (delta * 14.0).clamp(0.0, 1.0);
+    let amount = 1.0 - (-delta * 14.0).exp();
     let mix = |a: f32, b: f32| a + (b - a) * amount;
     FaceParameters {
         eye_opening: mix(current.eye_opening, target.eye_opening),
@@ -475,12 +511,13 @@ fn shortest_angle(angle: f32) -> f32 {
 }
 
 fn presentation_seed(key: CharacterEntityKey) -> u32 {
-    let kind = match key.kind {
+    let kind: u32 = match key.kind {
         crate::types::CharacterEntityKind::LocalPlayer => 1,
         crate::types::CharacterEntityKind::LocalNpc => 2,
         crate::types::CharacterEntityKind::RemotePlayer => 3,
     };
-    let mut value = key.slot as u32 ^ key.generation.rotate_left(11) ^ kind * 0x9e37_79b9;
+    let mut value =
+        key.slot as u32 ^ key.generation.rotate_left(11) ^ kind.wrapping_mul(0x9e37_79b9);
     value ^= value << 13;
     value ^= value >> 17;
     value ^= value << 5;
@@ -509,11 +546,7 @@ trait FiniteOrZero {
 
 impl FiniteOrZero for f32 {
     fn finite_or_zero(self) -> f32 {
-        if self.is_finite() {
-            self
-        } else {
-            0.0
-        }
+        if self.is_finite() { self } else { 0.0 }
     }
 }
 
@@ -568,16 +601,147 @@ mod tests {
     fn yaw_wrap_uses_shortest_turn() {
         let mut state = CharacterPresentationState::new(sample(1, 0.0).key, BodyId::Person);
         let output = state.evaluate(sample(1, 0.0), BodyId::Person, false);
-        assert!(output.pose.transforms[JointId::Head.index()]
-            .rotation
-            .is_normalized());
+        assert!(
+            output.pose.transforms[JointId::Head.index()]
+                .rotation
+                .is_normalized()
+        );
+    }
+
+    #[test]
+    fn bursts_expire_during_continuous_travel() {
+        for event in [CharacterMotionEvent::Takeoff, CharacterMotionEvent::Landing] {
+            let mut state = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+            state.evaluate(sample(0, 0.0), BodyId::Person, false);
+            let mut trigger = sample(1, 1.0 / 60.0);
+            trigger.event = event;
+            assert!(
+                state
+                    .evaluate(trigger, BodyId::Person, false)
+                    .secondary
+                    .spark_life
+                    > 0.0
+            );
+            for tick in 2..=60 {
+                state.evaluate(sample(tick, tick as f32 / 60.0), BodyId::Person, false);
+            }
+            let settled = state.output.unwrap();
+            assert_eq!(settled.secondary.spark_life, 0.0);
+            assert!(settled.secondary.gap_expansion > 0.0);
+        }
+    }
+
+    #[test]
+    fn paused_presentation_expires_the_burst() {
+        let mut state = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+        state.evaluate(sample(0, 0.0), BodyId::Person, false);
+        let mut input = sample(1, 0.016);
+        input.event = CharacterMotionEvent::Takeoff;
+        assert!(
+            state
+                .evaluate(input, BodyId::Person, false)
+                .secondary
+                .spark_life
+                > 0.0
+        );
+        assert_eq!(
+            state
+                .evaluate(sample(2, 1.0), BodyId::Person, false)
+                .secondary
+                .spark_life,
+            0.0
+        );
+    }
+
+    #[test]
+    fn first_sample_and_teleports_do_not_replay_events() {
+        let mut trigger = sample(1, 0.0);
+        trigger.event = CharacterMotionEvent::Landing;
+        trigger.emote = CharacterEmote::Wave;
+        trigger.emote_sequence = 1;
+        let mut state = CharacterPresentationState::new(trigger.key, BodyId::Cat);
+        assert_eq!(
+            state
+                .evaluate(trigger, BodyId::Cat, false)
+                .secondary
+                .spark_life,
+            0.0
+        );
+        for (tick, position) in [[20.0, 0.0, 0.0], [20.0, 20.0, 0.0]]
+            .into_iter()
+            .enumerate()
+        {
+            trigger.sequence += 1;
+            trigger.time = (tick + 1) as f32 / 60.0;
+            trigger.position = position;
+            trigger.emote_sequence += 1;
+            assert_eq!(
+                state
+                    .evaluate(trigger, BodyId::Cat, false)
+                    .secondary
+                    .spark_life,
+                0.0
+            );
+            assert_eq!(state.wave_until, 0.0);
+        }
+    }
+
+    #[test]
+    fn reduced_effects_suppress_bursts_and_shrink_gaps() {
+        let mut full = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+        let mut reduced = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+        for tick in 0..30 {
+            let mut input = sample(tick, tick as f32 / 60.0);
+            if tick == 29 {
+                input.event = CharacterMotionEvent::Takeoff;
+            }
+            full.evaluate(input, BodyId::Person, false);
+            reduced.evaluate(input, BodyId::Person, true);
+        }
+        let a = full.output.unwrap();
+        let b = reduced.output.unwrap();
+        assert!(a.secondary.spark_life > 0.0);
+        assert_eq!(b.secondary.spark_life, 0.0);
+        let rest = body_recipe(BodyId::Person).rig.joints[JointId::Head.index()]
+            .rest
+            .translation
+            .y;
+        assert!(
+            b.pose.transforms[JointId::Head.index()].translation.y - rest
+                < a.pose.transforms[JointId::Head.index()].translation.y - rest
+        );
+    }
+
+    #[test]
+    fn unknown_support_does_not_imply_airborne() {
+        let mut known = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+        let mut unknown = CharacterPresentationState::new(sample(0, 0.0).key, BodyId::Person);
+        for tick in 0..30 {
+            let input = sample(tick, tick as f32 / 60.0);
+            let a = known.evaluate(input, BodyId::Person, false);
+            let b = unknown.evaluate(
+                CharacterMotionSample {
+                    support: CharacterSupport::Unknown,
+                    ..input
+                },
+                BodyId::Person,
+                false,
+            );
+            assert_eq!(a.face, b.face);
+            assert_eq!(
+                a.pose.transforms[JointId::LeftUpperArm.index()].rotation,
+                b.pose.transforms[JointId::LeftUpperArm.index()].rotation
+            );
+        }
     }
 
     #[test]
     fn all_expression_presets_are_authored() {
         assert!(FacePreset::ALL.len() >= 20);
-        assert!(FacePreset::ALL
-            .iter()
-            .all(|preset| !preset.stable_id().is_empty()));
+        assert!(
+            FacePreset::ALL
+                .iter()
+                .all(|preset| !preset.stable_id().is_empty())
+        );
     }
 }

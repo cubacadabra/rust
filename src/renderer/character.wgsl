@@ -59,20 +59,24 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
         } else if input.material.w == 5.0 {
             let curve = input.material.x;
             let opening = clamp(input.material.y, 0.0, 1.0);
-            let smile = curve * (p.x * p.x - 0.45) * 0.75;
-            let line = abs(p.y - smile) < 0.13 && abs(p.x) < 0.88;
-            let oval = p.x * p.x / 0.64 + p.y * p.y / max(0.02, opening * opening) < 1.0;
-            if opening > 0.12 && oval {
+            let x = p.x / 0.88;
+            let smile = curve * (x * x - 0.45) * (0.75 - opening * 0.35);
+            let edge = sqrt(max(0.0, 1.0 - x * x));
+            let upper = smile + (0.11 + opening * 0.45) * edge;
+            let lower = smile - (0.11 + opening * 0.65) * edge;
+            // One continuous mouth, bounded inside the face quad even at full
+            // opening and curvature. The lip flattens as the smile opens.
+            // Unioning an ellipse with a smile left two sharp floating corners.
+            if abs(x) >= 1.0 || p.y > upper || p.y < lower { discard; }
+            if opening > 0.12 {
                 color = vec3<f32>(0.08, 0.05, 0.07);
                 // A tiny tooth or tongue cue gives the open expressions a
                 // stronger read without adding another mesh or texture.
-                if opening > 0.38 && p.y > 0.20 && p.y < 0.62 {
+                if opening > 0.38 && p.y > upper - 0.20 {
                     color = vec3<f32>(0.96, 0.92, 0.82);
-                } else if opening > 0.30 && p.y < -0.36 {
+                } else if opening > 0.30 && p.y < lower + 0.18 {
                     color = vec3<f32>(0.82, 0.29, 0.34);
                 }
-            } else if !line {
-                discard;
             }
         } else if input.material.w == 6.0 {
             if dot(p, p) > 0.92 { discard; }
