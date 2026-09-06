@@ -23,6 +23,11 @@ pub(super) enum Shape {
     Laces,
 }
 
+/// The shoe profile's lowest generated vertex is at the bottom of its
+/// normalized y range. Sole placement derives its local center from this
+/// geometry contract instead of from a guessed box extent.
+pub(super) const SHOE_MIN_NORMALIZED_Y: f32 = -0.5;
+
 // Height, half-width, half-depth. The profiles describe cheek planes,
 // dropped shoulders, gathered fabric, and broad toes instead of box fillets.
 const HEAD: &[[f32; 3]] = &[

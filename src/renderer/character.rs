@@ -123,6 +123,7 @@ pub(super) struct Part {
 #[derive(Clone, Copy)]
 pub(super) enum Feature {
     None,
+    Sole,
     Eye(f32),
     Brow(f32),
     Mouth,
@@ -251,6 +252,12 @@ fn detail(parts: &mut Vec<Part>, anchor: Anchor, position: Vec3, size: Vec3, tin
         BodyPart::new(Vec3::splat(0.2), 0.04), tint);
 }
 
+fn sole_detail(parts: &mut Vec<Part>, anchor: Anchor, position: Vec3, size: Vec3, tint: Tint) {
+    let part_start = parts.len();
+    detail(parts, anchor, position, size, tint);
+    parts[part_start].feature = Feature::Sole;
+}
+
 fn finish_outfit(parts: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId) {
     let torso = Anchor::new(JointId::Torso);
     // Garment materials apply to the garment itself, including sleeves.
@@ -270,7 +277,7 @@ fn finish_outfit(parts: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId) {
         if let Some(foot) = parts.iter_mut().find(|p| p.anchor.joint == joint && matches!(p.tint, Tint::Shoes)) {
             foot.anchor.local = Mat4::from_translation(Vec3::new(0.0, foot.spec.size.y * 0.5, 0.0));
             let size = foot.spec.size;
-            detail(parts, Anchor::new(joint), Vec3::new(0.0, 0.015, 0.0),
+            sole_detail(parts, Anchor::new(joint), Vec3::new(0.0, 0.015, 0.0),
                 Vec3::new(size.x * 1.02, 0.09, size.z * 1.02), Tint::Ivory);
             if matches!(outfit, OutfitId::EverydayHoodie | OutfitId::PufferExplorer) {
                 detail(parts, Anchor::new(joint), Vec3::new(0.0, size.y, -0.16),

@@ -20,7 +20,7 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
     let face = entity.face.clamped();
     let mut local = part.anchor.local;
     match part.feature {
-        Feature::None => {}
+        Feature::None | Feature::Sole => {}
         Feature::Cloth => {
             local *= Mat4::from_rotation_x(entity.secondary.cloth_sway);
         }

@@ -21,6 +21,16 @@ pub(super) const SLEEVE_SIZE: Vec3 = Vec3::new(0.46, 1.13, 0.49);
 pub(super) const SLEEVE_CENTER: f32 = -0.40;
 pub(super) const ELBOW: f32 = -0.52;
 
+const STANCE_ANKLE_HEIGHT: f32 = 0.05;
+const SOLE_HEIGHT: f32 = 0.095;
+
+fn sole_center_y() -> f32 {
+    // The sole is attached to an ankle at STANCE_ANKLE_HEIGHT. Its local
+    // center is therefore the offset that puts the generated minimum on the
+    // support plane, including the normalized mesh's actual lower bound.
+    -STANCE_ANKLE_HEIGHT - super::hero_geometry::SHOE_MIN_NORMALIZED_Y * SOLE_HEIGHT
+}
+
 /// Refit the shared hierarchy without changing collision, camera height, or
 /// stored appearance. Keep animated offsets relative to the shared rest rig.
 pub(super) fn fit_pose(
@@ -91,7 +101,7 @@ pub(super) fn fit_pose(
             let z = -phase.cos() * blend * 0.28 - 0.04;
             let hip_y = hip - blend * 0.065;
             pose.transforms[thigh.index()].translation.y = hip_y;
-            let down = hip_y - 0.05 - lift;
+            let down = hip_y - STANCE_ANKLE_HEIGHT - lift;
             let d = down.hypot(z).min(leg * 2.0 - 0.001);
             let hip_angle = (-z).atan2(down) + (d / (2.0 * leg)).clamp(-1.0, 1.0).acos();
             let knee_angle = -((d * d - 2.0 * leg * leg) / (2.0 * leg * leg))
@@ -204,22 +214,19 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
                 p.spec = BodyPart::new(Vec3::new(0.50, 0.29, 0.76), 0.0);
                 p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.155, -0.09));
             }
-            (LeftFoot | RightFoot, Tint::Ivory, _) => {
-                let sole = p.anchor.local.w_axis.y < 0.1;
-                p.shape = if sole { Shape::Shoe } else { Shape::Laces };
+            (LeftFoot | RightFoot, Tint::Ivory, Feature::Sole) => {
+                p.shape = Shape::Shoe;
                 p.spec = BodyPart::new(
-                    if sole {
-                        Vec3::new(0.51, 0.095, 0.77)
-                    } else {
-                        Vec3::new(0.31, 0.065, 0.24)
-                    },
+                    Vec3::new(0.51, SOLE_HEIGHT, 0.77),
                     0.0,
                 );
-                p.anchor.local = Mat4::from_translation(if sole {
-                    Vec3::new(0.0, 0.017, -0.09)
-                } else {
-                    Vec3::new(0.0, 0.26, -0.24)
-                });
+                p.anchor.local =
+                    Mat4::from_translation(Vec3::new(0.0, sole_center_y(), -0.09));
+            }
+            (LeftFoot | RightFoot, Tint::Ivory, _) => {
+                p.shape = Shape::Laces;
+                p.spec = BodyPart::new(Vec3::new(0.31, 0.065, 0.24), 0.0);
+                p.anchor.local = Mat4::from_translation(Vec3::new(0.0, 0.26, -0.24));
             }
             (_, _, Feature::Eye(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.125, 0.185, 0.025), 0.0);
@@ -358,7 +365,7 @@ mod tests {
     use crate::types::CharacterSupport;
 
     #[test]
-    fn fitted_stance_feet_are_level_grounded_and_separated_through_the_stride() {
+    fn fitted_stance_joints_are_level_and_separated_through_the_stride() {
         let recipe = body_recipe(BodyId::Person);
         for study in [Study::Everyday, Study::LongerLegs, Study::SoftShoulders] {
             for step in 0..120 {
@@ -389,11 +396,135 @@ mod tests {
                     assert!(height >= 0.0499);
                     if (entity.walk_cycle + offset).sin() >= 0.0 {
                         assert!(
-                            (height - 0.05).abs() < 0.0001,
-                            "stance sole must stay grounded"
+                            (height - STANCE_ANKLE_HEIGHT).abs() < 0.0001,
+                            "stance ankle must stay at its fitted target"
                         );
                     }
                     assert!(pose.transforms[knee.index()].rotation.to_scaled_axis().x <= 0.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn generated_soles_touch_support_through_all_person_studies_lods_and_strides() {
+        let recipe = body_recipe(BodyId::Person);
+        let parts = super::super::character::parts_for(
+            &recipe,
+            crate::character::OutfitId::EverydayHoodie,
+        );
+        let soles: Vec<_> = parts
+            .iter()
+            .copied()
+            .filter(|part| {
+                matches!(part.feature, Feature::Sole)
+                    && matches!(part.anchor.joint, JointId::LeftFoot | JointId::RightFoot)
+            })
+            .collect();
+        assert_eq!(soles.len(), 2);
+
+        let sole_min_y = |entity: super::super::RenderEntity,
+                          study: Study,
+                          part: Part,
+                          lod: super::super::character_quality::CharacterLod|
+         -> f32 {
+            let pose = fit_pose(entity, study, &recipe.rig);
+            let joints = recipe.rig.world_matrices(&pose.transforms);
+            let root = Mat4::from_rotation_translation(
+                Quat::from_rotation_y(entity.yaw),
+                Vec3::from_array(entity.position),
+            );
+            let transform = root
+                * joints[part.anchor.joint.index()]
+                * part.anchor.local
+                * Mat4::from_scale(part.spec.size);
+            assert!(transform.to_cols_array().iter().all(|value| value.is_finite()));
+            let mesh = super::super::hero_geometry::build(
+                part.shape,
+                Vec3::ONE,
+                lod.subdivisions(),
+            );
+            mesh.vertices
+                .iter()
+                .map(|vertex| transform.transform_point3(vertex.position).y)
+                .fold(f32::INFINITY, f32::min)
+        };
+
+        for study in [Study::Everyday, Study::LongerLegs, Study::SoftShoulders] {
+            for lod in super::super::character_quality::CharacterLod::ALL {
+                for (moving, sprinting, stride_blend) in [
+                    (false, false, 0.0),
+                    (true, false, 6.4 / 11.5),
+                    (true, true, 1.0),
+                ] {
+                    for support_height in [0.0, 2.0] {
+                        for step in 0..120 {
+                            let phase = step as f32 * std::f32::consts::TAU / 120.0;
+                            let mut entity = super::super::RenderEntity {
+                                body: BodyId::Person,
+                                outfit: crate::character::OutfitId::EverydayHoodie,
+                                pose: Pose::rest(&recipe.rig),
+                                position: [0.0, support_height, 0.0],
+                                support: CharacterSupport::Grounded {
+                                    height: support_height,
+                                },
+                                walk_cycle: phase,
+                                moving,
+                                sprinting,
+                                ..Default::default()
+                            };
+                            entity.secondary.stride_blend = stride_blend;
+                            for part in &soles {
+                                let offset = if part.anchor.joint == JointId::LeftFoot {
+                                    0.0
+                                } else {
+                                    std::f32::consts::PI
+                                };
+                                let minimum = sole_min_y(entity, study, *part, lod);
+                                assert!(
+                                    minimum >= support_height - 0.001,
+                                    "sole penetrates support: study={study:?} lod={lod:?} moving={moving} sprinting={sprinting} height={support_height} phase={phase} minimum={minimum}"
+                                );
+                                if stride_blend == 0.0
+                                    || (phase + offset).sin() >= 0.0
+                                {
+                                    assert!(
+                                        (minimum - support_height).abs() < 0.001,
+                                        "stance sole misses support: study={study:?} lod={lod:?} moving={moving} sprinting={sprinting} height={support_height} phase={phase} minimum={minimum}"
+                                    );
+                                }
+                            }
+                        }
+
+                        if stride_blend > 0.0 {
+                            for part in &soles {
+                                let offset = if part.anchor.joint == JointId::LeftFoot {
+                                    0.0
+                                } else {
+                                    std::f32::consts::PI
+                                };
+                                let mut entity = super::super::RenderEntity {
+                                    body: BodyId::Person,
+                                    outfit: crate::character::OutfitId::EverydayHoodie,
+                                    pose: Pose::rest(&recipe.rig),
+                                    position: [0.0, support_height, 0.0],
+                                    support: CharacterSupport::Grounded {
+                                        height: support_height,
+                                    },
+                                    walk_cycle: 1.5 * std::f32::consts::PI - offset,
+                                    moving: true,
+                                    sprinting: stride_blend == 1.0,
+                                    ..Default::default()
+                                };
+                                entity.secondary.stride_blend = stride_blend;
+                                let minimum = sole_min_y(entity, study, *part, lod);
+                                assert!(
+                                    minimum > support_height + 0.001,
+                                    "mid-swing sole must clear support: study={study:?} lod={lod:?} height={support_height} minimum={minimum}"
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
