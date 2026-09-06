@@ -13,25 +13,7 @@ impl Renderer {
         let player = Vec3::from_array(self.scene.player.position);
         let [yaw, pitch, distance] = self.scene.camera;
         let body = self.scene.player.body;
-        let (camera_position, target) = if distance <= 0.75 {
-            let camera_position = player + super::character::camera_anchor(body);
-            let look_direction = Vec3::new(
-                yaw.sin() * pitch.cos(),
-                pitch.sin(),
-                -yaw.cos() * pitch.cos(),
-            );
-            (camera_position, camera_position + look_direction)
-        } else {
-            let target = player + super::character::camera_target(body);
-            let horizontal_distance = distance * pitch.cos();
-            let camera_position = target
-                + Vec3::new(
-                    yaw.sin() * horizontal_distance,
-                    (distance * pitch.sin()).clamp(-2.0, distance),
-                    yaw.cos() * horizontal_distance,
-                );
-            (camera_position, target)
-        };
+        let (camera_position, target) = super::camera::orbit(player, body, yaw, pitch, distance);
         let world_viewport = self.world_viewport();
         let view = Mat4::look_at_rh(camera_position, target, Vec3::Y);
         let view_projection = Mat4::perspective_rh(
@@ -103,9 +85,11 @@ impl Renderer {
             // Local player first gives deterministic priority if a development
             // caller supplies more than the bounded render-only crowd capacity.
             if self.scene.camera[2] > 0.75 {
+                let mut local = self.scene.player;
+                local.camera_fade = super::camera::fade(distance);
                 add_character(
                     &mut self.characters,
-                    self.scene.player,
+                    local,
                     self.scene.player_style,
                     0,
                     reduced_effects,

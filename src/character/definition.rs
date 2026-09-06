@@ -485,7 +485,7 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             lower_leg,
             foot,
             face: FaceAnchors::default(),
-            first_person_anchor: Vec3::new(0.0, 2.88, -0.03),
+            first_person_anchor: Vec3::new(0.0, 2.80, -0.03),
             third_person_target: Vec3::new(0.0, 1.62, 0.0),
             extras: SpeciesExtras {
                 ear_size: None,
@@ -509,12 +509,12 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             face: FaceAnchors {
                 eye_y: 0.12,
                 eye_x: 0.20,
-                face_z: -0.45,
+                face_z: -0.397,
                 brow_y: 0.28,
                 mouth_y: -0.18,
                 muzzle_y: -0.12,
             },
-            first_person_anchor: Vec3::new(0.0, 2.88, -0.04),
+            first_person_anchor: Vec3::new(0.0, 2.80, -0.04),
             third_person_target: Vec3::new(0.0, 1.60, 0.0),
             extras: SpeciesExtras {
                 ear_size: Some(Vec3::new(0.28, 0.40, 0.28)),
@@ -538,12 +538,12 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             face: FaceAnchors {
                 eye_y: 0.11,
                 eye_x: 0.20,
-                face_z: -0.48,
+                face_z: -0.427,
                 brow_y: 0.28,
                 mouth_y: -0.17,
                 muzzle_y: -0.09,
             },
-            first_person_anchor: Vec3::new(0.0, 2.86, -0.05),
+            first_person_anchor: Vec3::new(0.0, 2.78, -0.05),
             third_person_target: Vec3::new(0.0, 1.64, 0.0),
             extras: SpeciesExtras {
                 ear_size: None,

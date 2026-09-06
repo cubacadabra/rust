@@ -146,8 +146,12 @@ impl Engine {
             sequence: self.motion_sequence,
             time: self.elapsed,
             position: self.player.position,
-            facing_yaw: player_facing_yaw(self.player, self.view_yaw),
-            look_yaw: self.view_yaw,
+            facing_yaw: self.player.facing_yaw,
+            look_yaw: if self.player.moving || self.camera_distance <= 0.75 {
+                self.view_yaw
+            } else {
+                self.player.facing_yaw
+            },
             planar_velocity: Some([self.player.velocity[0], self.player.velocity[2]]),
             vertical_velocity: Some(self.player.velocity[1]),
             support: player_support(self.player),
@@ -957,15 +961,6 @@ fn parse_color(value: &str) -> Option<[f32; 4]> {
                 1.0,
             ]
         })
-}
-
-fn player_facing_yaw(player: Player, fallback: f32) -> f32 {
-    let planar_speed = player.velocity[0].hypot(player.velocity[2]);
-    if planar_speed > 0.001 {
-        (-player.velocity[0]).atan2(-player.velocity[2])
-    } else {
-        fallback
-    }
 }
 
 fn player_support(player: Player) -> CharacterSupport {

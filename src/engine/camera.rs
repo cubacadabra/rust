@@ -26,8 +26,9 @@ impl Engine {
         self.player.position = position;
         self.player.velocity = [0.0; 3];
         self.player.grounded = position[1] <= 0.05;
-        self.view_yaw = yaw;
-        self.target_yaw = yaw;
+        if yaw.is_finite() {
+            self.player.facing_yaw = yaw;
+        }
         self.write_snapshot();
     }
 
@@ -35,21 +36,38 @@ impl Engine {
         [self.view_yaw, self.view_pitch, self.camera_distance]
     }
 
+    pub fn player_facing_yaw(&self) -> f32 {
+        self.player.facing_yaw
+    }
+
     pub(super) fn apply_camera_input(&mut self) {
-        self.target_yaw -= self.input.look_x * LOOK_SENSITIVITY;
-        self.target_pitch =
-            (self.target_pitch + self.input.look_y * LOOK_SENSITIVITY).clamp(-MAX_PITCH, MAX_PITCH);
-        self.target_camera_distance =
-            (self.target_camera_distance + self.input.zoom_delta).clamp(0.0, MAX_CAMERA_DISTANCE);
+        if self.input.look_x.is_finite() {
+            self.target_yaw -= self.input.look_x.clamp(-10000.0, 10000.0) * LOOK_SENSITIVITY;
+        }
+        if self.input.look_y.is_finite() {
+            self.target_pitch = (self.target_pitch + self.input.look_y * LOOK_SENSITIVITY)
+                .clamp(-MAX_PITCH, MAX_PITCH);
+        }
+        if self.input.zoom_delta.is_finite() {
+            // Distance-scaled zoom: precise near the face, fast across the map.
+            // The offset lets the same gesture leave first person at zero.
+            let factor = (self.input.zoom_delta / 10.0).clamp(-10.0, 10.0).exp();
+            self.target_camera_distance = ((self.target_camera_distance + 2.0) * factor - 2.0)
+                .clamp(0.0, MAX_CAMERA_DISTANCE);
+        }
     }
 
     pub(super) fn smooth_camera(&mut self, delta: f32) {
-        self.view_yaw = damp(self.view_yaw, self.target_yaw, 10.0, delta);
+        // Rebase both together, preserving accumulated multi-turn input.
+        let turns = (self.view_yaw / std::f32::consts::TAU).trunc() * std::f32::consts::TAU;
+        self.view_yaw -= turns;
+        self.target_yaw -= turns;
+        self.view_yaw = damp(self.view_yaw, self.target_yaw, 18.0, delta);
         self.view_pitch = damp(self.view_pitch, self.target_pitch, 10.0, delta);
         self.camera_distance = damp(
             self.camera_distance,
             self.target_camera_distance,
-            9.0,
+            16.0,
             delta,
         );
     }

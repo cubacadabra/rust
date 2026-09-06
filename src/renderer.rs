@@ -5,6 +5,7 @@ pub(crate) mod validation;
 mod device;
 mod draw;
 mod character;
+mod camera;
 mod character_gpu;
 mod character_material;
 mod character_quality;

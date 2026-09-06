@@ -24,6 +24,70 @@ fn movement_accelerates_in_view_direction() {
 }
 
 #[test]
+fn idle_orbit_keeps_body_heading_and_holds_view_after_release() {
+    let mut engine = Engine::new();
+    for _ in 0..120 {
+        engine.set_input(Input { look_x: 12.0, ..Input::default() });
+        engine.step(1.0 / 60.0);
+        let local = engine.character_motion_samples().next().unwrap();
+        assert_eq!(local.facing_yaw, 0.0);
+        assert_eq!(local.look_yaw, 0.0);
+    }
+    let requested = engine.target_yaw;
+    for _ in 0..240 { engine.step(1.0 / 60.0); }
+    assert!((engine.view_yaw - requested).sin().abs() < 0.001);
+    assert_eq!(engine.player.facing_yaw, 0.0);
+}
+
+#[test]
+fn movement_turns_body_and_stop_does_not_snap_to_camera() {
+    let mut engine = Engine::new();
+    for _ in 0..60 {
+        engine.set_input(Input { strafe: 1.0, ..Input::default() });
+        engine.step(1.0 / 60.0);
+    }
+    let facing = engine.player.facing_yaw;
+    assert!((facing + std::f32::consts::FRAC_PI_2).abs() < 0.001);
+    engine.set_input(Input::default());
+    for _ in 0..180 { engine.step(1.0 / 60.0); }
+    assert_eq!(engine.player.facing_yaw, facing);
+}
+
+#[test]
+fn reconciliation_preserves_orbit_and_zoom() {
+    let mut engine = Engine::new();
+    engine.view_yaw = 2.0;
+    engine.target_yaw = 2.2;
+    let camera = engine.camera();
+    engine.reconcile_player([1.0, 0.0, 2.0], 0.5);
+    assert_eq!(engine.camera(), camera);
+    assert_eq!(engine.target_yaw, 2.2);
+    assert_eq!(engine.player.facing_yaw, 0.5);
+}
+
+#[test]
+fn zoom_is_reversible_distance_scaled_and_supports_first_person_and_wide_view() {
+    let mut engine = Engine::new();
+    for delta in [12.0, -12.0] {
+        engine.input.zoom_delta = delta;
+        engine.apply_camera_input();
+    }
+    assert!((engine.target_camera_distance - 8.0).abs() < 0.0001);
+    engine.input.zoom_delta = 100.0;
+    engine.apply_camera_input();
+    assert_eq!(engine.target_camera_distance, 120.0);
+    engine.input.zoom_delta = -100.0;
+    engine.apply_camera_input();
+    assert_eq!(engine.target_camera_distance, 0.0);
+    engine.input.zoom_delta = 10.0;
+    engine.apply_camera_input();
+    assert!(engine.target_camera_distance > 0.75);
+    engine.input.zoom_delta = f32::NAN;
+    engine.apply_camera_input();
+    assert!(engine.target_camera_distance.is_finite());
+}
+
+#[test]
 fn jump_returns_to_ground() {
     let mut engine = Engine::new();
     engine.set_input(Input {

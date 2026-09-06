@@ -193,6 +193,7 @@ fn render_entity(
         face: animation.face,
         secondary: animation.secondary,
         support: sample.support,
+        camera_fade: 0.0,
     }
 }
 

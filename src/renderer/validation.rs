@@ -284,6 +284,9 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
     characters.upload(&queue);
     let (visible_effect, _) = unorm.render(&context, &characters, true, true).await?;
     if max_error(&a, &visible_effect) < 20 {
+        if let Some(error) = scope.pop().await {
+            return Err(format!("seam probe render failed: {error}"));
+        }
         return Err("seam effect probe is not visible".into());
     }
     unorm.effects_first = true;
@@ -319,6 +322,7 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
     if surface_color_max_error > 1
         || legacy_color_max_error > 0
         || occlusion_max_error > 0
+        || effect_depth_write_max_error > 0
     {
         return Err(format!(
             "pixel regression: surface={surface_color_max_error}, direct={legacy_color_max_error}, occlusion={occlusion_max_error}, effect-depth={effect_depth_write_max_error}"
@@ -680,6 +684,10 @@ fn populate(characters: &mut CharacterRenderer, count: usize, phase: f32) {
             .unwrap_or(crate::character::OutfitId::fallback());
         let body = style.body;
         let outfit = style.outfit;
+        let walk_cycle = phase + index as f32 * 0.37;
+        let pose = crate::character::Pose::locomotion(
+            &crate::character::body_recipe(body).rig, walk_cycle, count > 3, index % 2 == 0,
+        );
         style.skin = super::color([0xe8ae86, 0xc98464, 0x82b78f][index % 3]);
         style.shirt = super::color([0x2d6663, 0x5f8f78, 0x694c88][index % 3]);
         characters.add(
@@ -687,7 +695,8 @@ fn populate(characters: &mut CharacterRenderer, count: usize, phase: f32) {
                 position,
                 body,
                 outfit,
-                walk_cycle: phase + index as f32 * 0.37,
+                walk_cycle,
+                pose,
                 moving: count > 3,
                 sprinting: index % 2 == 0,
                 ..Default::default()

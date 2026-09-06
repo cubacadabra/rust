@@ -45,7 +45,7 @@ const LOOK_SENSITIVITY: f32 = 0.0062;
 // staying just short of the look-at singularity.
 const MAX_PITCH: f32 = 1.45;
 // Leave enough room for a genuinely high bird's-eye view of the world.
-const MAX_CAMERA_DISTANCE: f32 = 48.0;
+const MAX_CAMERA_DISTANCE: f32 = 120.0;
 
 pub struct Engine {
     pub(crate) player: Player,

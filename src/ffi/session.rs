@@ -308,6 +308,13 @@ pub unsafe extern "C" fn engine_camera_yaw(engine: *const Engine) -> f32 {
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_player_facing_yaw(engine: *const Engine) -> f32 {
+    unsafe { engine.as_ref() }.map_or(0.0, Engine::player_facing_yaw)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_camera_pitch(engine: *const Engine) -> f32 {
     unsafe { engine.as_ref() }.map_or(0.0, |engine| engine.camera()[1])
 }

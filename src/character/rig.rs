@@ -195,7 +195,7 @@ pub(crate) fn common_rest_rig() -> RigDefinition {
         joints: vec![
             joint(Root, None, Vec3::ZERO, 0.0),
             joint(Torso, Some(Root), Vec3::new(0.0, 1.72, 0.0), 0.025),
-            joint(Head, Some(Torso), Vec3::new(0.0, 1.12, 0.0), 0.04),
+            joint(Head, Some(Torso), Vec3::new(0.0, 1.04, 0.0), 0.04),
             joint(LeftUpperArm, Some(Torso), Vec3::new(-0.66, 0.05, 0.0), 0.035),
             joint(LeftLowerArm, Some(LeftUpperArm), Vec3::new(0.0, -0.58, 0.0), 0.035),
             joint(LeftHand, Some(LeftLowerArm), Vec3::new(0.0, -0.48, -0.01), 0.04),

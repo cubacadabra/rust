@@ -277,7 +277,8 @@ enum Scenario {
         camera_yaw: f32,
         silhouette: bool,
     },
-    WardrobeLineup,
+    WardrobeLineup { name: &'static str, camera_yaw: f32 },
+    Orbit { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
 }
 
 impl Scenario {
@@ -287,7 +288,8 @@ impl Scenario {
             Self::Raised => "raised-platform-third",
             Self::Crowd { name, .. } => name,
             Self::ShapeLineup { name, .. } => name,
-            Self::WardrobeLineup => "phase5-six-outfit-lineup",
+            Self::WardrobeLineup { name, .. } => name,
+            Self::Orbit { name, .. } => name,
         }
     }
 }
@@ -315,7 +317,18 @@ const PHASE2_SCENARIOS: [Scenario; 4] = [
     },
 ];
 
-const PHASE5_SCENARIOS: [Scenario; 1] = [Scenario::WardrobeLineup];
+const PHASE5_SCENARIOS: [Scenario; 10] = [
+    Scenario::WardrobeLineup { name: "wardrobe-front", camera_yaw: std::f32::consts::PI },
+    Scenario::WardrobeLineup { name: "wardrobe-three-quarter", camera_yaw: 2.55 },
+    Scenario::WardrobeLineup { name: "wardrobe-side", camera_yaw: std::f32::consts::FRAC_PI_2 },
+    Scenario::WardrobeLineup { name: "wardrobe-back", camera_yaw: 0.0 },
+    Scenario::Orbit { name: "orbit-front-close", yaw: std::f32::consts::PI, pitch: 0.0, distance: 2.3 },
+    Scenario::Orbit { name: "orbit-side-close", yaw: std::f32::consts::FRAC_PI_2, pitch: 0.0, distance: 2.3 },
+    Scenario::Orbit { name: "orbit-front-default", yaw: std::f32::consts::PI, pitch: 0.2, distance: 8.0 },
+    Scenario::Orbit { name: "orbit-overhead-wide", yaw: 2.3, pitch: 1.3, distance: 120.0 },
+    Scenario::Orbit { name: "orbit-first-person-entry", yaw: 1.0, pitch: 0.2, distance: 1.7 },
+    Scenario::Orbit { name: "orbit-first-person", yaw: 1.0, pitch: 0.2, distance: 0.0 },
+];
 
 const PHASE0_SCENARIOS: [Scenario; 15] = [
     Scenario::Single {
@@ -745,11 +758,33 @@ impl HeadlessContext {
                 let mut style = palette.avatar;
                 style.body = entity.body;
                 style.outfit = entity.outfit;
+                if matches!(scenario, Scenario::WardrobeLineup { .. }) {
+                    // Explicit fixture palettes demonstrate species and material
+                    // separation without overriding player-selected live colors.
+                    let palettes = [
+                        ([0.86, 0.61, 0.44, 1.0], [0.18, 0.43, 0.40, 1.0]),
+                        ([0.80, 0.53, 0.29, 1.0], [0.78, 0.33, 0.17, 1.0]),
+                        ([0.66, 0.70, 0.76, 1.0], [0.91, 0.67, 0.18, 1.0]),
+                        ([0.42, 0.65, 0.57, 1.0], [0.34, 0.28, 0.58, 1.0]),
+                        ([0.45, 0.63, 0.68, 1.0], [0.31, 0.39, 0.53, 1.0]),
+                        ([0.46, 0.28, 0.18, 1.0], [0.69, 0.47, 0.50, 1.0]),
+                    ];
+                    (style.skin, style.shirt) = palettes[rank % palettes.len()];
+                    style.pants = if rank == 5 { [0.58, 0.38, 0.46, 1.0] } else { [0.24, 0.31, 0.42, 1.0] };
+                    style.shoes = [0.18, 0.22, 0.28, 1.0];
+                    entity.face = crate::character::FaceParameters::preset(crate::character::FacePreset::Happy);
+                }
+                let lod = if let Scenario::Orbit { yaw, pitch, distance, .. } = scenario {
+                    let (position, target) = super::camera::orbit(Vec3::ZERO, entity.body, yaw, pitch, distance);
+                    let view = Mat4::look_at_rh(position, target, Vec3::Y);
+                    super::character_quality::select_lod(
+                        super::character_quality::projected_height(entity, view, viewport[3] as f32), None)
+                } else { CharacterLod::Mid };
                 self.characters.add_with_quality(
                     entity,
                     style,
                     palette.ink,
-                    CharacterLod::Mid,
+                    lod,
                     rank,
                     false,
                 );
@@ -1049,9 +1084,10 @@ fn build_scene(
             })
             .collect();
         }
-        Scenario::WardrobeLineup => {
-            distance = 9.0;
-            target = Vec3::new(0.0, 1.62, 0.0);
+        Scenario::WardrobeLineup { camera_yaw, .. } => {
+            distance = 10.0;
+            target = Vec3::new(0.0, 1.85, 0.0);
+            let line_axis = Vec3::new(camera_yaw.cos(), 0.0, -camera_yaw.sin());
             let lineup = [
                 (
                     crate::character::BodyId::Person,
@@ -1082,13 +1118,20 @@ fn build_scene(
                 .into_iter()
                 .enumerate()
                 .map(|(index, (body, outfit))| RenderEntity {
-                    position: [index as f32 * 1.4 - 3.5, 0.0, 0.0],
+                    position: (line_axis * (index as f32 * 2.05 - 5.125)).to_array(),
                     yaw: 0.0,
                     body,
                     outfit,
                     ..Default::default()
                 })
                 .collect();
+        }
+        Scenario::Orbit { distance, .. } => {
+            actors.push(RenderEntity {
+                camera_fade: super::camera::fade(distance),
+                face: crate::character::FaceParameters::preset(crate::character::FacePreset::Happy),
+                ..Default::default()
+            });
         }
     }
     if raised {
@@ -1171,7 +1214,7 @@ fn build_scene(
         Camera::Third => {
             let vertical = (distance * (-0.095_f32).sin()).clamp(-2.0, distance);
             let camera_yaw = match scenario {
-                Scenario::ShapeLineup { camera_yaw, .. } => camera_yaw,
+                Scenario::ShapeLineup { camera_yaw, .. } | Scenario::WardrobeLineup { camera_yaw, .. } => camera_yaw,
                 _ => 0.0,
             };
             let position = target
@@ -1183,6 +1226,9 @@ fn build_scene(
             (position, target)
         }
     };
+    let (camera_position, look_target) = if let Scenario::Orbit { yaw, pitch, distance, .. } = scenario {
+        super::camera::orbit(Vec3::ZERO, crate::character::BodyId::Person, yaw, pitch, distance)
+    } else { (camera_position, look_target) };
     let aspect = viewport_aspect(width, height);
     let view_projection = Mat4::perspective_rh(62.0_f32.to_radians(), aspect, 0.05, 240.0)
         * Mat4::look_at_rh(camera_position, look_target, Vec3::Y);

@@ -2,6 +2,11 @@
 
 Status: proposed implementation plan. This document does not implement or approve a renderer rollout.
 
+September 5 follow-up: implementation exists across Phases 0–8, but checked
+implementation tasks are not equivalent to completed product/device gates.
+The [iOS recording review and camera/character polish report](magic_characters_polish.md)
+records the orbit defect, missing visual coverage, fixes, and current verification.
+
 Baseline: Rust checkout `6eb7cb4`, inspected September 5, 2026. Paths below are relative to this document. New APIs, modules, budgets, and asset identifiers are proposals unless explicitly described as current behavior.
 
 ## 1. Outcome and scope

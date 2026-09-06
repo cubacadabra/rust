@@ -31,11 +31,9 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
         }
         Feature::Mouth => {
             local = local
-                * Mat4::from_translation(glam::Vec3::new(0.0, face.mouth_curve * 0.025, 0.0))
-                * Mat4::from_quat(Quat::from_rotation_z(face.mouth_curve * 0.18))
                 * Mat4::from_scale(glam::Vec3::new(
                     1.0 + face.mouth_opening * 0.22,
-                    1.0 + face.mouth_opening * 1.6,
+                    1.0,
                     1.0,
                 ));
         }
@@ -292,6 +290,7 @@ impl CharacterRenderer {
         reduced_effects: bool,
     ) {
         if self.stats.characters >= MAX_CHARACTERS
+            || !entity.camera_fade.is_finite() || entity.camera_fade >= 1.0
             || !Vec3::from_array(entity.position).is_finite()
             || !entity.yaw.is_finite()
             || !entity.walk_cycle.is_finite()
@@ -353,9 +352,14 @@ impl CharacterRenderer {
             if batch.material != Material::Seam {
                 tint[3] = 1.0;
             }
-            batch
-                .instances
-                .push(CharacterInstance::new(transform, tint, batch.material));
+            tint[3] *= 1.0 - entity.camera_fade.clamp(0.0, 1.0);
+            let mut instance = CharacterInstance::new(transform, tint, batch.material);
+            match part.feature {
+                Feature::Eye(_) => instance.material = [1.0, 0.0, 0.0, 4.0],
+                Feature::Mouth => instance.material = [entity.face.mouth_curve, entity.face.mouth_opening, 0.0, 5.0],
+                _ => {}
+            }
+            batch.instances.push(instance);
         }
         self.stats.characters += 1;
         match lod {

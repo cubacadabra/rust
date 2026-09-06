@@ -34,6 +34,16 @@ impl Engine {
             z: forward_vector.z * forward + right_vector.z * strafe,
         }
         .normalized();
+        // Orbit is independent of the body. Movement turns the character;
+        // releasing the stick retains its last heading, even after coasting.
+        if self.camera_distance <= 0.75 {
+            self.player.facing_yaw = self.view_yaw;
+        } else if moving {
+            let heading = (-direction.x).atan2(-direction.z);
+            let turn = (heading - self.player.facing_yaw).sin()
+                .atan2((heading - self.player.facing_yaw).cos());
+            self.player.facing_yaw += turn * (1.0 - (-16.0 * delta).exp());
+        }
         let speed = if sprinting { RUN_SPEED } else { WALK_SPEED };
         let target_x = direction.x * speed;
         let target_z = direction.z * speed;

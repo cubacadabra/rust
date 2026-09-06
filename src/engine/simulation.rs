@@ -119,6 +119,7 @@ impl Engine {
         self.player.moving = false;
         self.player.sprinting = false;
         self.view_yaw = portal.destination_yaw;
+        self.player.facing_yaw = portal.destination_yaw;
         self.target_yaw = portal.destination_yaw;
         self.view_pitch = -0.095;
         self.target_pitch = -0.095;

@@ -14,6 +14,7 @@ pub(crate) struct Input {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Player {
     pub(crate) position: [f32; 3],
+    pub(crate) facing_yaw: f32,
     pub(crate) velocity: [f32; 3],
     pub(crate) grounded: bool,
     pub(crate) moving: bool,
@@ -161,6 +162,7 @@ impl Default for Player {
     fn default() -> Self {
         Self {
             position: [0.0, 0.0, 11.5],
+            facing_yaw: 0.0,
             velocity: [0.0; 3],
             grounded: true,
             moving: false,

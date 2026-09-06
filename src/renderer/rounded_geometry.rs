@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 const MAX_SUBDIVISIONS: u32 = 8;
 const MAX_DIMENSION: f32 = 256.0;
-const MIN_TAPER: f32 = 0.75;
+// Bounded pointed toy accessories (ears, horns, wizard hats) share the same
+// indexed builder; a nonzero tip retains finite normals and valid triangles.
+const MIN_TAPER: f32 = 0.15;
 const MAX_TAPER: f32 = 1.25;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

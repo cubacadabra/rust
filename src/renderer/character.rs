@@ -42,11 +42,23 @@ pub(super) enum Tint {
     Armor,
     Fuzz,
     Seam,
+    Ivory,
+    Hair,
+    Muzzle,
+    InnerEar,
 }
 impl Tint {
     pub fn color(self, style: AvatarStyle, face: [f32; 4]) -> [f32; 4] {
         match self {
             Self::Skin => style.skin,
+            Self::Ivory => [0.96, 0.93, 0.84, 1.0],
+            Self::Hair => [0.22, 0.12, 0.075, 1.0],
+            Self::Muzzle => [
+                style.skin[0] * 0.45 + 0.52,
+                style.skin[1] * 0.45 + 0.49,
+                style.skin[2] * 0.45 + 0.44, 1.0,
+            ],
+            Self::InnerEar => [0.79, 0.43, 0.39, 1.0],
             Self::Shirt => style.shirt,
             Self::Pants => style.pants,
             Self::Shoes => style.shoes,
@@ -80,7 +92,8 @@ impl Tint {
     }
     pub fn material(self) -> Material {
         match self {
-            Self::Skin | Self::Detail => Material::Toy,
+            Self::Skin | Self::Detail | Self::Hair | Self::Muzzle | Self::InnerEar => Material::Toy,
+            Self::Ivory => Material::Rubber,
             Self::Shirt => Material::Cloth,
             Self::Pants => Material::Denim,
             Self::Shoes => Material::Rubber,
@@ -207,7 +220,100 @@ pub(super) fn parts_for(recipe: &BodyRecipe, outfit: OutfitId) -> Vec<Part> {
     // Keeping this as a finite authored catalog prevents arbitrary runtime
     // geometry keys from entering the GPU cache.
     apply_outfit(&mut vertices, recipe, outfit);
+    finish_outfit(&mut vertices, recipe, outfit);
     vertices
+}
+
+// Small construction details share one immutable rounded mesh. Their scale
+// belongs to the attachment, keeping the finite catalog and upload bounded.
+fn detail(parts: &mut Vec<Part>, anchor: Anchor, position: Vec3, size: Vec3, tint: Tint) {
+    add_part(parts,
+        anchor * Mat4::from_translation(position) * Mat4::from_scale(size / 0.2),
+        BodyPart::new(Vec3::splat(0.2), 0.04), tint);
+}
+
+fn finish_outfit(parts: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId) {
+    let torso = Anchor::new(JointId::Torso);
+    // Garment materials apply to the garment itself, including sleeves.
+    for part in parts.iter_mut() {
+        if matches!(part.tint, Tint::Shirt) && !matches!(part.feature, Feature::Wing(_)) {
+            part.tint = match outfit {
+                OutfitId::GlossyRaincoat => Tint::Outer,
+                OutfitId::ToyKnight if part.anchor.joint == JointId::Torso => Tint::Armor,
+                OutfitId::FuzzyPajamas => Tint::Fuzz,
+                _ => part.tint,
+            };
+        }
+    }
+    // The foot origin is near the floor. Raise its authored center so the
+    // chunky toe and sole sit above the receiver instead of being buried.
+    for joint in [JointId::LeftFoot, JointId::RightFoot] {
+        if let Some(foot) = parts.iter_mut().find(|p| p.anchor.joint == joint && matches!(p.tint, Tint::Shoes)) {
+            foot.anchor.local = Mat4::from_translation(Vec3::new(0.0, foot.spec.size.y * 0.5, 0.0));
+            let size = foot.spec.size;
+            detail(parts, Anchor::new(joint), Vec3::new(0.0, 0.015, 0.0),
+                Vec3::new(size.x * 1.02, 0.09, size.z * 1.02), Tint::Ivory);
+            if matches!(outfit, OutfitId::EverydayHoodie | OutfitId::PufferExplorer) {
+                detail(parts, Anchor::new(joint), Vec3::new(0.0, size.y, -0.16),
+                    Vec3::new(0.28, 0.035, 0.16), Tint::Ivory);
+            }
+        }
+    }
+    match outfit {
+        OutfitId::EverydayHoodie => {
+            // A folded hood reads from behind; paired cords sit on the chest.
+            detail(parts, torso, Vec3::new(0.0, 0.42, 0.29), Vec3::new(0.78, 0.34, 0.38), Tint::Shirt);
+            for side in [-1.0, 1.0] {
+                detail(parts, torso, Vec3::new(side * 0.15, 0.24, -0.395), Vec3::new(0.035, 0.30, 0.04), Tint::Ivory);
+            }
+        }
+        OutfitId::PufferExplorer => {
+            for y in [-0.30, -0.03, 0.24] {
+                detail(parts, torso, Vec3::new(0.0, y, 0.0), Vec3::new(1.27, 0.23, 0.88), Tint::Shirt);
+            }
+            detail(parts, torso, Vec3::new(0.0, 0.03, -0.465), Vec3::new(0.045, 0.80, 0.035), Tint::Ivory);
+        }
+        OutfitId::GlossyRaincoat => {
+            parts.retain(|part| !matches!(part.tint, Tint::Hair));
+            let head = Anchor::new(JointId::Head);
+            detail(parts, head, Vec3::new(0.0, 0.0, 0.35), Vec3::new(1.10, 0.87, 0.20), Tint::Outer);
+            for side in [-1.0, 1.0] {
+                detail(parts, head, Vec3::new(side * 0.50, 0.0, 0.04), Vec3::new(0.16, 0.86, 0.80), Tint::Outer);
+            }
+            for side in [-1.0, 1.0] {
+                detail(parts, torso, Vec3::new(side * 0.32, -0.20, -0.43), Vec3::new(0.25, 0.17, 0.05), Tint::Shirt);
+            }
+            for y in [-0.28, 0.0, 0.28] {
+                detail(parts, torso, Vec3::new(0.0, y, -0.43), Vec3::new(0.06, 0.06, 0.04), Tint::Ivory);
+            }
+        }
+        OutfitId::StarWizard => {
+            let head = Anchor::new(JointId::Head);
+            detail(parts, head, Vec3::new(0.0, 0.49, 0.03), Vec3::new(1.18, 0.12, 1.0), Tint::Outer);
+            for side in [-1.0, 1.0] {
+                detail(parts, torso * Mat4::from_rotation_z(side * 0.12), Vec3::new(side * 0.35, -0.12, -0.455), Vec3::new(0.055, 0.95, 0.035), Tint::Ivory);
+            }
+        }
+        OutfitId::ToyKnight => {
+            for side in [-1.0, 1.0] {
+                detail(parts, torso, Vec3::new(side * 0.38, 0.26, -0.44), Vec3::splat(0.075), Tint::Ivory);
+            }
+            detail(parts, torso, Vec3::new(0.0, -0.35, 0.0), Vec3::new(1.12, 0.12, 0.87), Tint::Detail);
+        }
+        OutfitId::FuzzyPajamas => {
+            for y in [-0.24, 0.0, 0.24] {
+                detail(parts, torso, Vec3::new(0.0, y, -0.39), Vec3::splat(0.06), Tint::Ivory);
+            }
+            detail(parts, torso, Vec3::new(-0.28, 0.16, -0.39), Vec3::new(0.22, 0.20, 0.04), Tint::Ivory);
+        }
+    }
+    let torso_height = parts.iter().find(|p| p.anchor.joint == JointId::Torso)
+        .map_or(recipe.torso.size.y, |p| p.spec.size.y);
+    let head_bottom = recipe.rig.joints[JointId::Head.index()].rest.translation.y - recipe.head.size.y * 0.5;
+    let lift = (torso_height * 0.5 + 0.04 - head_bottom).max(0.0);
+    for part in parts.iter_mut().filter(|p| p.anchor.joint == JointId::Head) {
+        part.anchor.local = Mat4::from_translation(Vec3::Y * lift) * part.anchor.local;
+    }
 }
 
 fn apply_outfit(vertices: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId) {
@@ -253,8 +359,8 @@ fn apply_outfit(vertices: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId)
             );
             add_box(
                 vertices,
-                torso * Mat4::from_translation(Vec3::new(0.0, 0.39, -0.12)),
-                Vec3::new(0.08, 0.24, 0.035),
+                torso * Mat4::from_translation(Vec3::new(0.0, -0.33, -0.39)),
+                Vec3::new(0.48, 0.035, 0.035),
                 0.015,
                 Tint::Detail,
             );
@@ -337,11 +443,13 @@ fn apply_outfit(vertices: &mut Vec<Part>, recipe: &BodyRecipe, outfit: OutfitId)
             );
             add_box(
                 vertices,
-                Anchor::new(JointId::Head) * Mat4::from_translation(Vec3::new(0.0, 0.60, 0.04)),
+                Anchor::new(JointId::Head) * Mat4::from_translation(Vec3::new(0.0, 0.88, 0.04))
+                    * Mat4::from_rotation_z(0.12),
                 Vec3::new(0.55, 0.92, 0.55),
                 0.16,
                 Tint::Outer,
             );
+            vertices.last_mut().unwrap().spec.taper = (1.20, 0.20);
             add_box(
                 vertices,
                 torso * Mat4::from_translation(Vec3::new(0.0, 0.18, -0.48)),
@@ -467,7 +575,7 @@ fn add_face(
             head * eye,
             // Graphic face pieces keep a tiny hard planar region so they do
             // not collapse when the shallow depth is below the fillet limit.
-            BodyPart::new(Vec3::new(0.15, 0.21 * parameters.eye_opening, 0.055), 0.0),
+            BodyPart::new(Vec3::new(0.17, 0.25 * parameters.eye_opening, 0.025), 0.0),
             face_color,
         );
         vertices[part_start].feature = Feature::Eye(side);
@@ -490,14 +598,14 @@ fn add_face(
     let mouth = Mat4::from_translation(Vec3::new(
         0.0,
         anchors.mouth_y + parameters.mouth_curve * 0.025,
-        anchors.face_z - 0.018,
+        recipe.extras.muzzle_size.map_or(anchors.face_z - 0.018, |size| -0.44 - size.z * 0.5 - 0.018),
     )) * Mat4::from_quat(Quat::from_rotation_z(parameters.mouth_curve * 0.18));
     let part_start = vertices.len();
     add_part(
         vertices,
         head * mouth,
         BodyPart::new(
-            Vec3::new(mouth_width, 0.045 + parameters.mouth_opening * 0.09, 0.025),
+            Vec3::new(mouth_width * 1.3, 0.18, 0.018),
             0.0,
         ),
         face_color,
@@ -506,7 +614,15 @@ fn add_face(
 }
 
 fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recipe: &BodyRecipe) {
-    let ink = Tint::Detail;
+    let ink = Tint::Face;
+    if recipe.id == BodyId::Person {
+        // A sculpted cap and asymmetric swept fringe retain the cube head.
+        detail(vertices, head, Vec3::new(0.0, 0.38, 0.04), Vec3::new(1.08, 0.26, 0.85), Tint::Hair);
+        detail(vertices, head * Mat4::from_rotation_z(-0.16), Vec3::new(-0.19, 0.39, -0.37), Vec3::new(0.67, 0.20, 0.18), Tint::Hair);
+        for side in [-1.0, 1.0] {
+            detail(vertices, head, Vec3::new(side * 0.51, -0.02, 0.0), Vec3::new(0.16, 0.25, 0.22), Tint::Skin);
+        }
+    }
     if let Some(ear_size) = recipe.extras.ear_size {
         for side in [-1.0, 1.0] {
             let ear = Mat4::from_translation(Vec3::new(side * 0.30, 0.46, 0.01))
@@ -519,14 +635,17 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
                 Tint::Skin,
             );
             vertices[part_start].feature = Feature::Ear(side);
+            vertices[part_start].spec.taper = (1.0, 0.20);
             let inner = Mat4::from_translation(Vec3::new(side * 0.30, 0.47, -0.145))
                 * Mat4::from_quat(Quat::from_rotation_z(-side * 0.22));
             add_part(
                 vertices,
                 head * inner,
                 BodyPart::new(Vec3::new(0.13, 0.22, 0.025), 0.0),
-                ink,
+                Tint::InnerEar,
             );
+            vertices.last_mut().unwrap().feature = Feature::Ear(side);
+            vertices.last_mut().unwrap().spec.taper = (1.0, 0.20);
         }
     }
     if let Some(muzzle_size) = recipe.extras.muzzle_size {
@@ -534,7 +653,7 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
             vertices,
             head * Mat4::from_translation(Vec3::new(0.0, recipe.face.muzzle_y, -0.44)),
             BodyPart::new(muzzle_size, 0.09),
-            Tint::Skin,
+            Tint::Muzzle,
         );
         add_part(
             vertices,
@@ -551,22 +670,24 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
                 vertices,
                 head * horn,
                 BodyPart::new(Vec3::new(0.16, 0.36, 0.16), 0.055),
-                Tint::Pants,
+                Tint::Ivory,
             );
+            vertices.last_mut().unwrap().spec.taper = (1.0, 0.35);
         }
     }
     if recipe.extras.wings {
         for side in [-1.0, 1.0] {
-            let wing = Mat4::from_translation(Vec3::new(side * 0.56, 1.72, 0.30))
-                * Mat4::from_quat(Quat::from_rotation_z(side * 0.18));
+            let wing = Mat4::from_translation(Vec3::new(side * 0.72, 1.87, 0.38))
+                * Mat4::from_quat(Quat::from_rotation_z(-side * 0.38));
             let part_start = vertices.len();
             add_part(
                 vertices,
                 root * wing,
-                BodyPart::new(Vec3::new(0.16, 0.72, 0.42), 0.07),
-                Tint::Shirt,
+                BodyPart::new(Vec3::new(0.52, 0.86, 0.16), 0.07),
+                Tint::Skin,
             );
             vertices[part_start].feature = Feature::Wing(side);
+            vertices[part_start].spec.taper = (1.0, 0.35);
         }
     }
     if recipe.extras.tail_segments > 0 {
@@ -574,12 +695,12 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
         for index in 0..count {
             let progress = index as f32 / count as f32;
             let x = if recipe.id == BodyId::Cat {
-                0.34 + progress * 0.18
+                0.43 + progress * 0.32
             } else {
                 0.0
             };
-            let y = 0.98 + progress * 0.13;
-            let z = 0.34 + progress * 0.43;
+            let y = 0.98 + progress * if recipe.id == BodyId::Cat { 0.52 } else { -0.24 };
+            let z = 0.40 + progress * if recipe.id == BodyId::Cat { 0.56 } else { 0.80 };
             let tail = Mat4::from_translation(Vec3::new(x, y, z))
                 * Mat4::from_quat(Quat::from_rotation_x(-0.22 + progress * 0.25));
             let size = if recipe.id == BodyId::Cat {
@@ -592,7 +713,7 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
                 vertices,
                 root * tail,
                 BodyPart::new(size, 0.07),
-                Tint::Pants,
+                Tint::Skin,
             );
             vertices[part_start].feature = Feature::Tail(progress);
         }
@@ -720,11 +841,18 @@ pub(super) fn bounds(body: BodyId, outfit: OutfitId) -> (Vec3, f32) {
     let mut min = Vec3::splat(f32::INFINITY);
     let mut max = Vec3::splat(f32::NEG_INFINITY);
     for part in parts_for(&recipe, outfit) {
-        let center = joints[part.anchor.joint.index()]
-            .transform_point3(part.anchor.local.transform_point3(Vec3::ZERO));
-        let extent = part.spec.size.length() * 0.5;
-        min = min.min(center - Vec3::splat(extent));
-        max = max.max(center + Vec3::splat(extent));
+        let transform = joints[part.anchor.joint.index()] * part.anchor.local;
+        let taper = part.spec.taper.0.max(part.spec.taper.1).max(1.0);
+        let half = part.spec.size * Vec3::new(taper, 1.0, taper) * 0.5;
+        for x in [-1.0, 1.0] {
+            for y in [-1.0, 1.0] {
+                for z in [-1.0, 1.0] {
+                    let corner = transform.transform_point3(half * Vec3::new(x, y, z));
+                    min = min.min(corner);
+                    max = max.max(corner);
+                }
+            }
+        }
     }
     let center = (min + max) * 0.5;
     let radius = ((max - min) * 0.5).length() + 0.42;
@@ -749,7 +877,7 @@ mod tests {
             assert_eq!(
                 parts
                     .iter()
-                    .filter(|p| matches!(p.tint, Tint::Face))
+                    .filter(|p| matches!(p.feature, Feature::Eye(_) | Feature::Brow(_) | Feature::Mouth))
                     .count(),
                 5
             );
@@ -780,8 +908,9 @@ mod tests {
         let hoodie = parts_for(&recipe, OutfitId::EverydayHoodie);
         let wizard = parts_for(&recipe, OutfitId::StarWizard);
         let knight = parts_for(&recipe, OutfitId::ToyKnight);
-        assert_ne!(hoodie.len(), wizard.len());
-        assert_ne!(wizard.len(), knight.len());
+        let torso = |parts: &[Part]| parts.iter().find(|p| p.anchor.joint == JointId::Torso).unwrap().spec;
+        assert_ne!(torso(&hoodie), torso(&wizard));
+        assert_ne!(torso(&wizard), torso(&knight));
         assert!(wizard.iter().any(|part| matches!(part.tint, Tint::Outer)));
         assert!(knight.iter().any(|part| matches!(part.tint, Tint::Armor)));
     }

@@ -47,6 +47,8 @@ pub(super) struct RenderEntity {
     pub(super) face: crate::character::FaceParameters,
     pub(super) secondary: crate::character::SecondaryMotion,
     pub(super) support: crate::types::CharacterSupport,
+    /// Local-camera fade only; zero leaves remote and fixture actors opaque.
+    pub(super) camera_fade: f32,
 }
 
 /// Visual rollout switch for the character renderer. This is deliberately a

@@ -143,7 +143,7 @@ impl Default for FaceAnchors {
         Self {
             eye_y: 0.10,
             eye_x: 0.19,
-            face_z: -0.455,
+            face_z: -0.397,
             brow_y: 0.27,
             mouth_y: -0.18,
             muzzle_y: -0.10,

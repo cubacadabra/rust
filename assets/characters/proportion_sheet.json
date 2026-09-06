@@ -13,7 +13,7 @@
     "footHeight": 0.30,
     "footForwardProjection": 0.84,
     "faceDirection": "-Z",
-    "firstPersonAnchor": [0.0, 2.88, -0.03],
+    "firstPersonAnchor": [0.0, 2.80, -0.03],
     "thirdPersonTarget": [0.0, 1.62, 0.0]
   },
   "bodies": [
