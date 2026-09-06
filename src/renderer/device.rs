@@ -3,6 +3,8 @@ use std::ffi::c_void;
 use std::io::Cursor;
 #[cfg(target_os = "android")]
 use std::ptr::NonNull;
+#[cfg(target_os = "android")]
+use std::sync::Arc;
 
 use bytemuck::Zeroable;
 use wgpu::util::DeviceExt;
@@ -16,6 +18,36 @@ const UI_LOGO_BYTES: &[u8] = include_bytes!("../../assets/images/logo.png");
 const UI_CUBE_BYTES: &[u8] = include_bytes!("../../assets/images/cube.png");
 const UI_CHAT_BYTES: &[u8] = include_bytes!("../../assets/images/chat.png");
 const UI_VOICE_BYTES: &[u8] = include_bytes!("../../assets/images/voice.png");
+
+#[cfg(target_os = "android")]
+pub(super) static ANDROID_SURFACE_WARNING_REPORTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+#[cfg(target_os = "android")]
+pub(super) static ANDROID_FIRST_FRAME_REPORTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(target_os = "android")]
+pub(super) fn android_log(message: impl AsRef<str>) {
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_int};
+    #[link(name = "log")]
+    unsafe extern "C" {
+        fn __android_log_print(priority: c_int, tag: *const c_char, format: *const c_char, ...) -> c_int;
+    }
+    let Ok(message) = CString::new(message.as_ref()) else {
+        return;
+    };
+    const TAG: &[u8] = b"RustRenderer\0";
+    const FORMAT: &[u8] = b"%s\0";
+    unsafe {
+        __android_log_print(4, TAG.as_ptr().cast(), FORMAT.as_ptr().cast(), message.as_ptr());
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub(super) fn android_log(message: impl AsRef<str>) {
+    eprintln!("[RustRenderer] {}", message.as_ref());
+}
 
 pub(super) fn required_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
     let baseline = if adapter.get_info().backend == wgpu::Backend::Gl {
@@ -181,6 +213,9 @@ impl Renderer {
                 // across emulator graphics modes and is already compiled in
                 // by the Android build.
                 backends: wgpu::Backends::GL,
+                // Keep the GLES/EGL validation channel enabled on Android so
+                // driver shader and framebuffer failures reach logcat.
+                flags: wgpu::InstanceFlags::DEBUG | wgpu::InstanceFlags::VALIDATION,
                 ..wgpu::InstanceDescriptor::new_without_display_handle()
             });
             let window_handle = raw_window_handle::AndroidNdkWindowHandle::new(window);
@@ -197,7 +232,7 @@ impl Renderer {
             } {
                 Ok(surface) => surface,
                 Err(error) => {
-                    eprintln!("[RustRenderer] Android GLES surface creation failed: {error}");
+                    android_log(format!("Android GLES surface creation failed: {error}"));
                     return None;
                 }
             };
@@ -223,21 +258,40 @@ impl Renderer {
             })) {
                 Ok(adapter) => adapter,
                 Err(error) => {
-                    eprintln!("[RustRenderer] hardware GLES adapter unavailable: {error}");
+                    android_log(format!("hardware GLES adapter unavailable: {error}"));
                     pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
                         power_preference: wgpu::PowerPreference::LowPower,
                         compatible_surface: Some(&surface),
                         force_fallback_adapter: true,
                     }))
                     .map_err(|fallback_error| {
-                        eprintln!(
-                            "[RustRenderer] fallback GLES adapter unavailable: {fallback_error}"
-                        );
+                        android_log(format!(
+                            "fallback GLES adapter unavailable: {fallback_error}"
+                        ));
                         fallback_error
                     })
                     .ok()?
                 }
             };
+        #[cfg(target_os = "android")]
+        {
+            let info = adapter.get_info();
+            let limits = adapter.limits();
+            let surface_caps = surface.get_capabilities(&adapter);
+            android_log(format!(
+                "Android adapter name={:?} backend={:?} driver={:?} \
+                 surface_formats={:?} alpha_modes={:?} max_vertex_attributes={} \
+                 max_vertex_buffer_array_stride={} max_texture_dimension_2d={}",
+                info.name,
+                info.backend,
+                info.driver,
+                surface_caps.formats,
+                surface_caps.alpha_modes,
+                limits.max_vertex_attributes,
+                limits.max_vertex_buffer_array_stride,
+                limits.max_texture_dimension_2d,
+            ));
+        }
         let limits = required_limits(&adapter);
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("cubacadabra game device"),
@@ -248,13 +302,20 @@ impl Renderer {
             trace: wgpu::Trace::Off,
         }))
         .map_err(|error| {
-            eprintln!("[RustRenderer] GLES device creation failed: {error}");
+            android_log(format!("GLES device creation failed: {error}"));
             error
         })
         .ok()?;
-        Some(Self::from_parts(
+        #[cfg(target_os = "android")]
+        device.on_uncaptured_error(Arc::new(|error| {
+            android_log(format!("Android wgpu uncaptured error: {error}"));
+        }));
+        let renderer = Self::from_parts(
             surface, adapter, device, queue, width, height, false,
-        ))
+        );
+        #[cfg(target_os = "android")]
+        android_log("Android renderer resources initialized");
+        Some(renderer)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -328,6 +389,20 @@ impl Renderer {
                 .or_else(|| capabilities.formats.first().copied())
         }
         .unwrap_or(wgpu::TextureFormat::Bgra8Unorm);
+        #[cfg(target_os = "android")]
+        {
+            let scene_features = adapter.get_texture_format_features(super::targets::SCENE_FORMAT);
+            let depth_features = adapter.get_texture_format_features(DEPTH_FORMAT);
+            android_log(format!(
+                "Android surface format={format:?} scene_format={:?} \
+                 scene_flags={:?} depth_flags={:?} size={}x{}",
+                super::targets::SCENE_FORMAT,
+                scene_features.flags,
+                depth_features.flags,
+                width.max(1.0) as u32,
+                height.max(1.0) as u32,
+            ));
+        }
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -370,7 +445,11 @@ impl Renderer {
                 resource: globals_buffer.as_entire_binding(),
             }],
         });
-        let sample_count = super::targets::select_samples(&adapter, true);
+        // Mali GLES devices can advertise multisample/resolve support while
+        // producing a black resolve target for this offscreen scene path.
+        // Keep Android on the single-sample compatibility path; Metal and
+        // browser backends retain the validated MSAA path.
+        let sample_count = super::targets::select_samples(&adapter, !cfg!(target_os = "android"));
         let pipeline = world_pipeline(&device, &globals_layout, sample_count, false);
         let translucent_pipeline = world_pipeline(&device, &globals_layout, sample_count, true);
         let characters =

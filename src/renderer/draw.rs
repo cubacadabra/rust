@@ -122,6 +122,23 @@ impl Renderer {
         }
         self.characters.upload(&self.queue);
         let ui_vertices = super::ui::build_ui_vertices(&self.ui_frame);
+        #[cfg(target_os = "android")]
+        if !super::device::ANDROID_FIRST_FRAME_REPORTED.swap(
+            true,
+            std::sync::atomic::Ordering::Relaxed,
+        ) {
+            super::device::android_log(format!(
+                "Android first frame camera={:?} world_vertices={} \
+                 ui_vertices={} characters={} instances={} character_draws={} culled={}",
+                self.scene.camera,
+                dynamic_vertices.len() + self.static_vertex_count,
+                ui_vertices.len(),
+                self.characters.stats.characters,
+                self.characters.stats.instances,
+                self.characters.stats.draws,
+                self.characters.stats.culled,
+            ));
+        }
         self.ensure_dynamic_vertex_capacity(dynamic_count);
         self.ensure_ui_vertex_capacity(ui_vertices.len());
         if !self.opaque_vertices.is_empty() {
@@ -160,12 +177,32 @@ impl Renderer {
             wgpu::CurrentSurfaceTexture::Success(frame)
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                #[cfg(target_os = "android")]
+                if !super::device::ANDROID_SURFACE_WARNING_REPORTED.swap(
+                    true,
+                    std::sync::atomic::Ordering::Relaxed,
+                ) {
+                    super::device::android_log(
+                        "Android surface became outdated or lost; reconfiguring",
+                    );
+                }
                 self.resize(self.width, self.height);
                 return;
             }
             wgpu::CurrentSurfaceTexture::Timeout
             | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation => return,
+            | wgpu::CurrentSurfaceTexture::Validation => {
+                #[cfg(target_os = "android")]
+                if !super::device::ANDROID_SURFACE_WARNING_REPORTED.swap(
+                    true,
+                    std::sync::atomic::Ordering::Relaxed,
+                ) {
+                    super::device::android_log(
+                        "Android surface frame unavailable (timeout, occluded, or validation)",
+                    );
+                }
+                return;
+            }
         };
         let view = frame
             .texture
