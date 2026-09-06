@@ -1,10 +1,14 @@
 const UI_FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/LilitaOne-Regular.ttf");
+const WORLD_LABEL_FONT_BYTES: &[u8] =
+    include_bytes!("../../../assets/fonts/RobotoCondensed-Light.ttf");
 
 pub(super) const UI_ATLAS_PADDING: u32 = 2;
 pub(super) const UI_ATLAS_WIDTH: u32 = 4096;
-pub(super) const UI_ATLAS_HEIGHT: u32 = 1312;
+pub(super) const UI_ATLAS_HEIGHT: u32 = 1408;
 pub(super) const UI_FONT_ATLAS_Y: u32 = 1212;
+pub(super) const WORLD_LABEL_FONT_ATLAS_Y: u32 = 1312;
 const UI_FONT_ATLAS_SIZE: f32 = 64.0;
+const WORLD_LABEL_FONT_ATLAS_SIZE: f32 = 64.0;
 
 fn ui_font() -> &'static Font {
     static FONT: OnceLock<Font> = OnceLock::new();
@@ -16,6 +20,14 @@ fn ui_font() -> &'static Font {
         );
         Font::from_bytes(UI_FONT_BYTES, FontSettings::default())
             .expect("bundled Lilita One font should be valid")
+    })
+}
+
+fn world_label_font() -> &'static Font {
+    static FONT: OnceLock<Font> = OnceLock::new();
+    FONT.get_or_init(|| {
+        Font::from_bytes(WORLD_LABEL_FONT_BYTES, FontSettings::default())
+            .expect("bundled Roboto Condensed Light font should be valid")
     })
 }
 
@@ -45,6 +57,43 @@ pub(super) fn ui_atlas_glyphs() -> &'static [UiAtlasGlyph] {
             })
             .collect::<Vec<_>>();
         assert!(x <= UI_ATLAS_WIDTH, "UI glyph atlas exceeds its width");
+        glyphs
+    })
+}
+
+pub(super) fn world_label_atlas_glyphs() -> &'static [UiAtlasGlyph] {
+    static GLYPHS: OnceLock<Vec<UiAtlasGlyph>> = OnceLock::new();
+    GLYPHS.get_or_init(|| {
+        let mut x = UI_ATLAS_PADDING;
+        let glyphs = (32_u8..=126)
+            .map(|byte| {
+                let character = char::from(byte);
+                let (metrics, bitmap) =
+                    world_label_font().rasterize(character, WORLD_LABEL_FONT_ATLAS_SIZE);
+                let glyph = UiAtlasGlyph {
+                    character,
+                    x,
+                    metrics,
+                    bitmap,
+                };
+                x += glyph.metrics.width as u32 + UI_ATLAS_PADDING * 2;
+                glyph
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            x <= UI_ATLAS_WIDTH,
+            "world-label glyph atlas exceeds its width"
+        );
+        assert!(
+            WORLD_LABEL_FONT_ATLAS_Y
+                + glyphs
+                    .iter()
+                    .map(|glyph| glyph.metrics.height as u32)
+                    .max()
+                    .unwrap_or(0)
+                <= UI_ATLAS_HEIGHT,
+            "world-label glyph atlas exceeds its height"
+        );
         glyphs
     })
 }

@@ -24,7 +24,7 @@ pub(super) fn add_world_label(
     text: &str,
     font_size: f32,
 ) {
-    let font_size = font_size.clamp(10.0, 20.0);
+    let font_size = font_size.clamp(12.0, 18.0);
     let text = text
         .chars()
         .filter(|character| character.is_ascii())
@@ -34,16 +34,20 @@ pub(super) fn add_world_label(
         return;
     }
 
-    let scale = font_size / UI_FONT_ATLAS_SIZE;
     let text_width = text
         .chars()
         .map(|character| {
-            let character = character.to_ascii_uppercase();
-            ui_atlas_glyphs()
+            world_label_atlas_glyphs()
                 .iter()
                 .find(|glyph| glyph.character == character)
-                .or_else(|| ui_atlas_glyphs().iter().find(|glyph| glyph.character == '?'))
-                .map(|glyph| glyph.metrics.advance_width * scale)
+                .or_else(|| {
+                    world_label_atlas_glyphs()
+                        .iter()
+                        .find(|glyph| glyph.character == '?')
+                })
+                .map(|glyph| {
+                    glyph.metrics.advance_width * font_size / WORLD_LABEL_FONT_ATLAS_SIZE
+                })
                 .unwrap_or(font_size * 0.55)
         })
         .sum::<f32>();
@@ -97,7 +101,7 @@ pub(super) fn add_world_label(
         10.0,
         [0.98, 0.98, 0.94, 0.98],
     );
-    add_text(
+    add_world_label_text(
         vertices,
         frame,
         &text,
@@ -108,8 +112,7 @@ pub(super) fn add_world_label(
             height: bubble.height - 14.0,
         },
         font_size,
-        UiAlignment::Center,
-        [0.06, 0.09, 0.11, 1.0],
+        [0.08, 0.11, 0.14, 1.0],
     );
 }
 

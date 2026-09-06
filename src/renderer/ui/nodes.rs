@@ -450,6 +450,77 @@ fn add_text(
     );
 }
 
+fn add_world_label_text(
+    vertices: &mut Vec<Vertex>,
+    frame: &UiFrame,
+    text: &str,
+    rect: UiRect,
+    font_size: f32,
+    color: [f32; 4],
+) {
+    let font_size = font_size.max(10.0);
+    let glyphs = text
+        .chars()
+        .filter(|character| character.is_ascii())
+        .filter_map(|character| {
+            world_label_atlas_glyphs()
+                .iter()
+                .find(|glyph| glyph.character == character)
+                .or_else(|| {
+                    world_label_atlas_glyphs()
+                        .iter()
+                        .find(|glyph| glyph.character == '?')
+                })
+        })
+        .take(24)
+        .collect::<Vec<_>>();
+    if glyphs.is_empty() {
+        return;
+    }
+
+    let scale = font_size / WORLD_LABEL_FONT_ATLAS_SIZE;
+    let text_width = glyphs
+        .iter()
+        .map(|glyph| glyph.metrics.advance_width * scale)
+        .sum::<f32>();
+    let line_metrics = world_label_font().horizontal_line_metrics(font_size);
+    let line_height = line_metrics
+        .map(|metrics| metrics.new_line_size)
+        .unwrap_or(font_size * 1.2)
+        .max(font_size * 1.1);
+    let baseline = rect.y
+        + (rect.height - line_height).max(0.0) * 0.5
+        + line_metrics.map_or(font_size * 0.82, |metrics| metrics.ascent);
+    let mut cursor_x = rect.x + (rect.width - text_width).max(0.0) * 0.5;
+
+    for glyph in glyphs {
+        let metrics = &glyph.metrics;
+        let top = baseline - metrics.ymin as f32 * scale - metrics.height as f32 * scale;
+        let left = cursor_x + metrics.xmin as f32 * scale;
+        if metrics.width > 0 && metrics.height > 0 {
+            add_atlas_rect(
+                vertices,
+                frame,
+                UiRect {
+                    x: left,
+                    y: top,
+                    width: metrics.width as f32 * scale,
+                    height: metrics.height as f32 * scale,
+                },
+                [
+                    glyph.x as f32 / UI_ATLAS_WIDTH as f32,
+                    WORLD_LABEL_FONT_ATLAS_Y as f32 / UI_ATLAS_HEIGHT as f32,
+                    (glyph.x + metrics.width as u32) as f32 / UI_ATLAS_WIDTH as f32,
+                    (WORLD_LABEL_FONT_ATLAS_Y + metrics.height as u32) as f32
+                        / UI_ATLAS_HEIGHT as f32,
+                ],
+                color,
+            );
+        }
+        cursor_x += metrics.advance_width * scale;
+    }
+}
+
 struct UiGlyph {
     glyph: &'static UiAtlasGlyph,
 }
@@ -515,5 +586,4 @@ fn add_raster_text(
         }
     }
 }
-
 

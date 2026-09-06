@@ -611,7 +611,7 @@ impl Renderer {
                 return;
             };
             let distance = (label_position - camera_position).length().max(1.0);
-            let font_size = (190.0 / distance).clamp(10.0, 20.0);
+            let font_size = (190.0 / distance).clamp(12.0, 18.0);
             super::ui::add_world_label(
                 vertices,
                 &self.ui_frame,

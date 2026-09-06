@@ -11,7 +11,10 @@ use wgpu::util::DeviceExt;
 
 use super::{
     DEPTH_FORMAT, Globals, Renderer, Vertex,
-    ui::{UI_ATLAS_HEIGHT, UI_ATLAS_PADDING, UI_ATLAS_WIDTH, UI_FONT_ATLAS_Y, ui_atlas_glyphs},
+    ui::{
+        UI_ATLAS_HEIGHT, UI_ATLAS_PADDING, UI_ATLAS_WIDTH, UI_FONT_ATLAS_Y,
+        WORLD_LABEL_FONT_ATLAS_Y, ui_atlas_glyphs, world_label_atlas_glyphs,
+    },
 };
 
 const UI_LOGO_BYTES: &[u8] = include_bytes!("../../assets/images/logo.png");
@@ -133,6 +136,21 @@ fn create_ui_texture_atlas(
             for column in 0..width {
                 let coverage = glyph.bitmap[row * width + column];
                 let index = ((UI_FONT_ATLAS_Y as usize + row) * UI_ATLAS_WIDTH as usize
+                    + glyph.x as usize
+                    + column)
+                    * 4;
+                atlas[index..index + 4].copy_from_slice(&[255, 255, 255, coverage]);
+            }
+        }
+    }
+    for glyph in world_label_atlas_glyphs() {
+        let width = glyph.metrics.width;
+        let height = glyph.metrics.height;
+        for row in 0..height {
+            for column in 0..width {
+                let coverage = glyph.bitmap[row * width + column];
+                let index = ((WORLD_LABEL_FONT_ATLAS_Y as usize + row)
+                    * UI_ATLAS_WIDTH as usize
                     + glyph.x as usize
                     + column)
                     * 4;
