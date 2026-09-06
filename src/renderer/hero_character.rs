@@ -452,7 +452,9 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
     );
     hair_lock(
         parts,
-        Vec3::new(-0.15, 0.34, -0.19),
+        // Keep the root slightly higher and deeper inside the cap so the
+        // same-color pieces overlap without exposing a separate crown flap.
+        Vec3::new(-0.16, 0.39, -0.24),
         Vec3::new(-0.38, 0.15, -0.38),
         0.20,
         0.26,
