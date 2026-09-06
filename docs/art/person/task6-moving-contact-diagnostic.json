@@ -1,0 +1,8 @@
+{
+  "support_height": 0.0,
+  "samples": 239,
+  "max_horizontal_drift": 1.0934231,
+  "max_vertical_error": 1.4267862e-7,
+  "walk_max_horizontal_drift": 1.0934231,
+  "sprint_max_horizontal_drift": 0.85963535
+}

@@ -5,6 +5,12 @@ use crate::engine::{
 use crate::math::{Vec2, damp};
 use crate::world::overlaps_obstacle;
 
+pub(crate) const WALK_CYCLE_DISTANCE: f32 = 2.65;
+
+pub(crate) fn walk_cycle_delta(distance: f32) -> f32 {
+    distance.max(0.0) / WALK_CYCLE_DISTANCE * std::f32::consts::TAU
+}
+
 impl Engine {
     pub(crate) fn update_player(&mut self, delta: f32) {
         let was_grounded = self.player.grounded;
@@ -71,7 +77,7 @@ impl Engine {
         // stop cycling instead of running on a treadmill.
         let travelled = self.player.velocity[0].hypot(self.player.velocity[2]) * delta;
         if travelled > 0.0 {
-            self.player.walk_cycle += travelled / 2.65 * std::f32::consts::TAU;
+            self.player.walk_cycle += walk_cycle_delta(travelled);
         }
         self.player.velocity[1] -= GRAVITY * delta;
         self.move_player_vertically(delta);

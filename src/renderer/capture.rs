@@ -30,7 +30,7 @@ const DEFAULT_HEIGHT: u32 = 360;
 
 #[path = "capture_motion.rs"]
 mod motion;
-pub use motion::capture_phase4_motion;
+pub use motion::{MotionCaptureMode, capture_phase4_motion, capture_phase4_motion_with_mode};
 #[path = "capture_hero.rs"]
 mod hero;
 pub use hero::{HeroCaptureSet, capture_phase9_hero, capture_phase9_hero_with_set};
@@ -288,6 +288,8 @@ enum Scenario {
     },
     WardrobeLineup { name: &'static str, camera_yaw: f32 },
     MotionLineup,
+    MotionMoving,
+    MotionMovingRaised,
     Hero { name: &'static str, yaw: f32, pitch: f32, distance: f32,
         study: super::hero_character::Study, silhouette: bool, motion: bool },
     Orbit { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
@@ -302,6 +304,8 @@ impl Scenario {
             Self::ShapeLineup { name, .. } => name,
             Self::WardrobeLineup { name, .. } => name,
             Self::MotionLineup => "motion",
+            Self::MotionMoving => "motion-moving",
+            Self::MotionMovingRaised => "motion-moving-raised",
             Self::Hero {name,..} => name,
             Self::Orbit { name, .. } => name,
         }
@@ -1154,6 +1158,22 @@ fn build_scene(
             target = Vec3::new(0.0, 2.8, 0.0);
             actors = motion::actors(config.pose_time);
         }
+        Scenario::MotionMoving | Scenario::MotionMovingRaised => {
+            let raised = matches!(scenario, Scenario::MotionMovingRaised);
+            distance = 8.5;
+            let focus = motion::moving_focus(config.pose_time, raised);
+            target = focus + Vec3::new(0.0, 2.8, 0.0);
+            actors = motion::moving_actors(config.pose_time, raised);
+            motion::add_world_markers(&mut vertices, &palette, raised);
+            if raised {
+                add_cuboid(
+                    &mut vertices,
+                    Vec3::new(0.0, 1.0, focus.z),
+                    Vec3::new(5.0, 2.0, 5.0),
+                    palette.platform,
+                );
+            }
+        }
         Scenario::WardrobeLineup { camera_yaw, .. } => {
             distance = 10.0;
             target = Vec3::new(0.0, 1.85, 0.0);
@@ -1293,7 +1313,9 @@ fn build_scene(
             let vertical = (distance * (-0.095_f32).sin()).clamp(-2.0, distance);
             let camera_yaw = match scenario {
                 Scenario::ShapeLineup { camera_yaw, .. } | Scenario::WardrobeLineup { camera_yaw, .. } => camera_yaw,
-                Scenario::MotionLineup => motion::CAMERA_YAW,
+                Scenario::MotionLineup | Scenario::MotionMoving | Scenario::MotionMovingRaised => {
+                    motion::CAMERA_YAW
+                }
                 _ => 0.0,
             };
             let position = target

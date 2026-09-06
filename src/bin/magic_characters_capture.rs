@@ -1,8 +1,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 use cubacadabra_engine::dev_showcase::{
-    capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3, capture_phase4_motion, capture_phase5_outfits,
-    capture_phase6_report, capture_phase8_rollout, capture_phase9_hero_with_set, CaptureAvatar,
-    CaptureConfig, CapturePalette, CaptureQuality, HeroCaptureSet,
+    capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3, capture_phase5_outfits,
+    capture_phase6_report, capture_phase8_rollout, capture_phase9_hero_with_set,
+    capture_phase4_motion_with_mode, CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality,
+    HeroCaptureSet, MotionCaptureMode,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::env;
@@ -18,6 +19,7 @@ fn main() {
     let mut output = None;
     let mut phase = 0_u8;
     let mut capture_set = HeroCaptureSet::Full;
+    let mut motion_mode = MotionCaptureMode::Staged;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -49,6 +51,14 @@ fn main() {
                     value => usage(&format!("unknown capture set {value:?}")),
                 };
             }
+            "--motion-mode" => {
+                motion_mode = match next_value(&mut arguments, "--motion-mode").as_str() {
+                    "staged" => MotionCaptureMode::Staged,
+                    "moving" => MotionCaptureMode::Moving,
+                    "moving-raised" => MotionCaptureMode::MovingRaised,
+                    value => usage(&format!("unknown motion mode {value:?}")),
+                };
+            }
             "--palette" => {
                 config.palette = match next_value(&mut arguments, "--palette").as_str() {
                     "current" => CapturePalette::Current,
@@ -74,6 +84,9 @@ fn main() {
     if phase != 9 && capture_set != HeroCaptureSet::Full {
         usage("--capture-set is only supported for Phase 9");
     }
+    if phase != 4 && motion_mode != MotionCaptureMode::Staged {
+        usage("--motion-mode is only supported for Phase 4");
+    }
     if phase == 3 {
         match capture_phase3(&output) {
             Ok(report) => println!(
@@ -92,7 +105,7 @@ fn main() {
     }
     if phase == 4 || phase == 5 || phase == 9 {
         let result = if phase == 4 {
-            capture_phase4_motion(&output, config)
+            capture_phase4_motion_with_mode(&output, config, motion_mode)
         } else if phase == 9 {
             capture_phase9_hero_with_set(&output, config, capture_set)
         } else {
@@ -208,7 +221,7 @@ fn usage(error: &str) -> ! {
     eprintln!(
         "usage: magic_characters_capture [--phase 0|2|3|4|5|6|8|9] [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
-         [--quality full|half] [--capture-set full|stills|motion|review] \
+         [--quality full|half] [--capture-set full|stills|motion|review] [--motion-mode staged|moving|moving-raised] \
          [--palette current|high-contrast] \
          [--avatar legacy|rounded|shape-proof|magic]"
     );
