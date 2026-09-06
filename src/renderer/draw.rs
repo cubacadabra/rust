@@ -92,7 +92,7 @@ impl Renderer {
                 add_character(
                     &mut self.characters,
                     local,
-                    self.scene.player_style,
+                    local.style,
                     0,
                     reduced_effects,
                 );
@@ -101,7 +101,7 @@ impl Renderer {
                 add_character(
                     &mut self.characters,
                     *player,
-                    self.scene.player_style,
+                    player.style,
                     index + 1,
                     reduced_effects,
                 );
@@ -471,7 +471,7 @@ impl Renderer {
                 super::add_legacy_avatar(
                     &mut mesh,
                     *player,
-                    self.scene.player_style,
+                    player.style,
                     self.scene.world.palette.ink,
                 );
             }

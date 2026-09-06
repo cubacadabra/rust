@@ -187,6 +187,22 @@ fn remote_players_are_written_to_the_snapshot() {
 }
 
 #[test]
+fn spawned_remote_players_get_distinct_vibrant_hoodies() {
+    let mut engine = Engine::new();
+    engine.set_remote_player_count(MAX_AGENTS);
+
+    let colors: Vec<_> = engine
+        .remote_players
+        .iter()
+        .map(|player| player.appearance.colors.primary)
+        .collect();
+    assert!(colors.iter().all(|color| *color != [0.18, 0.40, 0.39, 1.0]));
+    for (index, color) in colors.iter().enumerate() {
+        assert!(colors[index + 1..].iter().all(|other| other != color));
+    }
+}
+
+#[test]
 fn snapshot_abi_fixture_preserves_entity_suffix_meanings() {
     let mut engine = Engine::new();
     engine.view_yaw = 1.25;

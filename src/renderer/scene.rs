@@ -1,6 +1,6 @@
 use crate::character::{AnimationOutput, CharacterPresentationState};
 use crate::character::{
-    AppearanceInput, BodyId, CharacterAppearance, CharacterColors, OutfitId, resolve_appearance,
+    AppearanceInput, CharacterAppearance, CharacterColors, OutfitId, resolve_appearance,
 };
 use crate::engine::Engine;
 use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
@@ -130,17 +130,16 @@ impl Renderer {
             let animation = presentation.evaluate(sample, body, reduced_effects);
             match sample.key.kind {
                 CharacterEntityKind::LocalPlayer => {
-                    self.scene.player = render_entity(sample, body, style.outfit, animation)
+                    self.scene.player = render_entity(sample, style, animation)
                 }
                 CharacterEntityKind::LocalNpc => {
                     self.scene
                         .agents
-                        .push(render_entity(sample, body, style.outfit, animation))
+                        .push(render_entity(sample, style, animation))
                 }
                 CharacterEntityKind::RemotePlayer => self.scene.remote_players.push(render_entity(
                     sample,
-                    body,
-                    style.outfit,
+                    style,
                     animation,
                 )),
             }
@@ -175,8 +174,7 @@ impl Renderer {
 
 fn render_entity(
     sample: CharacterMotionSample,
-    body: BodyId,
-    outfit: crate::character::OutfitId,
+    style: AvatarStyle,
     animation: AnimationOutput,
 ) -> RenderEntity {
     RenderEntity {
@@ -187,13 +185,14 @@ fn render_entity(
         moving: sample.moving,
         sprinting: sample.sprinting,
         legacy_assembled: false,
-        body,
-        outfit,
+        body: style.body,
+        outfit: style.outfit,
         pose: animation.pose,
         face: animation.face,
         secondary: animation.secondary,
         support: sample.support,
         camera_fade: 0.0,
+        style,
     }
 }
 

@@ -41,6 +41,39 @@ pub(crate) struct CharacterColors {
     pub(crate) sole: [f32; 4],
 }
 
+// These colors are deliberately spaced across the hue wheel so a crowd is
+// easy to tell apart while remaining bright enough to read on the game world.
+pub(crate) const VIBRANT_HOODIE_COLORS: [[f32; 4]; 18] = [
+    [0.937, 0.278, 0.435, 1.0], // coral pink
+    [0.067, 0.533, 0.698, 1.0], // ocean blue
+    [0.961, 0.612, 0.102, 1.0], // amber
+    [0.165, 0.616, 0.561, 1.0], // teal
+    [0.482, 0.173, 0.737, 1.0], // violet
+    [0.937, 0.373, 0.196, 1.0], // tangerine
+    [0.263, 0.380, 0.933, 1.0], // royal blue
+    [0.831, 0.208, 0.522, 1.0], // magenta
+    [0.000, 0.659, 0.471, 1.0], // emerald
+    [0.906, 0.216, 0.247, 1.0], // red
+    [0.380, 0.271, 0.812, 1.0], // indigo
+    [0.902, 0.361, 0.024, 1.0], // orange
+    [0.518, 0.800, 0.086, 1.0], // lime
+    [0.024, 0.714, 0.659, 1.0], // sea green
+    [0.055, 0.647, 0.914, 1.0], // sky blue
+    [0.659, 0.333, 0.969, 1.0], // purple
+    [0.925, 0.282, 0.600, 1.0], // hot pink
+    [0.957, 0.247, 0.369, 1.0], // strawberry
+];
+
+pub(crate) fn vibrant_hoodie_color(index: usize) -> [f32; 4] {
+    // A coprime step gives a shuffled palette order while guaranteeing that
+    // the first full palette cycle never repeats a color.
+    let palette_index = index
+        .wrapping_mul(7)
+        .wrapping_add(3)
+        % VIBRANT_HOODIE_COLORS.len();
+    VIBRANT_HOODIE_COLORS[palette_index]
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum OutfitId {
     EverydayHoodie,

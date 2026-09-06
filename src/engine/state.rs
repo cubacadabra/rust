@@ -266,10 +266,14 @@ impl Engine {
         self.remote_world_id = None;
         self.remote_players
             .resize(count, RemotePlayer::default());
-        for player in &mut self.remote_players {
+        for (index, player) in self.remote_players.iter_mut().enumerate() {
             player.generation = self.remote_generation;
             player.motion_sequence = 0;
             player.emote = CharacterEmote::None;
+            if player.stable_id.is_empty() {
+                player.appearance.colors.primary =
+                    crate::character::definition::vibrant_hoodie_color(index);
+            }
         }
         self.write_snapshot();
     }
@@ -552,7 +556,12 @@ impl Engine {
                     .remote_identity_cache
                     .get(&update.id)
                     .cloned()
-                    .unwrap_or_default();
+                    .unwrap_or_else(|| {
+                        remote_spawn_appearance(
+                            identity::stable_identity(&update.id) as usize,
+                            &next_players,
+                        )
+                    });
                 RemotePlayer {
                     stable_id: update.id.clone(),
                     identity: identity::stable_identity(&update.id),
@@ -909,6 +918,19 @@ fn resolve_character_definition(
         legacy_colors,
         revision: definition.revision,
     })
+}
+
+fn remote_spawn_appearance(index: usize, occupied: &[RemotePlayer]) -> CharacterAppearance {
+    let mut appearance = CharacterAppearance::default();
+    appearance.colors.primary = (0..crate::character::definition::VIBRANT_HOODIE_COLORS.len())
+        .map(|offset| crate::character::definition::vibrant_hoodie_color(index + offset))
+        .find(|candidate| {
+            occupied
+                .iter()
+                .all(|player| player.appearance.colors.primary != *candidate)
+        })
+        .unwrap_or_else(|| crate::character::definition::vibrant_hoodie_color(index));
+    appearance
 }
 
 fn remote_support(grounded: Option<bool>, height: Option<f32>) -> CharacterSupport {

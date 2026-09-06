@@ -49,6 +49,7 @@ pub(super) struct RenderEntity {
     pub(super) support: crate::types::CharacterSupport,
     /// Local-camera fade only; zero leaves remote and fixture actors opaque.
     pub(super) camera_fade: f32,
+    pub(super) style: AvatarStyle,
 }
 
 /// Visual rollout switch for the character renderer. This is deliberately a
@@ -88,6 +89,20 @@ pub(super) struct AvatarStyle {
     pub(super) body: crate::character::BodyId,
     pub(super) outfit: crate::character::OutfitId,
     pub(super) face: crate::character::FacePreset,
+}
+
+impl Default for AvatarStyle {
+    fn default() -> Self {
+        Self {
+            skin: [0.91, 0.55, 0.39, 1.0],
+            shirt: [0.18, 0.40, 0.39, 1.0],
+            pants: [0.33, 0.42, 0.56, 1.0],
+            shoes: [0.96, 0.93, 0.84, 1.0],
+            body: crate::character::BodyId::Person,
+            outfit: crate::character::OutfitId::EverydayHoodie,
+            face: crate::character::FacePreset::Happy,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
