@@ -124,7 +124,12 @@ impl Renderer {
         }
         self.characters.upload(&self.queue);
         let mut ui_vertices = Vec::new();
-        self.add_world_labels(&mut ui_vertices, view_projection, world_viewport);
+        self.add_world_labels(
+            &mut ui_vertices,
+            view_projection,
+            camera_position,
+            world_viewport,
+        );
         ui_vertices.extend(super::ui::build_ui_vertices(&self.ui_frame));
         #[cfg(target_os = "android")]
         if !super::device::ANDROID_FIRST_FRAME_REPORTED.swap(
@@ -590,22 +595,22 @@ impl Renderer {
         &self,
         vertices: &mut Vec<Vertex>,
         view_projection: Mat4,
+        camera_position: Vec3,
         world_viewport: (f32, f32, f32, f32),
     ) {
         let mut add = |entity: RenderEntity, name: &str| {
-            let label_position = Vec3::from_array(entity.position) + Vec3::new(0.0, 3.75, 0.0);
-            let clip = view_projection * label_position.extend(1.0);
-            if !clip.is_finite() || clip.w <= 0.01 {
+            let label_position = Vec3::from_array(entity.position)
+                + Vec3::new(0.0, super::character::world_label_height(entity.body), 0.0);
+            let Some((x, y)) = project_world_label_to_ui(
+                label_position,
+                view_projection,
+                world_viewport,
+                (self.width, self.height),
+                (self.ui_frame.viewport.width, self.ui_frame.viewport.height),
+            ) else {
                 return;
-            }
-            let ndc = clip.truncate() / clip.w;
-            if !ndc.is_finite() || ndc.z < 0.0 || ndc.z > 1.0 {
-                return;
-            }
-            let x = world_viewport.0 + (ndc.x + 1.0) * 0.5 * world_viewport.2;
-            let y = world_viewport.1 + (1.0 - (ndc.y + 1.0) * 0.5) * world_viewport.3;
-            let camera = Vec3::from_array(self.scene.camera);
-            let distance = (label_position - camera).length().max(1.0);
+            };
+            let distance = (label_position - camera_position).length().max(1.0);
             let font_size = (190.0 / distance).clamp(10.0, 20.0);
             super::ui::add_world_label(
                 vertices,
@@ -635,6 +640,42 @@ impl Renderer {
             add(*agent, &name);
         }
     }
+}
+
+fn project_world_label_to_ui(
+    position: Vec3,
+    view_projection: Mat4,
+    world_viewport: (f32, f32, f32, f32),
+    surface_size: (f32, f32),
+    ui_size: (f32, f32),
+) -> Option<(f32, f32)> {
+    if surface_size.0 <= 0.0
+        || surface_size.1 <= 0.0
+        || ui_size.0 <= 0.0
+        || ui_size.1 <= 0.0
+    {
+        return None;
+    }
+    let clip = view_projection * position.extend(1.0);
+    if !clip.is_finite() || clip.w <= 0.01 {
+        return None;
+    }
+    let ndc = clip.truncate() / clip.w;
+    if !ndc.is_finite()
+        || ndc.z < 0.0
+        || ndc.z > 1.0
+        || !(-1.0..=1.0).contains(&ndc.x)
+        || !(-1.0..=1.0).contains(&ndc.y)
+    {
+        return None;
+    }
+
+    let surface_x = world_viewport.0 + (ndc.x + 1.0) * 0.5 * world_viewport.2;
+    let surface_y = world_viewport.1 + (1.0 - (ndc.y + 1.0) * 0.5) * world_viewport.3;
+    Some((
+        surface_x * ui_size.0 / surface_size.0,
+        surface_y * ui_size.1 / surface_size.1,
+    ))
 }
 
 fn support_receiver(
@@ -686,6 +727,30 @@ pub(super) fn sort_translucent(vertices: &mut [Vertex], camera: Vec3, target: Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn world_labels_convert_render_pixels_to_ui_points_and_cull_offscreen() {
+        let viewport = (0.0, 0.0, 2_000.0, 1_000.0);
+        let center = project_world_label_to_ui(
+            Vec3::ZERO,
+            Mat4::IDENTITY,
+            viewport,
+            (2_000.0, 1_000.0),
+            (1_000.0, 500.0),
+        );
+        assert_eq!(center, Some((500.0, 250.0)));
+        assert!(
+            project_world_label_to_ui(
+                Vec3::new(1.01, 0.0, 0.0),
+                Mat4::IDENTITY,
+                viewport,
+                (2_000.0, 1_000.0),
+                (1_000.0, 500.0),
+            )
+            .is_none()
+        );
+    }
+
     #[test]
     fn world_alpha_is_separated_and_sorted_back_to_front() {
         let triangle = |z, alpha| {

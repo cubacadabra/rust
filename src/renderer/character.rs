@@ -150,6 +150,36 @@ pub(super) fn camera_anchor(body: BodyId) -> Vec3 {
 pub(super) fn camera_target(body: BodyId) -> Vec3 {
     camera_anchors(body).1
 }
+
+pub(super) fn world_label_height(body: BodyId) -> f32 {
+    static HEIGHTS: std::sync::OnceLock<[f32; 3]> = std::sync::OnceLock::new();
+    HEIGHTS.get_or_init(|| {
+        BodyId::ALL.map(|id| {
+            let recipe = body_recipe(id);
+            let head_center = recipe.rig.joints[JointId::Torso.index()].rest.translation.y
+                + recipe.rig.joints[JointId::Head.index()].rest.translation.y;
+            let head_top = head_center + recipe.head.size.y * 0.5;
+            let feature_top = match id {
+                BodyId::Person => head_center + 0.38 + 0.26 * 0.5,
+                BodyId::Cat => {
+                    let ear = recipe.extras.ear_size.unwrap_or(Vec3::ZERO);
+                    head_center
+                        + 0.46
+                        + ear.y * 0.5 * 0.22_f32.cos()
+                        + ear.x * 0.5 * 0.22_f32.sin()
+                }
+                BodyId::Dragon => {
+                    head_center
+                        + 0.50
+                        + 0.42 * 0.5 * 0.22_f32.cos()
+                        + 0.18 * 0.5 * 0.22_f32.sin()
+                }
+            };
+            head_top.max(feature_top) + 0.10
+        })
+    })[BodyId::ALL.iter().position(|id| *id == body).unwrap_or(0)]
+}
+
 fn base_parts(recipe: &BodyRecipe) -> Vec<Part> {
     let mut vertices = Vec::with_capacity(48);
     let vertices = &mut vertices;

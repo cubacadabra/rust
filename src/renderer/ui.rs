@@ -62,7 +62,7 @@ pub(super) fn add_world_label(
         height: bubble_height,
     };
 
-    let tail_center = x;
+    let tail_center = center_x.clamp(bubble.x + 12.0, bubble.x + bubble.width - 12.0);
     add_ui_triangle(
         vertices,
         frame,
