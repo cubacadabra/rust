@@ -286,6 +286,11 @@ fn default_player_style() -> AvatarStyle {
 }
 
 fn default_npc_styles() -> Vec<AvatarStyle> {
+    let bodies = [
+        crate::character::BodyId::Person,
+        crate::character::BodyId::Cat,
+        crate::character::BodyId::Dragon,
+    ];
     [
         (0xf0b18a, 0xe76f51, 0x355070),
         (0xd99770, 0x5f8f78, 0x3e5974),
@@ -301,7 +306,7 @@ fn default_npc_styles() -> Vec<AvatarStyle> {
         shirt: color(shirt),
         pants: color(pants),
         shoes: color(0x293a43),
-        body: crate::character::BodyId::ALL[index % crate::character::BodyId::ALL.len()],
+        body: bodies[index % bodies.len()],
         outfit: crate::character::OutfitId::EverydayHoodie,
         face: crate::character::FacePreset::Happy,
     })

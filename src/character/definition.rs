@@ -7,18 +7,41 @@ use super::rig::{JointId, RigDefinition, common_rest_rig};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum BodyId {
     Person,
+    PersonGirl,
+    PersonNonbinary,
     Cat,
     Dragon,
 }
 
 impl BodyId {
-    pub(crate) const ALL: [Self; 3] = [Self::Person, Self::Cat, Self::Dragon];
+    pub(crate) const ALL: [Self; 5] = [
+        Self::Person,
+        Self::PersonGirl,
+        Self::PersonNonbinary,
+        Self::Cat,
+        Self::Dragon,
+    ];
 
     pub(crate) const fn stable_id(self) -> &'static str {
         match self {
             Self::Person => "cuba:person.v1",
+            Self::PersonGirl => "cuba:person-girl.v1",
+            Self::PersonNonbinary => "cuba:person-nb.v1",
             Self::Cat => "cuba:cat.v1",
             Self::Dragon => "cuba:dragon.v1",
+        }
+    }
+
+    pub(crate) const fn is_person(self) -> bool {
+        matches!(self, Self::Person | Self::PersonGirl | Self::PersonNonbinary)
+    }
+
+    pub(crate) const fn hair_color(self) -> [f32; 4] {
+        match self {
+            Self::Person => [0.30, 0.155, 0.085, 1.0],
+            Self::PersonGirl => [0.28, 0.14, 0.085, 1.0],
+            Self::PersonNonbinary => [0.095, 0.075, 0.070, 1.0],
+            Self::Cat | Self::Dragon => [0.22, 0.12, 0.075, 1.0],
         }
     }
 
@@ -116,7 +139,7 @@ impl OutfitId {
             Self::EverydayHoodie | Self::GlossyRaincoat => true,
             Self::PufferExplorer => matches!(body, BodyId::Cat),
             Self::StarWizard | Self::ToyKnight => matches!(body, BodyId::Dragon),
-            Self::FuzzyPajamas => matches!(body, BodyId::Person),
+            Self::FuzzyPajamas => body.is_person(),
         }
     }
 
@@ -480,7 +503,7 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
     // The common hierarchy keeps outfits and animation portable. Rest
     // positions give each species its own stance and distribution of mass.
     match id {
-        BodyId::Person => {
+        BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {
             set_joint(&mut rig, JointId::Torso, Vec3::new(0.0, 1.68, 0.0));
             set_joint(&mut rig, JointId::Head, Vec3::new(0.0, 1.02, 0.0));
             set_joint(&mut rig, JointId::LeftUpperArm, Vec3::new(-0.59, -0.01, 0.0));
@@ -541,7 +564,7 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             && !id.stable_id().is_empty()
     );
     match id {
-        BodyId::Person => {
+        BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {
             let mut torso = BodyPart::new(Vec3::new(0.90, 1.06, 0.66), 0.15);
             torso.taper = (0.80, 1.0);
             BodyRecipe {

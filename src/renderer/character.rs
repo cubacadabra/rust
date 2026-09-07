@@ -53,7 +53,7 @@ impl Tint {
         match self {
             Self::Skin => style.skin,
             Self::Ivory => [0.96, 0.93, 0.84, 1.0],
-            Self::Hair => [0.22, 0.12, 0.075, 1.0],
+            Self::Hair => style.body.hair_color(),
             Self::Muzzle => [
                 style.skin[0] * 0.45 + 0.52,
                 style.skin[1] * 0.45 + 0.49,
@@ -138,7 +138,7 @@ pub(super) enum Feature {
     Cloth,
 }
 fn camera_anchors(body: BodyId) -> (Vec3, Vec3) {
-    static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 3]> = std::sync::OnceLock::new();
+    static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 5]> = std::sync::OnceLock::new();
     ANCHORS.get_or_init(|| {
         BodyId::ALL.map(|id| {
             let recipe = body_recipe(id);
@@ -154,7 +154,7 @@ pub(super) fn camera_target(body: BodyId) -> Vec3 {
 }
 
 pub(super) fn world_label_height(body: BodyId) -> f32 {
-    static HEIGHTS: std::sync::OnceLock<[f32; 3]> = std::sync::OnceLock::new();
+    static HEIGHTS: std::sync::OnceLock<[f32; 5]> = std::sync::OnceLock::new();
     HEIGHTS.get_or_init(|| {
         BodyId::ALL.map(|id| {
             let recipe = body_recipe(id);
@@ -163,6 +163,8 @@ pub(super) fn world_label_height(body: BodyId) -> f32 {
             let head_top = head_center + recipe.head.size.y * 0.5;
             let feature_top = match id {
                 BodyId::Person => head_center + 0.38 + 0.26 * 0.5,
+                BodyId::PersonGirl => head_center + 0.55 + 0.28 * 0.5,
+                BodyId::PersonNonbinary => head_center + 0.45 + 0.26 * 0.5,
                 BodyId::Cat => {
                     let ear = recipe.extras.ear_size.unwrap_or(Vec3::ZERO);
                     head_center
@@ -258,7 +260,7 @@ fn base_parts(recipe: &BodyRecipe) -> Vec<Part> {
     add_species_parts(vertices, root, Anchor::new(JointId::Head), &recipe);
     add_seam_cores(vertices, recipe);
     // Magic is an event/accessory accent, not exposed anatomy for people.
-    if recipe.id == BodyId::Person {
+    if recipe.id.is_person() {
         vertices.retain(|part| !matches!(part.feature, Feature::Seam(_)));
     }
     std::mem::take(vertices)
@@ -270,8 +272,10 @@ pub(super) fn parts_for(recipe: &BodyRecipe, outfit: OutfitId) -> Vec<Part> {
     // geometry keys from entering the GPU cache.
     apply_outfit(&mut vertices, recipe, outfit);
     finish_outfit(&mut vertices, recipe, outfit);
-    if recipe.id == BodyId::Person && outfit == OutfitId::EverydayHoodie {
-        super::hero_character::finish(&mut vertices);
+    if recipe.id.is_person() && outfit == OutfitId::EverydayHoodie {
+        super::hero_character::finish(&mut vertices, recipe.id);
+    } else if recipe.id.is_person() && outfit != OutfitId::GlossyRaincoat {
+        super::hero_character::replace_hair(&mut vertices, recipe.id);
     }
     vertices
 }
@@ -631,8 +635,8 @@ fn add_face(
     let anchors = recipe.face;
     let eye_y = anchors.eye_y + parameters.look.y;
     for side in [-1.0, 1.0] {
-        let person_eye_wrap = if recipe.id == BodyId::Person { 0.38 } else { 0.0 };
-        let person_eye_spread = if recipe.id == BodyId::Person { 0.035 } else { 0.0 };
+        let person_eye_wrap = if recipe.id.is_person() { 0.38 } else { 0.0 };
+        let person_eye_spread = if recipe.id.is_person() { 0.035 } else { 0.0 };
         let eye = Mat4::from_translation(Vec3::new(
             side * (anchors.eye_x + person_eye_spread) + parameters.look.x,
             eye_y,
@@ -693,7 +697,7 @@ fn add_face(
     // gameplay distance. Animal faces use their muzzle color and markings;
     // the person gets the small blush accent without overloading the part
     // budget for tails, ears, and clothing.
-    if recipe.id == BodyId::Person {
+    if recipe.id.is_person() {
         let cheek_z = recipe
             .extras
             .muzzle_size
@@ -740,7 +744,7 @@ fn add_face(
 
 fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recipe: &BodyRecipe) {
     let ink = Tint::Face;
-    if recipe.id == BodyId::Person {
+    if recipe.id.is_person() {
         // A sculpted cap and asymmetric swept fringe retain the cube head.
         detail(vertices, head, Vec3::new(0.0, 0.38, 0.04), Vec3::new(1.08, 0.26, 0.85), Tint::Hair);
         detail(vertices, head * Mat4::from_rotation_z(-0.16), Vec3::new(-0.19, 0.39, -0.37), Vec3::new(0.67, 0.20, 0.18), Tint::Hair);
@@ -994,7 +998,7 @@ pub(super) fn mesh_recipe_with_subdivisions(
 pub(super) fn bounds(body: BodyId, outfit: OutfitId) -> (Vec3, f32) {
     let recipe = body_recipe(body);
     let mut pose = Pose::rest(&recipe.rig);
-    if body == BodyId::Person && outfit == OutfitId::EverydayHoodie {
+    if body.is_person() && outfit == OutfitId::EverydayHoodie {
         pose = super::hero_character::fit_pose(super::RenderEntity {
             body, outfit, pose, ..Default::default()
         }, super::hero_character::Study::Everyday, &recipe.rig);

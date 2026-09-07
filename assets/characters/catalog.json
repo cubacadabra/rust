@@ -4,7 +4,7 @@
   "outfits": [
     {
       "id": "cuba:everyday-hoodie.v1",
-      "supportedBodies": ["cuba:person.v1", "cuba:cat.v1", "cuba:dragon.v1"],
+      "supportedBodies": ["cuba:person.v1", "cuba:person-girl.v1", "cuba:person-nb.v1", "cuba:cat.v1", "cuba:dragon.v1"],
       "occupiedSlots": ["shirt", "pants", "shoes"],
       "coverage": ["torso", "upper-arms", "lower-arms"],
       "conflicts": ["dress", "jacket", "full-boots"],
@@ -24,7 +24,7 @@
     },
     {
       "id": "cuba:glossy-raincoat.v1",
-      "supportedBodies": ["cuba:person.v1", "cuba:cat.v1", "cuba:dragon.v1"],
+      "supportedBodies": ["cuba:person.v1", "cuba:person-girl.v1", "cuba:person-nb.v1", "cuba:cat.v1", "cuba:dragon.v1"],
       "occupiedSlots": ["jacket", "hat", "pants", "shoes"],
       "coverage": ["torso", "upper-arms", "head"],
       "conflicts": ["dress", "hoodie", "hair", "horn-accessory"],
@@ -54,7 +54,7 @@
     },
     {
       "id": "cuba:fuzzy-pajamas.v1",
-      "supportedBodies": ["cuba:person.v1"],
+      "supportedBodies": ["cuba:person.v1", "cuba:person-girl.v1", "cuba:person-nb.v1"],
       "occupiedSlots": ["shirt", "pants", "shoes"],
       "coverage": ["torso", "arms", "legs", "feet"],
       "conflicts": ["dress", "jacket", "full-boots"],

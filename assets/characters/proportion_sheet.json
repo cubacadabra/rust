@@ -18,6 +18,8 @@
   },
   "bodies": [
     { "id": "cuba:person.v1", "ears": false, "tailSegments": 0, "horns": false, "wings": false },
+    { "id": "cuba:person-girl.v1", "ears": false, "tailSegments": 0, "horns": false, "wings": false },
+    { "id": "cuba:person-nb.v1", "ears": false, "tailSegments": 0, "horns": false, "wings": false },
     { "id": "cuba:cat.v1", "ears": true, "tailSegments": 3, "horns": false, "wings": false },
     { "id": "cuba:dragon.v1", "ears": false, "tailSegments": 4, "horns": true, "wings": true }
   ],

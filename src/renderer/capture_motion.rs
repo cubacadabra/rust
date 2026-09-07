@@ -160,7 +160,7 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
                 Vec3::from_array(motion.position) + lineup
             };
             let mut secondary = output.secondary;
-            if body == BodyId::Person {
+            if body.is_person() {
                 secondary.left_foot_target = secondary
                     .left_foot_target
                     .map(|target| target + lineup);
@@ -178,7 +178,9 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
                 position: root.to_array(),
                 body,
                 outfit: match body {
-                    BodyId::Person => OutfitId::EverydayHoodie,
+                    BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {
+                        OutfitId::EverydayHoodie
+                    }
                     BodyId::Cat => OutfitId::PufferExplorer,
                     BodyId::Dragon => OutfitId::ToyKnight,
                 },

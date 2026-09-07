@@ -1,4 +1,4 @@
-//! Fixed, renderer-owned catalog. All three bundled bodies are compiled and
+//! Fixed, renderer-owned catalog. All bundled bodies are compiled and
 //! uploaded before first use; changing colors/worlds cannot grow this cache.
 use super::{
     AvatarStyle, RenderEntity,
@@ -111,7 +111,7 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
 }
 
 fn is_hero(entity: RenderEntity) -> bool {
-    entity.body == BodyId::Person && entity.outfit == OutfitId::EverydayHoodie
+    entity.body.is_person() && entity.outfit == OutfitId::EverydayHoodie
 }
 
 struct Mesh {
@@ -498,7 +498,8 @@ impl CharacterRenderer {
                         ]
                     }
                     character::Tint::Hair => {
-                        instance.tint = [0.30, 0.155, 0.085, tint[3]];
+                        let hair = style.body.hair_color();
+                        instance.tint = [hair[0], hair[1], hair[2], tint[3]];
                         instance.material = [0.52, 0.11, 0.0, 13.0];
                     }
                     _ => {}

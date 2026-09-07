@@ -240,7 +240,7 @@ impl CharacterPresentationState {
                 }
             });
         let speed_factor = (speed / 11.5).clamp(0.0, 1.0);
-        let target_blend = if body == BodyId::Person {
+        let target_blend = if body.is_person() {
             // Actual travel includes braking after stick release and excludes
             // pushing into a wall. A normal-speed person uses the full stride.
             (speed / crate::engine::WALK_SPEED).clamp(0.0, 1.0)
@@ -338,7 +338,7 @@ impl CharacterPresentationState {
         } else {
             0.0
         };
-        let run = if body == BodyId::Person {
+        let run = if body.is_person() {
             self.run_blend
         } else if sample.sprinting {
             1.0
@@ -354,14 +354,14 @@ impl CharacterPresentationState {
             (None, None) => false,
             _ => true,
         };
-        if body != BodyId::Person
+        if !body.is_person()
             || grounded_height.is_none()
             || sample.event == CharacterMotionEvent::Takeoff
             || support_changed
         {
             self.feet = [FootPlant::default(); 2];
         }
-        if body == BodyId::Person
+        if body.is_person()
             && grounded_height.is_some()
             && sample.event != CharacterMotionEvent::Takeoff
             && !discontinuity
@@ -382,7 +382,7 @@ impl CharacterPresentationState {
         }
         self.last_support_height = grounded_height;
         let swing = phase.sin() * (0.34 + run * 0.22) * self.locomotion_blend;
-        let stride_bob = if body == BodyId::Person {
+        let stride_bob = if body.is_person() {
             (phase - run * std::f32::consts::PI * 0.34).sin().powi(2)
                 * (0.032 + run * 0.024)
                 * self.locomotion_blend
@@ -392,7 +392,7 @@ impl CharacterPresentationState {
         pose.transforms[JointId::Torso.index()].translation.y += stride_bob;
         // Everyday people remain connected. Existing creature fits retain
         // their authored clearances until their separate art review.
-        let gap = if body == BodyId::Person {
+        let gap = if body.is_person() {
             0.0
         } else {
             self.gap_spring * if reduced_effects { 0.35 } else { 1.0 }
@@ -455,7 +455,7 @@ impl CharacterPresentationState {
             0.0,
         );
         rotate(&mut pose, JointId::Torso, 0.0, self.head_look * 0.14, 0.0);
-        if body == BodyId::Person {
+        if body.is_person() {
             let amount = self.locomotion_blend;
             let idle = 1.0 - amount;
             let counterturn = phase.cos() * amount * (0.045 + run * 0.035);
@@ -551,7 +551,7 @@ impl CharacterPresentationState {
                 0.0,
                 0.0,
             );
-            if body == BodyId::Person {
+            if body.is_person() {
                 let tuck = rising.max(0.0);
                 let reach = (-rising).max(0.0);
                 for (side, arm, elbow, thigh, knee, foot) in [
@@ -594,7 +594,7 @@ impl CharacterPresentationState {
             rotate(
                 &mut pose,
                 JointId::Torso,
-                landing_compression * if body == BodyId::Person { -0.15 } else { 0.15 },
+                landing_compression * if body.is_person() { -0.15 } else { 0.15 },
                 0.0,
                 0.0,
             );
@@ -709,7 +709,7 @@ impl CharacterPresentationState {
             tail_sway: (time * 2.3 + seed_unit(self.seed) * 5.0).sin() * 0.16 * secondary_scale,
             ear_tilt: (time * 1.7 + 1.0).sin() * 0.07 * secondary_scale,
             wing_flap: (time * 2.0 + 2.0).sin() * 0.10 * secondary_scale,
-            gap_expansion: if body == BodyId::Person {
+            gap_expansion: if body.is_person() {
                 0.0
             } else {
                 self.gap_spring
@@ -721,7 +721,7 @@ impl CharacterPresentationState {
             },
         };
 
-        let reactive_expression = if body == BodyId::Person {
+        let reactive_expression = if body.is_person() {
             if waving {
                 FacePreset::Grin
             } else {
@@ -741,7 +741,7 @@ impl CharacterPresentationState {
             self.expression
         };
         let mut target_face = FaceParameters::preset(reactive_expression).clamped();
-        if body == BodyId::Person {
+        if body.is_person() {
             // Keep the chosen personality during travel; effort and impact
             // modify it gently instead of switching to a scowl or gasp.
             target_face.eye_opening *= 1.0 - run * 0.07 - landing_compression * 0.12;
@@ -827,7 +827,7 @@ fn blend_face(current: FaceParameters, target: FaceParameters, delta: f32) -> Fa
 
 fn default_expression(body: BodyId) -> FacePreset {
     match body {
-        BodyId::Person => FacePreset::Happy,
+        BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => FacePreset::Happy,
         BodyId::Cat => FacePreset::Curious,
         BodyId::Dragon => FacePreset::Determined,
     }

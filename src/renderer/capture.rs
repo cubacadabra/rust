@@ -803,7 +803,7 @@ impl HeadlessContext {
                 if matches!(scenario, Scenario::ShapeLineup { .. } | Scenario::MotionLineup) {
                     use crate::character::BodyId;
                     match entity.body {
-                        BodyId::Person => {}
+                        BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {}
                         BodyId::Cat => {
                             style.skin = color(0xc98464);
                             style.shirt = color(0xc7542b);
@@ -1270,7 +1270,9 @@ fn build_scene(
                     }
                 } else {
                     match actor.body {
-                        crate::character::BodyId::Person => palette.avatar,
+                        crate::character::BodyId::Person
+                        | crate::character::BodyId::PersonGirl
+                        | crate::character::BodyId::PersonNonbinary => palette.avatar,
                         crate::character::BodyId::Cat => super::AvatarStyle {
                             skin: color(0xc98464),
                             shirt: color(0x5f8f78),

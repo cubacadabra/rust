@@ -236,7 +236,100 @@ fn hair_lock(parts: &mut Vec<Part>, root: Vec3, tip: Vec3, width: f32, depth: f3
     });
 }
 
-pub(super) fn finish(parts: &mut Vec<Part>) {
+fn hair_cap(parts: &mut Vec<Part>, position: Vec3, size: Vec3) {
+    piece(
+        parts,
+        JointId::Head,
+        position,
+        size,
+        Shape::HairCap,
+        Tint::Hair,
+        0.0,
+    );
+}
+
+fn boy_hair(parts: &mut Vec<Part>) {
+    hair_cap(
+        parts,
+        Vec3::new(0.0, 0.18, 0.065),
+        Vec3::new(1.10, 0.83, 0.96),
+    );
+    for (root, tip, width, depth) in [
+        (Vec3::new(-0.23, 0.46, -0.26), Vec3::new(0.28, 0.22, -0.47), 0.36, 0.29),
+        (Vec3::new(-0.19, 0.43, -0.25), Vec3::new(-0.41, 0.12, -0.43), 0.27, 0.24),
+        (Vec3::new(0.09, 0.48, -0.21), Vec3::new(0.44, 0.11, -0.36), 0.28, 0.26),
+        (Vec3::new(-0.38, 0.37, 0.02), Vec3::new(-0.51, -0.045, 0.18), 0.24, 0.28),
+        (Vec3::new(0.38, 0.36, 0.05), Vec3::new(0.52, -0.015, 0.21), 0.24, 0.27),
+        (Vec3::new(-0.13, 0.49, 0.03), Vec3::new(0.28, 0.40, -0.25), 0.32, 0.27),
+        (Vec3::new(-0.27, 0.40, 0.29), Vec3::new(-0.34, -0.10, 0.44), 0.26, 0.24),
+        (Vec3::new(0.0, 0.43, 0.35), Vec3::new(0.09, -0.15, 0.49), 0.32, 0.25),
+        (Vec3::new(0.26, 0.38, 0.29), Vec3::new(0.38, -0.08, 0.42), 0.25, 0.24),
+    ] {
+        hair_lock(parts, root, tip, width, depth);
+    }
+}
+
+fn girl_hair(parts: &mut Vec<Part>) {
+    hair_cap(
+        parts,
+        Vec3::new(0.0, 0.19, 0.075),
+        Vec3::new(1.12, 0.88, 0.98),
+    );
+    // Swept fringe and longer temple locks frame the shared face. The last
+    // three locks build the high, layered ponytail seen in the reference.
+    for (root, tip, width, depth) in [
+        (Vec3::new(-0.27, 0.49, -0.24), Vec3::new(0.24, 0.19, -0.48), 0.35, 0.29),
+        (Vec3::new(-0.24, 0.46, -0.23), Vec3::new(-0.43, 0.06, -0.43), 0.27, 0.25),
+        (Vec3::new(0.08, 0.49, -0.21), Vec3::new(0.43, 0.08, -0.40), 0.28, 0.26),
+        (Vec3::new(-0.40, 0.34, -0.01), Vec3::new(-0.52, -0.28, 0.10), 0.23, 0.27),
+        (Vec3::new(0.40, 0.35, 0.00), Vec3::new(0.52, -0.25, 0.13), 0.23, 0.27),
+        (Vec3::new(0.03, 0.43, 0.34), Vec3::new(0.10, -0.30, 0.49), 0.31, 0.26),
+        (Vec3::new(0.31, 0.50, 0.20), Vec3::new(0.52, 0.36, 0.38), 0.34, 0.31),
+        (Vec3::new(0.43, 0.36, 0.31), Vec3::new(0.54, -0.31, 0.47), 0.30, 0.28),
+        (Vec3::new(0.31, 0.39, 0.34), Vec3::new(0.38, -0.38, 0.50), 0.28, 0.27),
+    ] {
+        hair_lock(parts, root, tip, width, depth);
+    }
+}
+
+fn nonbinary_hair(parts: &mut Vec<Part>) {
+    hair_cap(
+        parts,
+        Vec3::new(0.0, 0.20, 0.07),
+        Vec3::new(1.13, 0.88, 0.98),
+    );
+    // Broad, uneven layers make the silhouette shaggier than the swept boy
+    // style while staying clear of the eyes and smile.
+    for (root, tip, width, depth) in [
+        (Vec3::new(-0.30, 0.50, -0.20), Vec3::new(0.18, 0.20, -0.48), 0.37, 0.30),
+        (Vec3::new(-0.06, 0.51, -0.20), Vec3::new(-0.39, 0.13, -0.46), 0.34, 0.28),
+        (Vec3::new(0.23, 0.48, -0.18), Vec3::new(0.45, 0.05, -0.40), 0.30, 0.27),
+        (Vec3::new(-0.40, 0.39, -0.02), Vec3::new(-0.53, -0.12, 0.10), 0.28, 0.29),
+        (Vec3::new(0.40, 0.38, -0.01), Vec3::new(0.54, -0.14, 0.12), 0.28, 0.29),
+        (Vec3::new(-0.34, 0.34, 0.20), Vec3::new(-0.45, -0.24, 0.36), 0.27, 0.27),
+        (Vec3::new(-0.11, 0.44, 0.33), Vec3::new(-0.20, -0.27, 0.48), 0.31, 0.27),
+        (Vec3::new(0.14, 0.43, 0.33), Vec3::new(0.22, -0.26, 0.47), 0.31, 0.27),
+        (Vec3::new(0.34, 0.34, 0.20), Vec3::new(0.46, -0.22, 0.35), 0.27, 0.27),
+    ] {
+        hair_lock(parts, root, tip, width, depth);
+    }
+}
+
+fn add_hair(parts: &mut Vec<Part>, body: crate::character::BodyId) {
+    match body {
+        crate::character::BodyId::Person => boy_hair(parts),
+        crate::character::BodyId::PersonGirl => girl_hair(parts),
+        crate::character::BodyId::PersonNonbinary => nonbinary_hair(parts),
+        crate::character::BodyId::Cat | crate::character::BodyId::Dragon => {}
+    }
+}
+
+pub(super) fn replace_hair(parts: &mut Vec<Part>, body: crate::character::BodyId) {
+    parts.retain(|part| !matches!(part.tint, Tint::Hair));
+    add_hair(parts, body);
+}
+
+pub(super) fn finish(parts: &mut Vec<Part>, body: crate::character::BodyId) {
     use JointId::*;
     // Replace the old decorative boxes with garment surfaces. Hidden shoulder
     // cores give their part slots to visible cuffs and thumbs.
@@ -401,79 +494,7 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
         Tint::Skin,
         0.0,
     );
-    add(
-        Head,
-        Vec3::new(0.0, 0.18, 0.065),
-        Vec3::new(1.10, 0.83, 0.96),
-        Shape::HairCap,
-        Tint::Hair,
-        0.0,
-    );
-    // Overlapping broad roots form one swept hairstyle. Free tips sit above
-    // the eyes, with shorter temple locks and a layered back silhouette.
-    hair_lock(
-        parts,
-        Vec3::new(-0.23, 0.46, -0.26),
-        Vec3::new(0.28, 0.22, -0.47),
-        0.36,
-        0.29,
-    );
-    hair_lock(
-        parts,
-        Vec3::new(-0.19, 0.43, -0.25),
-        Vec3::new(-0.41, 0.12, -0.43),
-        0.27,
-        0.24,
-    );
-    hair_lock(
-        parts,
-        Vec3::new(0.09, 0.48, -0.21),
-        Vec3::new(0.44, 0.11, -0.36),
-        0.28,
-        0.26,
-    );
-    hair_lock(
-        parts,
-        Vec3::new(-0.38, 0.37, 0.02),
-        Vec3::new(-0.51, -0.045, 0.18),
-        0.24,
-        0.28,
-    );
-    hair_lock(
-        parts,
-        Vec3::new(0.38, 0.36, 0.05),
-        Vec3::new(0.52, -0.015, 0.21),
-        0.24,
-        0.27,
-    );
-    for (root, tip, width, depth) in [
-        (
-            Vec3::new(-0.13, 0.49, 0.03),
-            Vec3::new(0.28, 0.40, -0.25),
-            0.32,
-            0.27,
-        ),
-        (
-            Vec3::new(-0.27, 0.40, 0.29),
-            Vec3::new(-0.34, -0.10, 0.44),
-            0.26,
-            0.24,
-        ),
-        (
-            Vec3::new(0.0, 0.43, 0.35),
-            Vec3::new(0.09, -0.15, 0.49),
-            0.32,
-            0.25,
-        ),
-        (
-            Vec3::new(0.26, 0.38, 0.29),
-            Vec3::new(0.38, -0.08, 0.42),
-            0.25,
-            0.24,
-        ),
-    ] {
-        hair_lock(parts, root, tip, width, depth);
-    }
+    add_hair(parts, body);
 }
 
 #[cfg(test)]
