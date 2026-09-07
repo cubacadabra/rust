@@ -1,13 +1,14 @@
 use glam::{Mat4, Quat, Vec3};
 
 use crate::effects::{
-    valid_effect_id, EffectLibraryDefinition, EFFECTS_VERSION, MAX_EFFECT_NODES,
-    MAX_EFFECT_NODE_COPIES, MAX_EFFECT_TEMPLATES,
+    EFFECTS_VERSION, EffectLibraryDefinition, EffectNodeDefinition, EffectNodeVariantDefinition,
+    MAX_EFFECT_NODE_COPIES, MAX_EFFECT_NODE_VARIANTS, MAX_EFFECT_NODES, MAX_EFFECT_TEMPLATES,
+    valid_effect_id,
 };
 use crate::types::InteractionRenderState;
 
 use super::{
-    faded, RenderEffectNode, RenderEffectTemplate, RenderInteraction, RenderPalette, Vertex,
+    RenderEffectNode, RenderEffectTemplate, RenderInteraction, RenderPalette, Vertex, faded,
 };
 
 pub(super) fn resolve_templates(
@@ -30,50 +31,23 @@ pub(super) fn resolve_templates(
                 .filter(|node| {
                     matches!(node.shape.as_str(), "box" | "cylinder" | "ring" | "sphere")
                 })
-                .take(MAX_EFFECT_NODES)
-                .map(|node| {
-                    let position = node
-                        .position()
-                        .map(|value| finite_clamp(value, -10_000.0, 10_000.0, 0.0));
-                    let size = node
-                        .size()
-                        .map(|value| finite_clamp(value.abs(), 0.01, 100.0, 1.0));
-                    let interaction_color = node.color == "$interaction";
-                    let color = if interaction_color {
-                        render_palette.paper
-                    } else {
-                        super::scene::resolve_color(palette, &node.color, render_palette.paper)
-                    };
-                    let mut animation = node.animation;
-                    animation.orbit_radius = finite_clamp(animation.orbit_radius, 0.0, 100.0, 0.0);
-                    animation.orbit_speed = finite_clamp(animation.orbit_speed, -20.0, 20.0, 0.0);
-                    animation.bob_amount = finite_clamp(animation.bob_amount, -100.0, 100.0, 0.0);
-                    animation.bob_speed = finite_clamp(animation.bob_speed, -20.0, 20.0, 0.0);
-                    animation.pulse_amount = finite_clamp(animation.pulse_amount, 0.0, 0.95, 0.0);
-                    animation.pulse_speed = finite_clamp(animation.pulse_speed, -20.0, 20.0, 0.0);
-                    animation.spin_speed = finite_clamp(animation.spin_speed, -20.0, 20.0, 0.0);
-                    animation.expand_amount =
-                        finite_clamp(animation.expand_amount, 0.0, 100.0, 0.0);
-                    animation.radial_amount =
-                        finite_clamp(animation.radial_amount, -100.0, 100.0, 0.0);
-                    RenderEffectNode {
-                        shape: node.shape.clone(),
-                        position,
-                        size,
-                        color,
-                        interaction_color,
-                        opacity: finite_clamp(node.opacity, 0.0, 1.0, 1.0),
-                        count: node.count.clamp(1, MAX_EFFECT_NODE_COPIES),
-                        visible_states: node
-                            .visible_states
-                            .iter()
-                            .filter(|state| valid_effect_id(state))
-                            .take(16)
-                            .cloned()
-                            .collect(),
-                        animation,
+                .flat_map(|node| {
+                    if node.variants.is_empty() {
+                        return vec![resolve_node(node, None, palette, render_palette)];
                     }
+                    node.variants
+                        .iter()
+                        .filter(|variant| {
+                            variant
+                                .visible_states
+                                .iter()
+                                .any(|state| valid_effect_id(state))
+                        })
+                        .take(MAX_EFFECT_NODE_VARIANTS)
+                        .map(|variant| resolve_node(node, Some(variant), palette, render_palette))
+                        .collect()
                 })
+                .take(MAX_EFFECT_NODES)
                 .collect();
             (
                 id.clone(),
@@ -84,6 +58,93 @@ pub(super) fn resolve_templates(
             )
         })
         .collect()
+}
+
+fn resolve_node(
+    node: &EffectNodeDefinition,
+    variant: Option<&EffectNodeVariantDefinition>,
+    palette: &std::collections::BTreeMap<String, String>,
+    render_palette: RenderPalette,
+) -> RenderEffectNode {
+    let position = variant
+        .and_then(|value| value.position.as_deref())
+        .map(|value| vector3(value, node.position()))
+        .unwrap_or_else(|| node.position())
+        .map(|value| finite_clamp(value, -10_000.0, 10_000.0, 0.0));
+    let size = variant
+        .and_then(|value| value.size.as_deref())
+        .map(|value| vector3(value, node.size()))
+        .unwrap_or_else(|| node.size())
+        .map(|value| finite_clamp(value.abs(), 0.01, 100.0, 1.0));
+    let color_name = variant
+        .and_then(|value| value.color.as_deref())
+        .unwrap_or(&node.color);
+    let interaction_color = color_name == "$interaction";
+    let color = if interaction_color {
+        render_palette.paper
+    } else {
+        super::scene::resolve_color(palette, color_name, render_palette.paper)
+    };
+    let mut animation = variant
+        .map(|value| node.animation.with_override(&value.animation))
+        .unwrap_or(node.animation);
+    animation.orbit_radius = finite_clamp(animation.orbit_radius, 0.0, 100.0, 0.0);
+    animation.orbit_speed = finite_clamp(animation.orbit_speed, -20.0, 20.0, 0.0);
+    animation.bob_amount = finite_clamp(animation.bob_amount, -100.0, 100.0, 0.0);
+    animation.bob_speed = finite_clamp(animation.bob_speed, -20.0, 20.0, 0.0);
+    animation.pulse_amount = finite_clamp(animation.pulse_amount, 0.0, 0.95, 0.0);
+    animation.pulse_speed = finite_clamp(animation.pulse_speed, -20.0, 20.0, 0.0);
+    animation.spin_speed = finite_clamp(animation.spin_speed, -20.0, 20.0, 0.0);
+    animation.expand_amount = finite_clamp(animation.expand_amount, 0.0, 100.0, 0.0);
+    animation.radial_amount = finite_clamp(animation.radial_amount, -100.0, 100.0, 0.0);
+
+    RenderEffectNode {
+        shape: node.shape.clone(),
+        position,
+        size,
+        color,
+        interaction_color,
+        opacity: finite_clamp(
+            variant
+                .and_then(|value| value.opacity)
+                .unwrap_or(node.opacity),
+            0.0,
+            1.0,
+            1.0,
+        ),
+        count: variant
+            .and_then(|value| value.count)
+            .unwrap_or(node.count)
+            .clamp(1, MAX_EFFECT_NODE_COPIES),
+        visible_states: variant.map_or_else(
+            || {
+                node.visible_states
+                    .iter()
+                    .filter(|state| valid_effect_id(state))
+                    .take(MAX_EFFECT_NODE_VARIANTS)
+                    .cloned()
+                    .collect()
+            },
+            |variant| {
+                variant
+                    .visible_states
+                    .iter()
+                    .filter(|state| valid_effect_id(state))
+                    .take(MAX_EFFECT_NODE_VARIANTS)
+                    .cloned()
+                    .collect()
+            },
+        ),
+        animation,
+    }
+}
+
+fn vector3(values: &[f32], fallback: [f32; 3]) -> [f32; 3] {
+    [
+        values.first().copied().unwrap_or(fallback[0]),
+        values.get(1).copied().unwrap_or(fallback[1]),
+        values.get(2).copied().unwrap_or(fallback[2]),
+    ]
 }
 
 pub(super) fn add_interaction(
@@ -276,6 +337,48 @@ mod tests {
             false,
         );
         assert!(!visible.is_empty());
+    }
+
+    #[test]
+    fn compact_state_variants_inherit_and_override_node_properties() {
+        let library: EffectLibraryDefinition = serde_json::from_str(
+            r##"{
+                "version": 1,
+                "templates": {
+                    "gate": {
+                        "nodes": [{
+                            "shape": "ring",
+                            "size": [3, 0.1, 1],
+                            "color": "$interaction",
+                            "variants": [
+                                {"visibleStates": ["locked"], "opacity": 0.2},
+                                {
+                                    "visibleStates": ["active"],
+                                    "opacity": 0.9,
+                                    "animation": {"pulseAmount": 0.1}
+                                }
+                            ]
+                        }]
+                    }
+                }
+            }"##,
+        )
+        .expect("stateful effect library");
+        let templates = resolve_templates(
+            &library,
+            &std::collections::BTreeMap::new(),
+            RenderPalette::default(),
+        );
+        let nodes = &templates["gate"].nodes;
+
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].visible_states, vec!["locked"]);
+        assert_eq!(nodes[0].opacity, 0.2);
+        assert_eq!(nodes[1].visible_states, vec!["active"]);
+        assert_eq!(nodes[1].opacity, 0.9);
+        assert_eq!(nodes[1].animation.pulse_amount, 0.1);
+        assert_eq!(nodes[1].size, [3.0, 0.1, 1.0]);
+        assert!(nodes.iter().all(|node| node.interaction_color));
     }
 
     #[test]

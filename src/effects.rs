@@ -6,6 +6,7 @@ pub(crate) const EFFECTS_VERSION: u16 = 1;
 pub(crate) const MAX_EFFECT_TEMPLATES: usize = 64;
 pub(crate) const MAX_EFFECT_NODES: usize = 32;
 pub(crate) const MAX_EFFECT_NODE_COPIES: usize = 16;
+pub(crate) const MAX_EFFECT_NODE_VARIANTS: usize = 16;
 pub(crate) const MAX_EFFECT_COMMANDS: usize = 64;
 pub(crate) const MAX_EFFECT_INSTANCES: usize = 64;
 pub(crate) const MAX_EFFECT_STATES: usize = 256;
@@ -70,6 +71,10 @@ pub(crate) struct EffectNodeDefinition {
     pub(crate) count: usize,
     #[serde(default)]
     pub(crate) visible_states: Vec<String>,
+    /// Compact variants inherit this node's geometry and rendering
+    /// properties while selecting their own visible states.
+    #[serde(default)]
+    pub(crate) variants: Vec<EffectNodeVariantDefinition>,
     #[serde(default)]
     pub(crate) animation: EffectAnimationDefinition,
 }
@@ -82,6 +87,20 @@ impl EffectNodeDefinition {
     pub(crate) fn size(&self) -> [f32; 3] {
         vector3(&self.size, [1.0; 3])
     }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct EffectNodeVariantDefinition {
+    #[serde(default)]
+    pub(crate) visible_states: Vec<String>,
+    pub(crate) position: Option<Vec<f32>>,
+    pub(crate) size: Option<Vec<f32>>,
+    pub(crate) color: Option<String>,
+    pub(crate) opacity: Option<f32>,
+    pub(crate) count: Option<usize>,
+    #[serde(default)]
+    pub(crate) animation: EffectAnimationOverrideDefinition,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
@@ -107,6 +126,38 @@ pub(crate) struct EffectAnimationDefinition {
     pub(crate) radial_amount: f32,
     #[serde(default)]
     pub(crate) fade: bool,
+}
+
+impl EffectAnimationDefinition {
+    pub(crate) fn with_override(self, value: &EffectAnimationOverrideDefinition) -> Self {
+        Self {
+            orbit_radius: value.orbit_radius.unwrap_or(self.orbit_radius),
+            orbit_speed: value.orbit_speed.unwrap_or(self.orbit_speed),
+            bob_amount: value.bob_amount.unwrap_or(self.bob_amount),
+            bob_speed: value.bob_speed.unwrap_or(self.bob_speed),
+            pulse_amount: value.pulse_amount.unwrap_or(self.pulse_amount),
+            pulse_speed: value.pulse_speed.unwrap_or(self.pulse_speed),
+            spin_speed: value.spin_speed.unwrap_or(self.spin_speed),
+            expand_amount: value.expand_amount.unwrap_or(self.expand_amount),
+            radial_amount: value.radial_amount.unwrap_or(self.radial_amount),
+            fade: value.fade.unwrap_or(self.fade),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct EffectAnimationOverrideDefinition {
+    pub(crate) orbit_radius: Option<f32>,
+    pub(crate) orbit_speed: Option<f32>,
+    pub(crate) bob_amount: Option<f32>,
+    pub(crate) bob_speed: Option<f32>,
+    pub(crate) pulse_amount: Option<f32>,
+    pub(crate) pulse_speed: Option<f32>,
+    pub(crate) spin_speed: Option<f32>,
+    pub(crate) expand_amount: Option<f32>,
+    pub(crate) radial_amount: Option<f32>,
+    pub(crate) fade: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

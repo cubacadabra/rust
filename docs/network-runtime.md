@@ -35,6 +35,22 @@ to resume short timers after reconnecting rather than trusting a client wall
 clock. A newly connected player receives every retained channel, not only
 players reconnecting on an existing socket identity.
 
+Game packages built with the shared tools can opt into the versioned
+`@cubacadabra/shared-state-v1.luau` helper. It layers bounded intent queuing,
+conflict rebasing, retries, and reconnect handling over `compare_set_state`
+without changing this transport contract. The helper and its reducer API are
+documented in
+[the shared-state SDK v1 guide](../../tools/docs/shared-state-v1.md).
+
+The current v1 contract is cooperative rather than competitive. `updatedAt`
+and `ageMs` are server-derived, and live broadcasts carry a transient
+`senderId`, but clients still propose both intents and resulting payloads.
+These fields are useful for synchronized feedback and short timers; they do
+not prove that a player legitimately completed a race or earned a score.
+Cheat-resistant leaderboards require a future generic server-rules boundary,
+not game-named handlers or client-authored timestamps. Competitive authority
+is intentionally outside the cooperative MVP API.
+
 The host adapts the runtime outbox to these WebSocket messages:
 
 ```json

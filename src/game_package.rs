@@ -638,6 +638,14 @@ mod tests {
                                 "shape": "ring",
                                 "size": [2, 0.1, 1],
                                 "color": "#5bd6d0",
+                                "variants": [
+                                    {"visibleStates": ["closed"], "opacity": 0.2},
+                                    {
+                                        "visibleStates": ["open"],
+                                        "opacity": 1,
+                                        "animation": {"pulseAmount": 0.1}
+                                    }
+                                ],
                                 "animation": {"expandAmount": 3, "fade": true}
                             }]
                         }
@@ -657,6 +665,11 @@ mod tests {
         assert_eq!(template.duration, 1.5);
         assert_eq!(template.nodes[0].shape, "ring");
         assert_eq!(template.nodes[0].animation.expand_amount, 3.0);
+        assert_eq!(template.nodes[0].variants[0].opacity, Some(0.2));
+        assert_eq!(
+            template.nodes[0].variants[1].animation.pulse_amount,
+            Some(0.1)
+        );
         assert_eq!(
             package.world_entries()[1].1.interactions[0]
                 .visual

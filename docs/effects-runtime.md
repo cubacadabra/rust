@@ -65,8 +65,43 @@ list means the node is always visible. One-shot lifetime comes from the
 template's `duration`; attached interaction templates continue until their
 state or world changes.
 
-The runtime accepts at most 64 templates, 32 nodes per template, 16 copies per
-node, 64 queued script commands, and 64 recent one-shot instances. Names are
-1–64 ASCII letters, numbers, dots, dashes, or underscores. Numeric inputs are
-clamped to finite rendering limits. Reduced-effects mode substantially lowers
-continuous movement without changing gameplay or script state.
+When several states reuse the same geometry, put the shared properties on one
+node and author compact `variants`:
+
+```json
+{
+  "shape": "ring",
+  "position": [0, 0.2, 0],
+  "size": [3, 0.1, 1],
+  "color": "$interaction",
+  "variants": [
+    {
+      "visibleStates": ["default", "locked"],
+      "opacity": 0.2
+    },
+    {
+      "visibleStates": ["active"],
+      "opacity": 1,
+      "animation": {"pulseAmount": 0.1, "pulseSpeed": 3}
+    },
+    {
+      "visibleStates": ["complete"],
+      "opacity": 0.6
+    }
+  ]
+}
+```
+
+Each variant inherits `position`, `size`, `color`, `opacity`, `count`,
+and individual animation properties from the node, then overrides only the
+fields it declares. A node uses either its original `visibleStates` or its
+`variants`; when variants are present, the node-level list is ignored. This
+is authoring shorthand for the same bounded render nodes, not a second effects
+runtime.
+
+The runtime accepts at most 64 templates, 32 resolved nodes per template, 16
+variants and 16 copies per authored node, 64 queued script commands, and 64
+recent one-shot instances. Names are 1–64 ASCII letters, numbers, dots, dashes,
+or underscores. Numeric inputs are clamped to finite rendering limits.
+Reduced-effects mode substantially lowers continuous movement without changing
+gameplay or script state.
