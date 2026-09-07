@@ -58,6 +58,84 @@ pub unsafe extern "C" fn engine_script_error_len(engine: *const Engine) -> usize
         .unwrap_or(0)
 }
 
+/// Queues one host-received game message for the next Luau tick. The engine
+/// treats the message as opaque JSON; the game package owns its schema.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create` and
+/// `source` must be null only when `length` is zero or otherwise point to
+/// `length` readable bytes for the duration of this call.
+pub unsafe extern "C" fn engine_receive_network_message_json(
+    engine: *mut Engine,
+    source: *const u8,
+    length: usize,
+) -> u8 {
+    let Some(engine) = (unsafe { engine.as_mut() }) else {
+        return 0;
+    };
+    if source.is_null() && length != 0 {
+        return 0;
+    }
+    let bytes = if length == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(source, length) }
+    };
+    let Ok(source) = std::str::from_utf8(bytes) else {
+        return 0;
+    };
+    u8::from(engine.receive_network_message_json(source))
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`; the
+/// returned buffer must be written with exactly `length` bytes before load.
+pub unsafe extern "C" fn engine_network_receive_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_network_receive_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_load_network_receive_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.load_network_receive_buffer()))
+        .unwrap_or(0)
+}
+
+/// Polls one outbound game message emitted by Luau. The pointer remains valid
+/// until the next poll or engine destruction.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_network_poll_message(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.poll_network_message()))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_network_message_ptr(engine: *const Engine) -> *const u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.network_message().as_ptr())
+        .unwrap_or(ptr::null())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_network_message_len(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }.map_or(0, |engine| engine.network_message().len())
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.

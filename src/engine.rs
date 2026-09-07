@@ -1,6 +1,6 @@
 mod camera;
 mod content;
-mod identity;
+pub(crate) mod identity;
 mod initialization;
 mod interactions;
 mod remote;
@@ -89,6 +89,8 @@ pub struct Engine {
     pub(crate) remote_update_buffer: Vec<u8>,
     pub(crate) remote_motion_buffer: Vec<u8>,
     pub(crate) remote_update_status: u8,
+    pub(crate) network_receive_buffer: Vec<u8>,
+    pub(crate) network_message_buffer: Vec<u8>,
     pub(crate) player_motion_event: CharacterMotionEvent,
     pub(crate) player_emote: CharacterEmote,
     pub(crate) player_emote_sequence: u64,

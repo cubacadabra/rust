@@ -98,6 +98,48 @@ impl Engine {
     pub(crate) fn script_loaded(&self) -> bool {
         self.script.is_some()
     }
+
+    pub(crate) fn receive_network_message_json(&mut self, source: &str) -> bool {
+        self.script
+            .as_ref()
+            .is_some_and(|script| script.enqueue_network_message(source))
+    }
+
+    pub(crate) fn prepare_network_receive_buffer(&mut self, length: usize) -> *mut u8 {
+        if length > crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES {
+            self.network_receive_buffer.clear();
+            return std::ptr::null_mut();
+        }
+        self.network_receive_buffer.resize(length, 0);
+        self.network_receive_buffer.as_mut_ptr()
+    }
+
+    pub(crate) fn load_network_receive_buffer(&mut self) -> bool {
+        let Some(source) = crate::engine::identity::bounded_utf8(
+            &self.network_receive_buffer,
+            crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES,
+        ).map(str::to_owned) else {
+            return false;
+        };
+        self.receive_network_message_json(&source)
+    }
+
+    pub(crate) fn poll_network_message(&mut self) -> bool {
+        let Some(message) = self
+            .script
+            .as_ref()
+            .and_then(GameScript::take_network_message)
+        else {
+            self.network_message_buffer.clear();
+            return false;
+        };
+        self.network_message_buffer = message.into_bytes();
+        true
+    }
+
+    pub(crate) fn network_message(&self) -> &[u8] {
+        &self.network_message_buffer
+    }
 }
 
 fn legacy_colors(definition: &AvatarDefinition, mut fallback: CharacterColors) -> CharacterColors {

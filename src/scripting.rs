@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 use crate::ui::{UiEvent, UiRuntime};
@@ -16,6 +17,8 @@ pub(crate) struct ScriptState {
     pub(crate) session_name: Option<String>,
     pub(crate) last_error: Option<String>,
     pub(crate) interactions: InteractionScriptState,
+    pub(crate) network_outbox: VecDeque<String>,
+    pub(crate) network_inbox: VecDeque<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -41,6 +44,7 @@ pub(crate) struct GameScript {
     on_launch: Option<lua::Function>,
     on_ui_event: Option<lua::Function>,
     on_interaction: Option<lua::Function>,
+    on_network_message: Option<lua::Function>,
     state: Rc<RefCell<ScriptState>>,
     ui: Rc<RefCell<UiRuntime>>,
 }
@@ -61,6 +65,7 @@ impl GameScript {
         let on_launch: Option<lua::Function> = module.get("on_launch")?;
         let on_ui_event: Option<lua::Function> = module.get("on_ui_event")?;
         let on_interaction: Option<lua::Function> = module.get("on_interaction")?;
+        let on_network_message: Option<lua::Function> = module.get("on_network_message")?;
 
         if let Some(on_start) = on_start {
             on_start.call::<()>((api.clone(),))?;
@@ -73,12 +78,22 @@ impl GameScript {
             on_launch,
             on_ui_event,
             on_interaction,
+            on_network_message,
             state,
             ui,
         })
     }
 
     pub(crate) fn tick(&self, delta: f32) -> Result<(), String> {
+        let network_messages = self
+            .state
+            .borrow_mut()
+            .network_inbox
+            .drain(..)
+            .collect::<Vec<_>>();
+        for message in network_messages {
+            self.dispatch_network_message(&message)?;
+        }
         let events = self.ui.borrow_mut().take_script_events();
         for event in events {
             self.dispatch_ui_event(&event)?;
@@ -89,6 +104,35 @@ impl GameScript {
                 .map_err(|error| error.to_string())?;
         }
         Ok(())
+    }
+
+    fn dispatch_network_message(&self, source: &str) -> Result<(), String> {
+        let Some(on_network_message) = &self.on_network_message else {
+            return Ok(());
+        };
+        let value: serde_json::Value = serde_json::from_str(source)
+            .map_err(|error| format!("network message is not valid JSON: {error}"))?;
+        let value = json_to_lua(&self.lua, &value, 0).map_err(|error| error.to_string())?;
+        on_network_message
+            .call::<()>((self.api.clone(), value))
+            .map_err(|error| error.to_string())
+    }
+
+    pub(crate) fn enqueue_network_message(&self, source: &str) -> bool {
+        if source.len() > crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES
+            || serde_json::from_str::<serde_json::Value>(source).is_err()
+        {
+            return false;
+        }
+        self.state
+            .borrow_mut()
+            .network_inbox
+            .push_back(source.to_owned());
+        true
+    }
+
+    pub(crate) fn take_network_message(&self) -> Option<String> {
+        self.state.borrow_mut().network_outbox.pop_front()
     }
 
     fn dispatch_ui_event(&self, event: &UiEvent) -> Result<(), String> {
@@ -290,6 +334,37 @@ fn create_api(
     )?;
     api.set("interactions", interactions)?;
 
+    let network = create_table(lua)?;
+    for (method, retained) in [("publish", false), ("set_state", true)] {
+        let network_state = Rc::clone(&state);
+        network.set(
+            method,
+            lua.create_function(
+                move |_, (_network, channel, payload): (lua::Table, String, lua::Value)| {
+                    if channel.is_empty()
+                        || channel.len() > crate::engine::identity::MAX_NETWORK_CHANNEL_BYTES
+                    {
+                        return Err(lua::Error::runtime("network channel must be 1–64 bytes"));
+                    }
+                    let payload = lua_value_to_json(payload, 0).map_err(lua::Error::runtime)?;
+                    let message = serde_json::json!({
+                        "channel": channel,
+                        "payload": payload,
+                        "retained": retained,
+                    });
+                    let source = serde_json::to_string(&message)
+                        .map_err(|error| lua::Error::runtime(error.to_string()))?;
+                    if source.len() > crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES {
+                        return Err(lua::Error::runtime("network message exceeds 64 KiB"));
+                    }
+                    network_state.borrow_mut().network_outbox.push_back(source);
+                    Ok(())
+                },
+            )?,
+        )?;
+    }
+    api.set("network", network)?;
+
     Ok(api)
 }
 
@@ -343,6 +418,44 @@ fn lua_value_to_json(value: lua::Value, depth: usize) -> Result<serde_json::Valu
             "UI documents cannot contain {} values",
             value.type_name()
         )),
+    }
+}
+
+fn json_to_lua(lua: &lua::Lua, value: &serde_json::Value, depth: usize) -> lua::Result<lua::Value> {
+    if depth > 32 {
+        return Err(lua::Error::runtime(
+            "network message nesting exceeds 32 levels",
+        ));
+    }
+    match value {
+        serde_json::Value::Null => Ok(lua::Value::Nil),
+        serde_json::Value::Bool(value) => Ok(lua::Value::Boolean(*value)),
+        serde_json::Value::Number(value) => value
+            .as_i64()
+            .map(lua::Value::Integer)
+            .or_else(|| value.as_f64().map(lua::Value::Number))
+            .ok_or_else(|| lua::Error::runtime("network message number is not finite")),
+        serde_json::Value::String(value) => {
+            #[cfg(not(target_arch = "wasm32"))]
+            let value = lua.create_string(value)?;
+            #[cfg(target_arch = "wasm32")]
+            let value = lua.create_string(value);
+            Ok(lua::Value::String(value))
+        }
+        serde_json::Value::Array(values) => {
+            let table = create_table(lua)?;
+            for (index, value) in values.iter().enumerate() {
+                table.set(index + 1, json_to_lua(lua, value, depth + 1)?)?;
+            }
+            Ok(lua::Value::Table(table))
+        }
+        serde_json::Value::Object(values) => {
+            let table = create_table(lua)?;
+            for (key, value) in values {
+                table.set(key.as_str(), json_to_lua(lua, value, depth + 1)?)?;
+            }
+            Ok(lua::Value::Table(table))
+        }
     }
 }
 
@@ -443,6 +556,33 @@ mod tests {
         assert_eq!(script.state().borrow().lobby_status, "button:enter");
         script.tick(0.0).expect("tick should run");
         assert_eq!(script.state().borrow().lobby_status, "inside:2");
+    }
+
+    #[test]
+    fn luau_can_publish_and_receive_opaque_network_messages() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    api.network:set_state("progress", { learned = 2 })
+                end
+                function game.on_network_message(api, message)
+                    if message.type == "game_state" and message.channel == "progress" then
+                        api.lobby:set_status("learned:" .. message.payload.learned)
+                    end
+                end
+                return game
+            "#,
+        );
+
+        script
+            .take_network_message()
+            .expect("on_start should emit a retained state message");
+        assert!(script.enqueue_network_message(
+            r#"{"type":"game_state","channel":"progress","payload":{"learned":3}}"#,
+        ));
+        script.tick(0.0).expect("network callback should run");
+        assert_eq!(script.state().borrow().lobby_status, "learned:3");
     }
 
     #[test]
