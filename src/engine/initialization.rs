@@ -82,6 +82,7 @@ impl Engine {
             ui: Rc::new(RefCell::new(UiRuntime::default())),
             ui_document_buffer: Vec::new(),
             interactions: crate::engine::interactions::InteractionRuntime::default(),
+            effects: crate::effects::EffectRuntime::default(),
         };
         engine.write_snapshot();
         engine

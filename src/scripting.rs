@@ -5,6 +5,7 @@ use std::rc::Rc;
 use crate::ui::{UiEvent, UiRuntime};
 
 mod audio;
+mod effects;
 mod network;
 
 #[cfg(target_arch = "wasm32")]
@@ -23,6 +24,7 @@ pub(crate) struct ScriptState {
     pub(crate) network_outbox: VecDeque<String>,
     pub(crate) network_inbox: VecDeque<String>,
     pub(crate) audio_outbox: VecDeque<String>,
+    pub(crate) effect_outbox: VecDeque<crate::effects::EffectCommand>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -142,6 +144,10 @@ impl GameScript {
 
     pub(crate) fn take_audio_message(&self) -> Option<String> {
         self.state.borrow_mut().audio_outbox.pop_front()
+    }
+
+    pub(crate) fn take_effect_commands(&self) -> Vec<crate::effects::EffectCommand> {
+        self.state.borrow_mut().effect_outbox.drain(..).collect()
     }
 
     fn dispatch_ui_event(&self, event: &UiEvent) -> Result<(), String> {
@@ -346,6 +352,8 @@ fn create_api(
     network::install(lua, &api, Rc::clone(&state))?;
 
     audio::install(lua, &api, Rc::clone(&state))?;
+
+    effects::install(lua, &api, Rc::clone(&state))?;
 
     Ok(api)
 }
@@ -607,6 +615,34 @@ mod tests {
         assert_eq!(value["expectedSequence"], 7);
         assert_eq!(value["payload"]["round"], 3);
         assert_eq!(value["payload"]["checkpoints"]["gate_a"], true);
+    }
+
+    #[test]
+    fn luau_can_control_manifest_defined_effects() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    api.effects:set_state("gate-a", "open")
+                    api.effects:play("finish-flash", { position = { 1, 2, 3 } })
+                end
+                return game
+            "#,
+        );
+
+        assert_eq!(
+            script.take_effect_commands(),
+            vec![
+                crate::effects::EffectCommand::SetState {
+                    target: "gate-a".to_owned(),
+                    state: "open".to_owned(),
+                },
+                crate::effects::EffectCommand::Play {
+                    template: "finish-flash".to_owned(),
+                    position: [1.0, 2.0, 3.0],
+                },
+            ]
+        );
     }
 
     #[test]

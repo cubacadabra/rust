@@ -427,17 +427,48 @@ impl Renderer {
             );
         }
         for (index, interaction) in world.interactions.iter().enumerate() {
-            super::add_interaction_zone(
+            let template = interaction
+                .visual
+                .as_deref()
+                .and_then(|id| world.effect_templates.get(id));
+            let visual_state = self
+                .scene
+                .effect_states
+                .get(&interaction.id)
+                .map(String::as_str)
+                .unwrap_or("default");
+            super::effects::add_interaction(
                 &mut mesh,
                 interaction,
+                template,
+                visual_state,
                 self.scene
                     .interaction_states
                     .get(index)
                     .copied()
                     .unwrap_or_default(),
                 self.scene.elapsed,
-                index,
                 world.palette,
+                self.scene.reduced_effects,
+            );
+        }
+        for instance in &self.scene.effect_instances {
+            let Some(template) = world.effect_templates.get(&instance.template) else {
+                continue;
+            };
+            let age = (self.scene.elapsed - instance.started_at).max(0.0);
+            if age > template.duration {
+                continue;
+            }
+            super::effects::add_template(
+                &mut mesh,
+                template,
+                Vec3::from_array(instance.position),
+                world.palette.paper,
+                "default",
+                age,
+                Some(age / template.duration),
+                self.scene.reduced_effects,
             );
         }
         for sign in &world.signs {

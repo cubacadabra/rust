@@ -4,6 +4,7 @@ pub(crate) mod capture;
 pub(crate) mod validation;
 mod device;
 mod draw;
+mod effects;
 mod character;
 mod camera;
 mod character_gpu;

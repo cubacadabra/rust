@@ -31,10 +31,31 @@ pub(super) struct RenderSign {
 
 #[derive(Clone)]
 pub(super) struct RenderInteraction {
+    pub(super) id: String,
     pub(super) label: String,
     pub(super) position: [f32; 3],
     pub(super) radius: f32,
     pub(super) color: [f32; 4],
+    pub(super) visual: Option<String>,
+}
+
+#[derive(Clone)]
+pub(super) struct RenderEffectTemplate {
+    pub(super) duration: f32,
+    pub(super) nodes: Vec<RenderEffectNode>,
+}
+
+#[derive(Clone)]
+pub(super) struct RenderEffectNode {
+    pub(super) shape: String,
+    pub(super) position: [f32; 3],
+    pub(super) size: [f32; 3],
+    pub(super) color: [f32; 4],
+    pub(super) interaction_color: bool,
+    pub(super) opacity: f32,
+    pub(super) count: usize,
+    pub(super) visible_states: Vec<String>,
+    pub(super) animation: crate::effects::EffectAnimationDefinition,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -155,6 +176,7 @@ pub(super) struct RenderWorld {
     pub(super) palette: RenderPalette,
     pub(super) signs: Vec<RenderSign>,
     pub(super) interactions: Vec<RenderInteraction>,
+    pub(super) effect_templates: std::collections::BTreeMap<String, RenderEffectTemplate>,
 }
 
 impl Default for RenderWorld {
@@ -171,6 +193,7 @@ impl Default for RenderWorld {
             palette: RenderPalette::default(),
             signs: Vec::new(),
             interactions: Vec::new(),
+            effect_templates: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -225,6 +248,8 @@ pub(super) struct Scene {
     pub(super) lods: std::collections::HashMap<crate::types::CharacterEntityKey, crate::renderer::character_quality::CharacterLod>,
     pub(super) reduced_effects: bool,
     pub(super) interaction_states: Vec<crate::types::InteractionRenderState>,
+    pub(super) effect_states: std::collections::BTreeMap<String, String>,
+    pub(super) effect_instances: Vec<crate::effects::EffectInstance>,
 }
 
 impl Default for Scene {
@@ -246,6 +271,8 @@ impl Default for Scene {
             lods: std::collections::HashMap::new(),
             reduced_effects: false,
             interaction_states: Vec::new(),
+            effect_states: std::collections::BTreeMap::new(),
+            effect_instances: Vec::new(),
         }
     }
 }

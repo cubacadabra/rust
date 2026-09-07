@@ -845,6 +845,37 @@ fn luau_can_switch_a_lobby_package_to_direct_startup() {
 }
 
 #[test]
+fn luau_effect_commands_enter_the_bounded_engine_runtime() {
+    let script = r#"
+        local game = {}
+        function game.on_start(api)
+            api.effects:set_state("checkpoint-a", "open")
+            api.effects:play("finish-flash", { position = { 2, 1, -4 } })
+        end
+        return game
+    "#;
+    let mut engine = Engine::new();
+    engine.script_buffer = script.as_bytes().to_vec();
+
+    assert!(engine.load_script_buffer());
+    engine.step(0.25);
+
+    assert_eq!(
+        engine
+            .effects
+            .states
+            .get(&(engine.active_world, "checkpoint-a".to_owned()))
+            .map(String::as_str),
+        Some("open")
+    );
+    let instance = engine.effects.instances.back().expect("one-shot effect");
+    assert_eq!(instance.template, "finish-flash");
+    assert_eq!(instance.position, [2.0, 1.0, -4.0]);
+    assert_eq!(instance.world, engine.active_world);
+    assert_eq!(instance.started_at, engine.elapsed);
+}
+
+#[test]
 fn portals_enter_and_exit_the_immersive_settings_world() {
     let manifest = r#"{
         "startWorld":"lobby",

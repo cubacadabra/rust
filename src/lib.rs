@@ -1,5 +1,6 @@
 mod character;
 mod engine;
+mod effects;
 mod ffi;
 mod game_package;
 mod math;

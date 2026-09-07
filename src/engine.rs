@@ -14,6 +14,7 @@ mod worlds;
 mod tests;
 
 use crate::character::definition::CharacterAppearance;
+use crate::effects::EffectRuntime;
 use crate::game_package::GamePackageDefinition;
 use crate::math::Random;
 use crate::scripting::GameScript;
@@ -120,6 +121,7 @@ pub struct Engine {
     pub(crate) ui: Rc<RefCell<UiRuntime>>,
     pub(crate) ui_document_buffer: Vec<u8>,
     pub(crate) interactions: interactions::InteractionRuntime,
+    pub(crate) effects: EffectRuntime,
 }
 
 impl Default for Engine {

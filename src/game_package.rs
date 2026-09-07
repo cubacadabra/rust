@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::effects::EffectLibraryDefinition;
+
 fn default_start_world() -> String {
     "lobby".to_owned()
 }
@@ -67,6 +69,8 @@ pub(crate) struct GamePackageDefinition {
     pub(crate) worlds: BTreeMap<String, WorldDefinition>,
     #[serde(default)]
     pub(crate) avatars: AvatarSetDefinition,
+    #[serde(default)]
+    pub(crate) effects: EffectLibraryDefinition,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -185,6 +189,8 @@ pub(crate) struct InteractionDefinition {
     pub(crate) radius: f32,
     #[serde(default)]
     pub(crate) color: String,
+    #[serde(default)]
+    pub(crate) visual: Option<String>,
 }
 
 impl InteractionDefinition {
@@ -484,6 +490,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn configured_external_game_manifest_parses() {
+        let Ok(path) = std::env::var("CUBACADABRA_TEST_GAME_MANIFEST") else {
+            return;
+        };
+        let source = std::fs::read_to_string(&path).expect("configured game manifest should exist");
+        GamePackageDefinition::parse(&source).expect("configured game manifest should parse");
+    }
+
+    #[test]
     fn retains_authored_render_fields() {
         let package = GamePackageDefinition::parse(
             r##"{
@@ -608,5 +623,45 @@ mod tests {
         assert_eq!(interaction.kind, "zone");
         assert_eq!(interaction.position(), [-4.0, 0.0, -8.0]);
         assert_eq!(interaction.label, "BLUE BUTTON");
+    }
+
+    #[test]
+    fn effect_templates_are_versioned_and_composed_from_generic_nodes() {
+        let package = GamePackageDefinition::parse(
+            r##"{
+                "effects": {
+                    "version": 1,
+                    "templates": {
+                        "finish-flash": {
+                            "duration": 1.5,
+                            "nodes": [{
+                                "shape": "ring",
+                                "size": [2, 0.1, 1],
+                                "color": "#5bd6d0",
+                                "animation": {"expandAmount": 3, "fade": true}
+                            }]
+                        }
+                    }
+                },
+                "worlds": {
+                    "arena": {
+                        "interactions": [{"id": "finish", "visual": "finish-flash"}]
+                    }
+                }
+            }"##,
+        )
+        .expect("generic effect contract should parse");
+
+        assert_eq!(package.effects.version, crate::effects::EFFECTS_VERSION);
+        let template = &package.effects.templates["finish-flash"];
+        assert_eq!(template.duration, 1.5);
+        assert_eq!(template.nodes[0].shape, "ring");
+        assert_eq!(template.nodes[0].animation.expand_amount, 3.0);
+        assert_eq!(
+            package.world_entries()[1].1.interactions[0]
+                .visual
+                .as_deref(),
+            Some("finish-flash")
+        );
     }
 }

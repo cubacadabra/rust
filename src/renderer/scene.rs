@@ -67,7 +67,7 @@ impl Renderer {
                     package
                         .world_entries()
                         .into_iter()
-                        .map(|(_, world)| resolve_world(&world))
+                        .map(|(_, world)| resolve_world(&world, &package.effects))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -175,6 +175,24 @@ impl Renderer {
         self.scene.interaction_states.extend(
             (0..engine.interaction_count()).map(|index| engine.interaction_render_state(index)),
         );
+        self.scene.effect_states.clear();
+        self.scene.effect_states.extend(
+            engine
+                .effects
+                .states
+                .iter()
+                .filter(|((world, _), _)| *world == engine.active_world)
+                .map(|((_, target), state)| (target.clone(), state.clone())),
+        );
+        self.scene.effect_instances.clear();
+        self.scene.effect_instances.extend(
+            engine
+                .effects
+                .instances
+                .iter()
+                .filter(|instance| instance.world == engine.active_world)
+                .cloned(),
+        );
         self.scene.username.clone_from(&engine.username);
         self.scene.build_blocks.clear();
         self.scene
@@ -233,7 +251,10 @@ fn render_entity(
     }
 }
 
-fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
+fn resolve_world(
+    definition: &WorldDefinition,
+    effects: &crate::effects::EffectLibraryDefinition,
+) -> RenderWorld {
     let defaults = RenderPalette::default();
     let palette = RenderPalette {
         sky: resolve_color(&definition.palette, "sky", defaults.sky),
@@ -302,6 +323,7 @@ fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
             .interactions
             .iter()
             .map(|interaction| RenderInteraction {
+                id: interaction.id.clone(),
                 label: if interaction.label.is_empty() {
                     interaction.id.clone()
                 } else {
@@ -310,8 +332,10 @@ fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
                 position: interaction.position(),
                 radius: interaction.radius.max(0.5),
                 color: resolve_color(&definition.palette, &interaction.color, palette.paper),
+                visual: interaction.visual.clone(),
             })
             .collect(),
+        effect_templates: super::effects::resolve_templates(effects, &definition.palette, palette),
     }
 }
 
@@ -417,7 +441,7 @@ fn style_from_appearance(appearance: &CharacterAppearance, fallback: AvatarStyle
     }
 }
 
-fn resolve_color(
+pub(super) fn resolve_color(
     palette: &std::collections::BTreeMap<String, String>,
     token: &str,
     fallback: [f32; 4],

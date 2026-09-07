@@ -90,13 +90,18 @@ JSON and does not contain rules for a particular game.
 See [docs/audio-runtime.md](docs/audio-runtime.md) for package-owned one-shot
 WAV assets, the Luau playback call, validation limits, and host polling ABI.
 
+See [docs/effects-runtime.md](docs/effects-runtime.md) for versioned,
+manifest-authored world effects and the small Luau state/play API. Rust owns
+bounded rendering primitives; games own their visual recipes.
+
 ## Scripting status
 
 All targets execute `game.luau` through the host in `scripting.rs`. Native
 builds use `mlua` with vendored Luau; the `wasm32-unknown-unknown` build uses
 the pure-Rust `luaur-rt` Luau runtime so the browser can run the same lifecycle
 callbacks without a separate JavaScript scripting implementation. Both hosts
-expose the same sandboxed `lobby`, `session`, `interactions`, and lifecycle API.
+expose the same sandboxed `lobby`, `session`, `interactions`, `effects`, and
+lifecycle API.
 Packages keep lobby routing enabled by default. Set `"lobby": false` in the
 manifest, or call `api.lobby:set_enabled(false)` from `on_start`, to enter the
 configured experience world directly. Direct worlds use the normal per-world

@@ -308,6 +308,7 @@ impl Engine {
         };
 
         self.apply_package_default_appearance(&package);
+        self.effects = crate::effects::EffectRuntime::default();
         self.worlds = worlds;
         self.world_ids = entries.into_iter().map(|(id, _)| id).collect();
         self.package = Some(package);

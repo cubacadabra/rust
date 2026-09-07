@@ -74,6 +74,7 @@ impl Engine {
                             .and_then(|package| package.direct_world_id().map(str::to_owned))
                     })
                     .flatten();
+                self.effects = crate::effects::EffectRuntime::default();
                 self.script = Some(script);
                 self.script_error_buffer.clear();
                 if let Some(world_id) = direct_world_id {
