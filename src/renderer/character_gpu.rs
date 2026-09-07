@@ -12,8 +12,9 @@ use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 
 pub(super) const MAX_CHARACTERS: usize = 50;
-const MAX_PARTS: usize = 48;
-pub(super) const MAX_MESHES: usize = 384;
+// Keep the original garment budget plus bounded authored hair geometry.
+const MAX_PARTS: usize = 48 + crate::character::hair::MAX_LOCKS;
+pub(super) const MAX_MESHES: usize = 384 + 2 * crate::character::hair::MAX_LOCKS * 3;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
 
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
@@ -90,7 +91,12 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 ));
         }
     }
-    if is_hero(entity) && part.shape == super::hero_geometry::Shape::HairLock {
+    if let super::hero_geometry::Shape::HairCurve(style, index) = part.shape {
+        let sway = crate::character::hair::get(style).locks[index as usize].sway;
+        // Curved locks are modeled relative to their buried root, so the
+        // cap stays fixed and each lock follows head motion from its root.
+        local *= Mat4::from_quat(Quat::from_scaled_axis(entity.secondary.hair_sway * sway));
+    } else if is_hero(entity) && part.shape == super::hero_geometry::Shape::HairLock {
         let (_, orientation, _) = local.to_scale_rotation_translation();
         let turn = orientation.conjugate() * entity.secondary.hair_sway;
         let pivot = Vec3::NEG_Y * part.spec.size.y * 0.5;

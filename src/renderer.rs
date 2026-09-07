@@ -12,6 +12,7 @@ mod character_quality;
 mod targets;
 mod rounded_geometry;
 mod hero_geometry;
+mod hair_geometry;
 mod hero_character;
 mod scene;
 mod ui;

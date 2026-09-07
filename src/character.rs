@@ -6,6 +6,7 @@ pub(crate) mod catalog;
 pub(crate) mod definition;
 pub(crate) mod face;
 pub(crate) mod gait;
+pub(crate) mod hair;
 pub(crate) mod rig;
 
 pub(crate) const STANCE_ANKLE_HEIGHT: f32 = 0.05;

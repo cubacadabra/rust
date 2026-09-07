@@ -158,6 +158,19 @@ pub(super) fn world_label_height(body: BodyId) -> f32 {
     HEIGHTS.get_or_init(|| {
         BodyId::ALL.map(|id| {
             let recipe = body_recipe(id);
+            if let Some(hair_top) = super::hair_geometry::top(id) {
+                let pose = super::hero_character::fit_pose(
+                    super::RenderEntity {
+                        body: id,
+                        pose: Pose::rest(&recipe.rig),
+                        ..Default::default()
+                    },
+                    super::hero_character::Study::Everyday,
+                    &recipe.rig,
+                );
+                let head = recipe.rig.world_matrices(&pose.transforms)[JointId::Head.index()];
+                return head.transform_point3(Vec3::Y * hair_top).y + 0.10;
+            }
             let head_center = recipe.rig.joints[JointId::Torso.index()].rest.translation.y
                 + recipe.rig.joints[JointId::Head.index()].rest.translation.y;
             let head_top = head_center + recipe.head.size.y * 0.5;
@@ -1010,10 +1023,19 @@ pub(super) fn bounds(body: BodyId, outfit: OutfitId) -> (Vec3, f32) {
         let transform = joints[part.anchor.joint.index()] * part.anchor.local;
         let taper = part.spec.taper.0.max(part.spec.taper.1).max(1.0);
         let half = part.spec.size * Vec3::new(taper, 1.0, taper) * 0.5;
+        let (local_min, local_max) = if let super::hero_geometry::Shape::HairCurve(style, index) = part.shape {
+            super::hair_geometry::bounds(style, index)
+        } else {
+            (-half, half)
+        };
         for x in [-1.0, 1.0] {
             for y in [-1.0, 1.0] {
                 for z in [-1.0, 1.0] {
-                    let corner = transform.transform_point3(half * Vec3::new(x, y, z));
+                    let corner = transform.transform_point3(Vec3::new(
+                        if x < 0.0 { local_min.x } else { local_max.x },
+                        if y < 0.0 { local_min.y } else { local_max.y },
+                        if z < 0.0 { local_min.z } else { local_max.z },
+                    ));
                     min = min.min(corner);
                     max = max.max(corner);
                 }

@@ -36,12 +36,14 @@ impl BodyId {
         matches!(self, Self::Person | Self::PersonGirl | Self::PersonNonbinary)
     }
 
-    pub(crate) const fn hair_color(self) -> [f32; 4] {
+    pub(crate) fn hair_color(self) -> [f32; 4] {
+        if let Some((_, style)) = super::hair::for_body(self) {
+            let [r, g, b] = style.color;
+            return [r, g, b, 1.0];
+        }
         match self {
             Self::Person => [0.30, 0.155, 0.085, 1.0],
-            Self::PersonGirl => [0.28, 0.14, 0.085, 1.0],
-            Self::PersonNonbinary => [0.095, 0.075, 0.070, 1.0],
-            Self::Cat | Self::Dragon => [0.22, 0.12, 0.075, 1.0],
+            _ => [0.22, 0.12, 0.075, 1.0],
         }
     }
 

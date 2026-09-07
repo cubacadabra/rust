@@ -15,6 +15,8 @@ pub(super) enum Shape {
     Pocket,
     HairCap,
     HairLock,
+    /// Finite asset/lock indices; mesh identity includes the authored curve.
+    HairCurve(u8, u8),
     Shoe,
     Rib,
     Cord,
@@ -220,6 +222,9 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
 }
 
 pub(super) fn build(shape: Shape, size: Vec3, subdivisions: u32) -> IndexedMesh {
+    if let Shape::HairCurve(style, index) = shape {
+        return super::hair_geometry::build(style, index, size, subdivisions);
+    }
     if shape == Shape::Laces {
         let mut mesh = IndexedMesh {
             vertices: Vec::new(),
