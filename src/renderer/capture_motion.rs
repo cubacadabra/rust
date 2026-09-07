@@ -10,7 +10,7 @@ use crate::types::{
 use super::super::character::{Feature, Part};
 use super::super::hero_character::{self, Study};
 use super::super::hero_geometry;
-use glam::{Mat4, Quat, Vec2};
+use glam::{Mat4, Quat, Vec2, Vec3};
 
 pub(super) const CAMERA_YAW: f32 = 2.75;
 
@@ -205,7 +205,7 @@ pub(super) fn moving_focus(time: f32, raised: bool) -> Vec3 {
 
 pub(super) fn add_world_markers(
     vertices: &mut Vec<Vertex>,
-    palette: &super::CaptureColors,
+    palette: &super::scene::CaptureColors,
     raised: bool,
 ) {
     let y = if raised { 2.006 } else { 0.006 };

@@ -321,6 +321,7 @@ pub fn capture_phase9_hero_with_set(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::character::body_recipe;
 
     #[test]
     fn hero_capture_sets_have_stable_counts_without_gpu_setup() {
