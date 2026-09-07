@@ -355,36 +355,7 @@ fn add_text(
     color: [f32; 4],
 ) {
     let font_size = font_size.max(7.0);
-    let lines = text
-        .lines()
-        .take(8)
-        .map(|line| {
-            let glyphs = line
-                .chars()
-                .filter(|character| character.is_ascii())
-                .map(|character| {
-                    let character = character.to_ascii_uppercase();
-                    let glyph = ui_atlas_glyphs()
-                        .iter()
-                        .find(|glyph| glyph.character == character)
-                        .or_else(|| {
-                            ui_atlas_glyphs()
-                                .iter()
-                                .find(|glyph| glyph.character == '?')
-                        })
-                        .expect("UI atlas includes a fallback glyph");
-                    UiGlyph { glyph }
-                })
-                .take(96)
-                .collect::<Vec<_>>();
-            let scale = font_size / UI_FONT_ATLAS_SIZE;
-            let width = glyphs
-                .iter()
-                .map(|glyph| glyph.glyph.metrics.advance_width * scale)
-                .sum();
-            UiTextLine { glyphs, width }
-        })
-        .collect::<Vec<_>>();
+    let lines = wrap_text(text, font_size, rect.width.max(1.0));
     if lines.is_empty() {
         return;
     }
@@ -394,6 +365,9 @@ fn add_text(
         .map(|metrics| metrics.new_line_size)
         .unwrap_or(font_size * 1.2)
         .max(font_size * 1.1);
+    let max_lines = (rect.height / line_height).floor().max(1.0) as usize;
+    let mut lines = lines;
+    lines.truncate(max_lines.min(8));
     let block_height = lines.len() as f32 * line_height;
     let first_baseline = rect.y
         + (rect.height - block_height).max(0.0) * 0.5
@@ -448,6 +422,72 @@ fn add_text(
         color,
         [0.0, 0.0],
     );
+}
+
+fn wrap_text(text: &str, font_size: f32, max_width: f32) -> Vec<UiTextLine> {
+    let mut lines = Vec::new();
+    for paragraph in text.lines() {
+        let mut current = String::new();
+        for word in paragraph.split_whitespace() {
+            let candidate = format!(
+                "{current}{separator}{word}",
+                separator = if current.is_empty() { "" } else { " " }
+            );
+            if !current.is_empty() && text_line(&candidate, font_size).width > max_width {
+                lines.push(text_line(&current, font_size));
+                current.clear();
+            }
+            if current.is_empty() && text_line(word, font_size).width > max_width {
+                let mut chunk = String::new();
+                for character in word.chars() {
+                    let next = format!("{chunk}{character}");
+                    if !chunk.is_empty() && text_line(&next, font_size).width > max_width {
+                        lines.push(text_line(&chunk, font_size));
+                        chunk.clear();
+                    }
+                    chunk.push(character);
+                }
+                current = chunk;
+            } else {
+                current = if current.is_empty() {
+                    word.to_owned()
+                } else {
+                    candidate
+                };
+            }
+        }
+        if !current.is_empty() {
+            lines.push(text_line(&current, font_size));
+        }
+    }
+    lines
+}
+
+fn text_line(text: &str, font_size: f32) -> UiTextLine {
+    let scale = font_size / UI_FONT_ATLAS_SIZE;
+    let glyphs = text
+        .chars()
+        .filter(|character| character.is_ascii())
+        .map(|character| {
+            let character = character.to_ascii_uppercase();
+            let glyph = ui_atlas_glyphs()
+                .iter()
+                .find(|glyph| glyph.character == character)
+                .or_else(|| {
+                    ui_atlas_glyphs()
+                        .iter()
+                        .find(|glyph| glyph.character == '?')
+                })
+                .expect("UI atlas includes a fallback glyph");
+            UiGlyph { glyph }
+        })
+        .take(96)
+        .collect::<Vec<_>>();
+    let width = glyphs
+        .iter()
+        .map(|glyph| glyph.glyph.metrics.advance_width * scale)
+        .sum();
+    UiTextLine { glyphs, width }
 }
 
 fn add_world_label_text(
@@ -586,4 +626,3 @@ fn add_raster_text(
         }
     }
 }
-
