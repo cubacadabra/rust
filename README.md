@@ -87,6 +87,9 @@ See [docs/network-runtime.md](docs/network-runtime.md) for the generic
 game-owned message and retained-state contract. The runtime transports opaque
 JSON and does not contain rules for a particular game.
 
+See [docs/audio-runtime.md](docs/audio-runtime.md) for package-owned one-shot
+WAV assets, the Luau playback call, validation limits, and host polling ABI.
+
 ## Scripting status
 
 All targets execute `game.luau` through the host in `scripting.rs`. Native

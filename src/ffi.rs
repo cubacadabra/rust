@@ -11,3 +11,4 @@ use std::ptr;
 
 include!("ffi/control.rs");
 include!("ffi/session.rs");
+include!("ffi/audio.rs");

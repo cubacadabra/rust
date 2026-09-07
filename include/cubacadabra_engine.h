@@ -167,6 +167,21 @@ uintptr_t engine_enter_session(
 );
 uint8_t *engine_script_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_script_buffer(CubacadabraEngine *engine);
+const uint8_t *engine_script_error_ptr(const CubacadabraEngine *engine);
+uintptr_t engine_script_error_len(const CubacadabraEngine *engine);
+uint8_t engine_receive_network_message_json(
+    CubacadabraEngine *engine,
+    const uint8_t *source,
+    uintptr_t length
+);
+uint8_t *engine_network_receive_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_load_network_receive_buffer(CubacadabraEngine *engine);
+uint8_t engine_network_poll_message(CubacadabraEngine *engine);
+const uint8_t *engine_network_message_ptr(const CubacadabraEngine *engine);
+uintptr_t engine_network_message_len(const CubacadabraEngine *engine);
+uint8_t engine_audio_poll_message(CubacadabraEngine *engine);
+const uint8_t *engine_audio_message_ptr(const CubacadabraEngine *engine);
+uintptr_t engine_audio_message_len(const CubacadabraEngine *engine);
 uint8_t *engine_package_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
 uint8_t engine_load_package_buffer(CubacadabraEngine *engine);
 uint8_t *engine_username_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);

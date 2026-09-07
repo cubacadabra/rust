@@ -55,6 +55,7 @@ impl Engine {
             remote_update_status: STATUS_INVALID,
             network_receive_buffer: Vec::new(),
             network_message_buffer: Vec::new(),
+            audio_message_buffer: Vec::new(),
             player_motion_event: CharacterMotionEvent::None,
             player_emote: CharacterEmote::None,
             player_emote_sequence: 0,

@@ -4,6 +4,8 @@ use std::rc::Rc;
 
 use crate::ui::{UiEvent, UiRuntime};
 
+mod audio;
+
 #[cfg(target_arch = "wasm32")]
 use luaur_rt as lua;
 #[cfg(not(target_arch = "wasm32"))]
@@ -19,6 +21,7 @@ pub(crate) struct ScriptState {
     pub(crate) interactions: InteractionScriptState,
     pub(crate) network_outbox: VecDeque<String>,
     pub(crate) network_inbox: VecDeque<String>,
+    pub(crate) audio_outbox: VecDeque<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -124,15 +127,20 @@ impl GameScript {
         {
             return false;
         }
-        self.state
-            .borrow_mut()
-            .network_inbox
-            .push_back(source.to_owned());
+        let mut state = self.state.borrow_mut();
+        if !queue_has_capacity(&state.network_inbox, source.len()) {
+            return false;
+        }
+        state.network_inbox.push_back(source.to_owned());
         true
     }
 
     pub(crate) fn take_network_message(&self) -> Option<String> {
         self.state.borrow_mut().network_outbox.pop_front()
+    }
+
+    pub(crate) fn take_audio_message(&self) -> Option<String> {
+        self.state.borrow_mut().audio_outbox.pop_front()
     }
 
     fn dispatch_ui_event(&self, event: &UiEvent) -> Result<(), String> {
@@ -357,7 +365,11 @@ fn create_api(
                     if source.len() > crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES {
                         return Err(lua::Error::runtime("network message exceeds 64 KiB"));
                     }
-                    network_state.borrow_mut().network_outbox.push_back(source);
+                    let mut state = network_state.borrow_mut();
+                    if !queue_has_capacity(&state.network_outbox, source.len()) {
+                        return Err(lua::Error::runtime("network command queue is full"));
+                    }
+                    state.network_outbox.push_back(source);
                     Ok(())
                 },
             )?,
@@ -365,7 +377,17 @@ fn create_api(
     }
     api.set("network", network)?;
 
+    audio::install(lua, &api, Rc::clone(&state))?;
+
     Ok(api)
+}
+
+const MAX_SCRIPT_QUEUE_MESSAGES: usize = 64;
+const MAX_SCRIPT_QUEUE_BYTES: usize = 256 * 1024;
+
+fn queue_has_capacity(queue: &VecDeque<String>, additional_bytes: usize) -> bool {
+    queue.len() < MAX_SCRIPT_QUEUE_MESSAGES
+        && queue.iter().map(String::len).sum::<usize>() + additional_bytes <= MAX_SCRIPT_QUEUE_BYTES
 }
 
 fn ui_document_source(value: lua::Value) -> Result<String, String> {
@@ -586,6 +608,64 @@ mod tests {
     }
 
     #[test]
+    fn script_queues_are_bounded() {
+        let (script, _) = load("return {}");
+        let message = format!(r#"{{"payload":"{}"}}"#, "x".repeat(4096));
+        let mut accepted = 0;
+        while script.enqueue_network_message(&message) {
+            accepted += 1;
+        }
+        assert!(accepted > 0);
+        assert!(accepted < 64);
+    }
+
+    #[test]
+    fn luau_can_emit_bounded_game_audio_commands() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    api.audio:play("charm-learned", { volume = 0.75 })
+                end
+                return game
+            "#,
+        );
+
+        let message = script
+            .take_audio_message()
+            .expect("on_start should emit an audio command");
+        let value: serde_json::Value = serde_json::from_str(&message).unwrap();
+        assert_eq!(value["type"], "play");
+        assert_eq!(value["id"], "charm-learned");
+        assert_eq!(value["volume"], 0.75);
+    }
+
+    #[test]
+    fn audio_overflow_keeps_the_newest_commands_without_stopping_the_game() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    for index = 1, 80 do
+                        api.audio:play("sound-" .. index)
+                    end
+                    api.lobby:set_status("still running")
+                end
+                return game
+            "#,
+        );
+
+        assert_eq!(script.state().borrow().lobby_status, "still running");
+        let mut messages = Vec::new();
+        while let Some(message) = script.take_audio_message() {
+            messages.push(serde_json::from_str::<serde_json::Value>(&message).unwrap());
+        }
+        assert_eq!(messages.len(), 64);
+        assert_eq!(messages.first().unwrap()["id"], "sound-17");
+        assert_eq!(messages.last().unwrap()["id"], "sound-80");
+    }
+
+    #[test]
     fn launch_callback_receives_pad_and_players() {
         let (script, _) = load(
             r#"
@@ -680,24 +760,29 @@ mod tests {
     }
 
     #[test]
-    fn loads_the_current_first_game_bundle_resource() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../ios_app/cubacadabra/Resources/game.luau");
-        let source = std::fs::read_to_string(path).expect("bundled first-game script should exist");
+    fn loads_the_current_first_game_source() {
+        let source = format!(
+            "{}\n{}\n{}\n{}",
+            include_str!("../../first-game/src/ui/styles.luau"),
+            include_str!("../../first-game/src/ui/document.luau"),
+            include_str!("../../first-game/src/ui/actions.luau"),
+            include_str!("../../first-game/src/main.luau"),
+        );
         let ui = Rc::new(RefCell::new(UiRuntime::default()));
         let script = GameScript::load(&source, Rc::clone(&ui))
-            .unwrap_or_else(|error| panic!("bundled first-game script failed: {error}"));
+            .unwrap_or_else(|error| panic!("first-game script failed: {error}"));
         assert!(
             script
                 .state()
                 .borrow()
                 .lobby_status
-                .contains("BUILD TOGETHER")
+                .contains("Learn three charms")
         );
         assert!(ui.borrow().document_node_count() > 0);
+        ui.borrow_mut().set_world_id("schoolyard");
         ui.borrow_mut().set_viewport(UiViewport {
-            width: 1024.0,
-            height: 768.0,
+            width: 390.0,
+            height: 844.0,
             scale: 1.0,
             safe_area: crate::ui::UiInsets {
                 top: 47.0,
@@ -707,10 +792,17 @@ mod tests {
             },
         });
         let frame = ui.borrow_mut().frame().clone();
+        let header = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == "school-header")
+            .expect("first-game objective header should render in the schoolyard");
+        assert_eq!(header.rect.width, 351.0);
+        assert!(header.rect.x >= 0.0 && header.rect.x + header.rect.width <= 390.0);
         for id in ["player-joystick", "player-jump", "player-run"] {
             assert!(
                 frame.nodes.iter().any(|node| node.id == id),
-                "bundled first-game control {id} should render in the lobby"
+                "first-game control {id} should render in the schoolyard"
             );
         }
     }

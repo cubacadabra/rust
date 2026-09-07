@@ -140,6 +140,23 @@ impl Engine {
     pub(crate) fn network_message(&self) -> &[u8] {
         &self.network_message_buffer
     }
+
+    pub(crate) fn poll_audio_message(&mut self) -> bool {
+        let Some(message) = self
+            .script
+            .as_ref()
+            .and_then(GameScript::take_audio_message)
+        else {
+            self.audio_message_buffer.clear();
+            return false;
+        };
+        self.audio_message_buffer = message.into_bytes();
+        true
+    }
+
+    pub(crate) fn audio_message(&self) -> &[u8] {
+        &self.audio_message_buffer
+    }
 }
 
 fn legacy_colors(definition: &AvatarDefinition, mut fallback: CharacterColors) -> CharacterColors {

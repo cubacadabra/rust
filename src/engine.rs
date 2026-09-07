@@ -91,6 +91,7 @@ pub struct Engine {
     pub(crate) remote_update_status: u8,
     pub(crate) network_receive_buffer: Vec<u8>,
     pub(crate) network_message_buffer: Vec<u8>,
+    pub(crate) audio_message_buffer: Vec<u8>,
     pub(crate) player_motion_event: CharacterMotionEvent,
     pub(crate) player_emote: CharacterEmote,
     pub(crate) player_emote_sequence: u64,
