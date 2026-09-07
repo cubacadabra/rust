@@ -2,6 +2,7 @@ mod camera;
 mod content;
 mod identity;
 mod initialization;
+mod interactions;
 mod remote;
 mod simulation;
 mod snapshot;
@@ -115,6 +116,7 @@ pub struct Engine {
     pub(crate) portal_cooldown_until: f32,
     pub(crate) ui: Rc<RefCell<UiRuntime>>,
     pub(crate) ui_document_buffer: Vec<u8>,
+    pub(crate) interactions: interactions::InteractionRuntime,
 }
 
 impl Default for Engine {

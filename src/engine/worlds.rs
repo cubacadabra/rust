@@ -1,4 +1,5 @@
 use crate::engine::Engine;
+use crate::engine::interactions::InteractionRuntime;
 use crate::game_package::GamePackageDefinition;
 use crate::math::horizontal_distance;
 use crate::types::{AgentPhase, BuildBlock};
@@ -133,6 +134,7 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = world.spawn;
         self.player.velocity = [0.0; 3];
@@ -215,6 +217,7 @@ impl Engine {
         }
         self.agents = selected_agents;
         self.launch_pads.clear();
+        self.set_interaction_world(Vec::new());
         self.next_spawn_at = f32::MAX;
         self.player.position = spawn;
         self.player.velocity = [0.0; 3];
@@ -286,12 +289,14 @@ impl Engine {
                         })
                     })
                     .collect::<Vec<_>>();
+                let interactions = InteractionRuntime::from_definitions(&definition.interactions).world;
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
                     launch_pads,
                     launch_destinations,
                     obstacles,
                     portals,
+                    interactions,
                 }
             })
             .collect::<Vec<_>>();

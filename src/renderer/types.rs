@@ -29,6 +29,14 @@ pub(super) struct RenderSign {
     pub(super) color: [f32; 4],
 }
 
+#[derive(Clone)]
+pub(super) struct RenderInteraction {
+    pub(super) label: String,
+    pub(super) position: [f32; 3],
+    pub(super) radius: f32,
+    pub(super) color: [f32; 4],
+}
+
 #[derive(Clone, Copy, Default)]
 pub(super) struct RenderEntity {
     pub(super) key: crate::types::CharacterEntityKey,
@@ -146,6 +154,7 @@ pub(super) struct RenderWorld {
     pub(super) show_spawn_pad: bool,
     pub(super) palette: RenderPalette,
     pub(super) signs: Vec<RenderSign>,
+    pub(super) interactions: Vec<RenderInteraction>,
 }
 
 impl Default for RenderWorld {
@@ -161,6 +170,7 @@ impl Default for RenderWorld {
             show_spawn_pad: true,
             palette: RenderPalette::default(),
             signs: Vec::new(),
+            interactions: Vec::new(),
         }
     }
 }
@@ -214,6 +224,7 @@ pub(super) struct Scene {
     pub(super) presentation: std::collections::HashMap<crate::types::CharacterEntityKey, crate::character::CharacterPresentationState>,
     pub(super) lods: std::collections::HashMap<crate::types::CharacterEntityKey, crate::renderer::character_quality::CharacterLod>,
     pub(super) reduced_effects: bool,
+    pub(super) interaction_states: Vec<crate::types::InteractionRenderState>,
 }
 
 impl Default for Scene {
@@ -234,6 +245,7 @@ impl Default for Scene {
             presentation: std::collections::HashMap::new(),
             lods: std::collections::HashMap::new(),
             reduced_effects: false,
+            interaction_states: Vec::new(),
         }
     }
 }

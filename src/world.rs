@@ -39,6 +39,16 @@ pub(crate) struct RuntimeWorld {
     pub(crate) launch_destinations: Vec<Option<usize>>,
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) portals: Vec<Portal>,
+    pub(crate) interactions: Vec<InteractionZone>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct InteractionZone {
+    pub(crate) id: String,
+    pub(crate) label: String,
+    pub(crate) kind: String,
+    pub(crate) position: [f32; 3],
+    pub(crate) radius: f32,
 }
 
 impl LaunchPad {

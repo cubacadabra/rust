@@ -5,10 +5,17 @@ use crate::world::{LaunchPad, Portal};
 
 impl Engine {
     pub(super) fn tick_script(&mut self, delta: f32) {
-        if let Some(script) = &self.script
-            && let Err(error) = script.tick(delta)
-        {
-            script.state().borrow_mut().last_error = Some(error);
+        let events = self.take_interaction_events();
+        if let Some(script) = &self.script {
+            for event in events {
+                if let Err(error) = script.interaction(&event) {
+                    script.state().borrow_mut().last_error = Some(error);
+                    return;
+                }
+            }
+            if let Err(error) = script.tick(delta) {
+                script.state().borrow_mut().last_error = Some(error);
+            }
         }
     }
 
@@ -112,6 +119,7 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = portal.destination_spawn;
         self.player.velocity = [0.0; 3];
@@ -138,6 +146,7 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.active_world = destination;
         if let Some(world_id) = self.world_ids.get(destination).cloned() {

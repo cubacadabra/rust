@@ -89,11 +89,15 @@ All targets execute `game.luau` through the host in `scripting.rs`. Native
 builds use `mlua` with vendored Luau; the `wasm32-unknown-unknown` build uses
 the pure-Rust `luaur-rt` Luau runtime so the browser can run the same lifecycle
 callbacks without a separate JavaScript scripting implementation. Both hosts
-expose the same sandboxed `lobby`, `session`, and lifecycle API.
+expose the same sandboxed `lobby`, `session`, `interactions`, and lifecycle API.
 Packages keep lobby routing enabled by default. Set `"lobby": false` in the
 manifest, or call `api.lobby:set_enabled(false)` from `on_start`, to enter the
 configured experience world directly. Direct worlds use the normal per-world
-instance allocator and capacity rules.
+instance allocator and capacity rules. Worlds can declare generic interaction
+zones with an id, kind, label, position, radius, and optional palette color.
+Rust tracks proximity and player counts; Luau receives `on_interaction` enter
+and exit callbacks and reads `api.interactions:get_state()`. Game rules such as
+spells, treasures, doors, and checkpoints remain entirely in Luau.
 
 ## Source layout
 
@@ -101,6 +105,7 @@ instance allocator and capacity rules.
 - `renderer.rs` — shared `wgpu` primitive renderer
 - `player.rs` — locomotion, gravity, and collision resolution
 - `npc.rs` — agent spawning, roaming, separation, and assembly behavior
+- `engine/interactions.rs` — generic world interaction zones and enter/exit events
 - `game_package.rs` — manifest/world data model
 - `scripting.rs` — native Luau lifecycle host and browser seam
 - `ui.rs` — retained UI document, layout, hit testing, and event queue

@@ -11,10 +11,12 @@ impl Engine {
         self.motion_sequence = self.motion_sequence.saturating_add(1);
         self.player_motion_event = CharacterMotionEvent::None;
         self.ui.borrow_mut().advance(delta);
-        self.tick_script(delta);
         self.apply_camera_input();
         self.smooth_camera(delta);
         self.update_player(delta);
+        self.update_interactions();
+        self.sync_interaction_script_state();
+        self.tick_script(delta);
         self.update_portals();
         if ENABLE_LOCAL_NPCS {
             self.spawn_agents();
@@ -182,7 +184,7 @@ impl Engine {
             )
     }
 
-    fn remote_world_matches_active(&self) -> bool {
+    pub(crate) fn remote_world_matches_active(&self) -> bool {
         self.remote_world_id.as_deref().is_none_or(|remote_world| {
             self.world_ids
                 .get(self.active_world)

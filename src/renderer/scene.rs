@@ -13,8 +13,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
-    AvatarStyle, RenderBlock, RenderCloud, RenderEntity, RenderPad, RenderPalette, RenderSign,
-    RenderWorld, Renderer,
+    AvatarStyle, RenderBlock, RenderCloud, RenderEntity, RenderInteraction, RenderPad,
+    RenderPalette, RenderSign, RenderWorld, Renderer,
 };
 
 #[cfg(target_os = "ios")]
@@ -171,6 +171,10 @@ impl Renderer {
             .extend((0..engine.launch_pad_count()).map(|index| engine.launch_pad_seconds(index)));
         self.scene.camera = engine.camera();
         self.scene.elapsed = engine.elapsed();
+        self.scene.interaction_states.clear();
+        self.scene.interaction_states.extend(
+            (0..engine.interaction_count()).map(|index| engine.interaction_render_state(index)),
+        );
         self.scene.username.clone_from(&engine.username);
         self.scene.build_blocks.clear();
         self.scene
@@ -292,6 +296,20 @@ fn resolve_world(definition: &WorldDefinition) -> RenderWorld {
                 yaw: sign.yaw,
                 max_width: sign.max_width.max(0.2),
                 color: resolve_color(&definition.palette, &sign.color, palette.paper),
+            })
+            .collect(),
+        interactions: definition
+            .interactions
+            .iter()
+            .map(|interaction| RenderInteraction {
+                label: if interaction.label.is_empty() {
+                    interaction.id.clone()
+                } else {
+                    interaction.label.clone()
+                },
+                position: interaction.position(),
+                radius: interaction.radius.max(0.5),
+                color: resolve_color(&definition.palette, &interaction.color, palette.paper),
             })
             .collect(),
     }

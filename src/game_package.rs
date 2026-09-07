@@ -100,6 +100,10 @@ fn default_interaction_radius() -> f32 {
     4.0
 }
 
+fn default_interaction_kind() -> String {
+    "zone".to_owned()
+}
+
 impl GamePackageDefinition {
     pub(crate) fn parse(source: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(source)
@@ -113,6 +117,7 @@ impl GamePackageDefinition {
             blocks: self.blocks.clone(),
             portals: self.portals.clone(),
             signs: self.signs.clone(),
+            interactions: Vec::new(),
         };
         std::iter::once(("lobby".to_owned(), lobby))
             .chain(
@@ -162,6 +167,34 @@ pub(crate) struct WorldDefinition {
     pub(crate) portals: Vec<PortalDefinition>,
     #[serde(default)]
     pub(crate) signs: Vec<SignDefinition>,
+    #[serde(default)]
+    pub(crate) interactions: Vec<InteractionDefinition>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct InteractionDefinition {
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) label: String,
+    #[serde(default = "default_interaction_kind")]
+    pub(crate) kind: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default = "default_interaction_radius")]
+    pub(crate) radius: f32,
+    #[serde(default)]
+    pub(crate) color: String,
+}
+
+impl InteractionDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
+        ]
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -547,5 +580,33 @@ mod tests {
 
         assert_eq!(package.initial_world_id(), Some("arena"));
         assert_eq!(package.world_entries().len(), 2);
+    }
+
+    #[test]
+    fn interaction_world_contract_parses_generic_zones() {
+        let package = GamePackageDefinition::parse(
+            r##"{
+                "worlds": {
+                    "real-game": {
+                        "interactions": [{
+                            "id": "blue-button",
+                            "kind": "zone",
+                            "label": "BLUE BUTTON",
+                            "position": [-4, 0, -8],
+                            "radius": 3,
+                            "color": "#5bd6d0"
+                        }]
+                    }
+                }
+            }"##,
+        )
+        .expect("interaction contract should parse");
+        let interaction = package.world_entries()[1]
+            .1
+            .interactions[0]
+            .clone();
+        assert_eq!(interaction.kind, "zone");
+        assert_eq!(interaction.position(), [-4.0, 0.0, -8.0]);
+        assert_eq!(interaction.label, "BLUE BUTTON");
     }
 }

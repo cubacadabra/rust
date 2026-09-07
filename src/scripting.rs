@@ -15,6 +15,23 @@ pub(crate) struct ScriptState {
     pub(crate) lobby_enabled: Option<bool>,
     pub(crate) session_name: Option<String>,
     pub(crate) last_error: Option<String>,
+    pub(crate) interactions: InteractionScriptState,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct InteractionScriptState {
+    pub(crate) zones: Vec<InteractionZoneState>,
+    pub(crate) event_id: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct InteractionZoneState {
+    pub(crate) id: String,
+    pub(crate) kind: String,
+    pub(crate) label: String,
+    pub(crate) inside: bool,
+    pub(crate) nearby: bool,
+    pub(crate) players: usize,
 }
 
 pub(crate) struct GameScript {
@@ -23,6 +40,7 @@ pub(crate) struct GameScript {
     on_tick: Option<lua::Function>,
     on_launch: Option<lua::Function>,
     on_ui_event: Option<lua::Function>,
+    on_interaction: Option<lua::Function>,
     state: Rc<RefCell<ScriptState>>,
     ui: Rc<RefCell<UiRuntime>>,
 }
@@ -42,6 +60,7 @@ impl GameScript {
         let on_tick: Option<lua::Function> = module.get("on_tick")?;
         let on_launch: Option<lua::Function> = module.get("on_launch")?;
         let on_ui_event: Option<lua::Function> = module.get("on_ui_event")?;
+        let on_interaction: Option<lua::Function> = module.get("on_interaction")?;
 
         if let Some(on_start) = on_start {
             on_start.call::<()>((api.clone(),))?;
@@ -53,6 +72,7 @@ impl GameScript {
             on_tick,
             on_launch,
             on_ui_event,
+            on_interaction,
             state,
             ui,
         })
@@ -109,6 +129,29 @@ impl GameScript {
         self.state.borrow().lobby_enabled
     }
 
+    pub(crate) fn set_interaction_state(&self, interactions: InteractionScriptState) {
+        self.state.borrow_mut().interactions = interactions;
+    }
+
+    pub(crate) fn interaction(&self, event: &crate::types::InteractionEvent) -> Result<(), String> {
+        let Some(on_interaction) = &self.on_interaction else {
+            return Ok(());
+        };
+        let value = create_table(&self.lua).map_err(|error| error.to_string())?;
+        value
+            .set("id", event.id.as_str())
+            .map_err(|error| error.to_string())?;
+        value
+            .set("phase", event.phase.as_str())
+            .map_err(|error| error.to_string())?;
+        value
+            .set("players", event.players)
+            .map_err(|error| error.to_string())?;
+        on_interaction
+            .call::<()>((self.api.clone(), value))
+            .map_err(|error| error.to_string())
+    }
+
     #[allow(dead_code)]
     pub(crate) fn launch(&self, pad_id: &str, player_ids: &[u32]) -> Result<(), String> {
         let Some(on_launch) = &self.on_launch else {
@@ -159,7 +202,7 @@ fn create_api(
     api.set("lobby", lobby)?;
 
     let session = create_table(lua)?;
-    let session_state = state;
+    let session_state = Rc::clone(&state);
     session.set(
         "start",
         lua.create_function(
@@ -221,6 +264,31 @@ fn create_api(
         })?,
     )?;
     api.set("ui", ui)?;
+
+    let interactions = create_table(lua)?;
+    let interactions_state = Rc::clone(&state);
+    interactions.set(
+        "get_state",
+        lua.create_function(move |lua, _interactions: lua::Table| {
+            let state = interactions_state.borrow();
+            let result = create_table(lua)?;
+            result.set("event_id", state.interactions.event_id)?;
+            let zones = create_table(lua)?;
+            for zone in &state.interactions.zones {
+                let value = create_table(lua)?;
+                value.set("id", zone.id.as_str())?;
+                value.set("kind", zone.kind.as_str())?;
+                value.set("label", zone.label.as_str())?;
+                value.set("inside", zone.inside)?;
+                value.set("nearby", zone.nearby)?;
+                value.set("players", zone.players)?;
+                zones.set(zone.id.as_str(), value)?;
+            }
+            result.set("zones", zones)?;
+            Ok(result)
+        })?,
+    )?;
+    api.set("interactions", interactions)?;
 
     Ok(api)
 }
@@ -292,7 +360,7 @@ fn create_table(lua: &lua::Lua) -> lua::Result<lua::Table> {
 
 #[cfg(test)]
 mod tests {
-    use super::GameScript;
+    use super::{GameScript, InteractionScriptState, InteractionZoneState};
     use crate::ui::{UiInsets, UiPointerPhase, UiRuntime, UiViewport};
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -334,6 +402,47 @@ mod tests {
         );
 
         assert_eq!(script.lobby_enabled_override(), Some(false));
+    }
+
+    #[test]
+    fn luau_can_read_generic_interactions_and_receive_events() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_interaction(api, event)
+                    api.lobby:set_status(event.id .. ":" .. event.phase)
+                end
+                function game.on_tick(api)
+                    local state = api.interactions:get_state()
+                    if state.zones.button.inside then
+                        api.lobby:set_status("inside:" .. state.zones.button.players)
+                    end
+                end
+                return game
+            "#,
+        );
+
+        script.set_interaction_state(InteractionScriptState {
+            zones: vec![InteractionZoneState {
+                id: "button".to_owned(),
+                kind: "zone".to_owned(),
+                label: "BUTTON".to_owned(),
+                inside: true,
+                nearby: true,
+                players: 2,
+            }],
+            event_id: 1,
+        });
+        script
+            .interaction(&crate::types::InteractionEvent {
+                id: "button".to_owned(),
+                phase: "enter".to_owned(),
+                players: 2,
+            })
+            .expect("interaction callback should run");
+        assert_eq!(script.state().borrow().lobby_status, "button:enter");
+        script.tick(0.0).expect("tick should run");
+        assert_eq!(script.state().borrow().lobby_status, "inside:2");
     }
 
     #[test]

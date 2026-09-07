@@ -426,6 +426,20 @@ impl Renderer {
                 index,
             );
         }
+        for (index, interaction) in world.interactions.iter().enumerate() {
+            super::add_interaction_zone(
+                &mut mesh,
+                interaction,
+                self.scene
+                    .interaction_states
+                    .get(index)
+                    .copied()
+                    .unwrap_or_default(),
+                self.scene.elapsed,
+                index,
+                world.palette,
+            );
+        }
         for sign in &world.signs {
             let text = if sign.text == "{{username}}" {
                 &self.scene.username

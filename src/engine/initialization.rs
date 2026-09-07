@@ -78,6 +78,7 @@ impl Engine {
             portal_cooldown_until: 0.0,
             ui: Rc::new(RefCell::new(UiRuntime::default())),
             ui_document_buffer: Vec::new(),
+            interactions: crate::engine::interactions::InteractionRuntime::default(),
         };
         engine.write_snapshot();
         engine
