@@ -125,8 +125,13 @@ pub(super) enum Feature {
     None,
     Sole,
     Eye(f32),
+    /// Small face marks that wrap onto the near cheek so a side-on player
+    /// still reads as having a face. They are intentionally separate from
+    /// the front-facing marks because hero fitting rewrites those anchors.
+    ProfileEye(f32),
     Brow(f32),
     Mouth,
+    ProfileMouth(f32),
     Cheek(f32),
     Ear(f32),
     Tail(f32),
@@ -707,6 +712,46 @@ fn add_face(
             );
             vertices[part_start].feature = Feature::Cheek(side);
         }
+
+        // The normal face is a front-facing graphic. These smaller angled
+        // marks sit on the cheek-to-temple transition and provide a restrained
+        // partial read when the player turns far enough that the front plane
+        // is no longer visible from the camera.
+        let profile_x = recipe.head.size.x * 0.40;
+        let profile_z = recipe.face.face_z * 0.70;
+        let profile_yaw = 1.05;
+        for side in [-1.0, 1.0] {
+            let profile_transform = |y: f32| {
+                head
+                    * Mat4::from_translation(Vec3::new(
+                        side * profile_x,
+                        y,
+                        profile_z,
+                    ))
+                    * Mat4::from_rotation_y(-side * profile_yaw)
+            };
+
+            let part_start = vertices.len();
+            add_part(
+                vertices,
+                profile_transform(eye_y),
+                BodyPart::new(
+                    Vec3::new(anchors.eye_size.x * 0.58, anchors.eye_size.y * 0.72, 0.025),
+                    0.0,
+                ),
+                face_color,
+            );
+            vertices[part_start].feature = Feature::ProfileEye(side);
+
+            let part_start = vertices.len();
+            add_part(
+                vertices,
+                profile_transform(anchors.mouth_y),
+                BodyPart::new(Vec3::new(anchors.mouth_width * 0.48, 0.105, 0.020), 0.0),
+                face_color,
+            );
+            vertices[part_start].feature = Feature::ProfileMouth(side);
+        }
     }
 }
 
@@ -1007,13 +1052,20 @@ mod tests {
     fn compiled_parts_preserve_face_hand_and_foot_anchors() {
         for body in BodyId::ALL {
             let parts = parts_for(&body_recipe(body), OutfitId::EverydayHoodie);
-            assert!(parts.len() <= 48);
+            assert!(parts.len() <= 52);
             assert_eq!(
                 parts
                     .iter()
                     .filter(|p| matches!(p.feature, Feature::Eye(_) | Feature::Brow(_) | Feature::Mouth))
                     .count(),
                 5
+            );
+            assert_eq!(
+                parts
+                    .iter()
+                    .filter(|p| matches!(p.feature, Feature::ProfileEye(_) | Feature::ProfileMouth(_)))
+                    .count(),
+                if body == BodyId::Person { 4 } else { 0 }
             );
             assert!(
                 parts
@@ -1053,7 +1105,12 @@ mod tests {
     fn complete_catalog_stays_inside_the_rigid_part_budget() {
         for body in BodyId::ALL {
             for outfit in OutfitId::ALL {
-                assert!(parts_for(&body_recipe(body), outfit).len() <= 48);
+                let parts = parts_for(&body_recipe(body), outfit);
+                assert!(
+                    parts.len() <= 52,
+                    "body={body:?} outfit={outfit:?} parts={}",
+                    parts.len()
+                );
             }
         }
     }

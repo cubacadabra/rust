@@ -12,7 +12,9 @@ use glam::{Mat4, Quat, Vec3};
 use wgpu::util::DeviceExt;
 
 pub(super) const MAX_CHARACTERS: usize = 50;
-const MAX_PARTS: usize = 48;
+// Profile face accents add four small instances to the hero catalog while
+// keeping both left and right turns covered.
+const MAX_PARTS: usize = 52;
 pub(super) const MAX_MESHES: usize = 384;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
 
@@ -27,7 +29,7 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 * Mat4::from_rotation_x(entity.secondary.cloth_sway)
                 * Mat4::from_translation(-pivot);
         }
-        Feature::Eye(side) => {
+        Feature::Eye(side) | Feature::ProfileEye(side) => {
             let look = face.look * if is_hero(entity) { 0.45 } else { 1.0 };
             local = local
                 * Mat4::from_translation(glam::Vec3::new(look.x, look.y, 0.0))
@@ -43,7 +45,7 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
                 * Mat4::from_translation(Vec3::Y * side * face.brow_asymmetry)
                 * Mat4::from_quat(Quat::from_rotation_z(side * face.brow_tilt));
         }
-        Feature::Mouth => {
+        Feature::Mouth | Feature::ProfileMouth(_) => {
             local = local
                 * Mat4::from_scale(glam::Vec3::new(1.0 + face.mouth_opening * 0.22, 1.0, 1.0));
         }
@@ -518,7 +520,7 @@ impl CharacterRenderer {
                 }
             }
             match part.feature {
-                Feature::Eye(side) => {
+                Feature::Eye(side) | Feature::ProfileEye(side) => {
                     instance.material = if is_hero(entity) {
                         [
                             if self.hero_study == super::hero_character::Study::SoftShoulders {
@@ -535,7 +537,7 @@ impl CharacterRenderer {
                         [1.0, 0.0, 0.0, 4.0]
                     }
                 }
-                Feature::Mouth => {
+                Feature::Mouth | Feature::ProfileMouth(_) => {
                     let opening = if is_hero(entity) {
                         (entity.face.mouth_opening - 0.18).max(0.0)
                     } else {
