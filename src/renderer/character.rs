@@ -125,13 +125,10 @@ pub(super) enum Feature {
     None,
     Sole,
     Eye(f32),
-    /// Small face marks that wrap onto the near cheek so a side-on player
-    /// still reads as having a face. They are intentionally separate from
-    /// the front-facing marks because hero fitting rewrites those anchors.
-    ProfileEye(f32),
     Brow(f32),
     Mouth,
-    ProfileMouth(f32),
+    /// A short continuation from one end of the main smile onto the cheek.
+    MouthEdge(f32),
     Cheek(f32),
     Ear(f32),
     Tail(f32),
@@ -634,11 +631,14 @@ fn add_face(
     let anchors = recipe.face;
     let eye_y = anchors.eye_y + parameters.look.y;
     for side in [-1.0, 1.0] {
+        let person_eye_wrap = if recipe.id == BodyId::Person { 0.38 } else { 0.0 };
+        let person_eye_spread = if recipe.id == BodyId::Person { 0.035 } else { 0.0 };
         let eye = Mat4::from_translation(Vec3::new(
-            side * anchors.eye_x + parameters.look.x,
+            side * (anchors.eye_x + person_eye_spread) + parameters.look.x,
             eye_y,
-            anchors.face_z,
-        )) * Mat4::from_quat(Quat::from_rotation_z(side * anchors.eye_tilt));
+            anchors.face_z + person_eye_wrap * 0.035,
+        )) * Mat4::from_rotation_y(-side * person_eye_wrap)
+            * Mat4::from_quat(Quat::from_rotation_z(side * anchors.eye_tilt));
         let part_start = vertices.len();
         add_part(
             vertices,
@@ -713,44 +713,27 @@ fn add_face(
             vertices[part_start].feature = Feature::Cheek(side);
         }
 
-        // The normal face is a front-facing graphic. These smaller angled
-        // marks sit on the cheek-to-temple transition and provide a restrained
-        // partial read when the player turns far enough that the front plane
-        // is no longer visible from the camera.
-        let profile_x = recipe.head.size.x * 0.40;
-        let profile_z = recipe.face.face_z * 0.70;
-        let profile_yaw = 1.05;
+        // Continue each end of the smile onto the cheek. The pieces overlap
+        // the main mouth at the front, so they read as one wrapped expression
+        // rather than detached profile marks.
+        let mouth_edge_x = anchors.mouth_width * 0.45;
+        let mouth_edge_z = anchors.face_z + 0.010;
+        let mouth_edge_yaw = 0.72;
         for side in [-1.0, 1.0] {
-            let profile_transform = |y: f32| {
+            let part_start = vertices.len();
+            add_part(
+                vertices,
                 head
                     * Mat4::from_translation(Vec3::new(
-                        side * profile_x,
-                        y,
-                        profile_z,
+                        side * mouth_edge_x,
+                        anchors.mouth_y,
+                        mouth_edge_z,
                     ))
-                    * Mat4::from_rotation_y(-side * profile_yaw)
-            };
-
-            let part_start = vertices.len();
-            add_part(
-                vertices,
-                profile_transform(eye_y),
-                BodyPart::new(
-                    Vec3::new(anchors.eye_size.x * 0.58, anchors.eye_size.y * 0.72, 0.025),
-                    0.0,
-                ),
+                    * Mat4::from_rotation_y(-side * mouth_edge_yaw),
+                BodyPart::new(Vec3::new(anchors.mouth_width * 0.38, 0.090, 0.020), 0.0),
                 face_color,
             );
-            vertices[part_start].feature = Feature::ProfileEye(side);
-
-            let part_start = vertices.len();
-            add_part(
-                vertices,
-                profile_transform(anchors.mouth_y),
-                BodyPart::new(Vec3::new(anchors.mouth_width * 0.48, 0.105, 0.020), 0.0),
-                face_color,
-            );
-            vertices[part_start].feature = Feature::ProfileMouth(side);
+            vertices[part_start].feature = Feature::MouthEdge(side);
         }
     }
 }
@@ -1052,7 +1035,7 @@ mod tests {
     fn compiled_parts_preserve_face_hand_and_foot_anchors() {
         for body in BodyId::ALL {
             let parts = parts_for(&body_recipe(body), OutfitId::EverydayHoodie);
-            assert!(parts.len() <= 52);
+            assert!(parts.len() <= 48);
             assert_eq!(
                 parts
                     .iter()
@@ -1063,9 +1046,9 @@ mod tests {
             assert_eq!(
                 parts
                     .iter()
-                    .filter(|p| matches!(p.feature, Feature::ProfileEye(_) | Feature::ProfileMouth(_)))
+                    .filter(|p| matches!(p.feature, Feature::MouthEdge(_)))
                     .count(),
-                if body == BodyId::Person { 4 } else { 0 }
+                if body == BodyId::Person { 2 } else { 0 }
             );
             assert!(
                 parts
@@ -1107,7 +1090,7 @@ mod tests {
             for outfit in OutfitId::ALL {
                 let parts = parts_for(&body_recipe(body), outfit);
                 assert!(
-                    parts.len() <= 52,
+                    parts.len() <= 48,
                     "body={body:?} outfit={outfit:?} parts={}",
                     parts.len()
                 );

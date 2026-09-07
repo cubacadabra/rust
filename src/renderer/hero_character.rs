@@ -182,9 +182,7 @@ pub(super) fn study_part(mut part: Part, study: Study) -> Part {
             Study::SoftShoulders => Vec3::new(1.07, 1.03, 1.02),
         };
         part.anchor.local = Mat4::from_scale(scale) * part.anchor.local;
-        if matches!(part.feature, Feature::Eye(_) | Feature::ProfileEye(_))
-            && study == Study::SoftShoulders
-        {
+        if matches!(part.feature, Feature::Eye(_)) && study == Study::SoftShoulders {
             part.anchor.local *= Mat4::from_scale(Vec3::new(1.18, 1.12, 1.0));
         }
     }
@@ -306,16 +304,8 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
             }
             (_, _, Feature::Eye(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.115, 0.170, 0.025), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.205, 0.015, -0.423))
-                    * Mat4::from_rotation_y(-side * 0.14);
-            }
-            (_, _, Feature::ProfileEye(side)) => {
-                p.spec = BodyPart::new(Vec3::new(0.075, 0.125, 0.025), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(
-                    side * 0.44,
-                    0.015,
-                    -0.28,
-                )) * Mat4::from_rotation_y(-side * 1.05);
+                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.245, 0.015, -0.408))
+                    * Mat4::from_rotation_y(-side * 0.42);
             }
             (_, _, Feature::Brow(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.17, 0.035, 0.025), 0.0);
@@ -325,13 +315,13 @@ pub(super) fn finish(parts: &mut Vec<Part>) {
                 p.spec = BodyPart::new(Vec3::new(0.34, 0.16, 0.02), 0.0);
                 p.anchor.local = Mat4::from_translation(Vec3::new(0.0, -0.19, -0.405));
             }
-            (_, _, Feature::ProfileMouth(side)) => {
-                p.spec = BodyPart::new(Vec3::new(0.16, 0.105, 0.020), 0.0);
+            (_, _, Feature::MouthEdge(side)) => {
+                p.spec = BodyPart::new(Vec3::new(0.13, 0.090, 0.020), 0.0);
                 p.anchor.local = Mat4::from_translation(Vec3::new(
-                    side * 0.39,
+                    side * 0.15,
                     -0.19,
-                    -0.28,
-                )) * Mat4::from_rotation_y(-side * 1.05);
+                    -0.395,
+                )) * Mat4::from_rotation_y(-side * 0.72);
             }
             (_, _, Feature::Cheek(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.11, 0.045, 0.02), 0.0);

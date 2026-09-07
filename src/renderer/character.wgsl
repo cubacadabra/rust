@@ -85,12 +85,27 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
     }
     // Analytic graphic faces keep curved eyes and smiles crisp at close range
     // without extra meshes or a face texture. Discard preserves occlusion.
-    if (input.material.w >= 4.0 && input.material.w <= 7.0) || input.material.w == 9.0 || input.material.w == 10.0 {
+    if (input.material.w >= 4.0 && input.material.w <= 7.0) || input.material.w == 9.0 || input.material.w == 10.0 || input.material.w == 18.0 {
         if input.local_normal_z > -0.9 { discard; }
         let p = input.uv * 2.0 - 1.0;
         var color = input.tint.rgb;
         var coverage=1.0;
-        if input.material.w == 9.0 {
+        if input.material.w == 18.0 {
+            // A single tapered stroke continues the main smile around either
+            // cheek. The side lane selects its slope; unlike a second mouth,
+            // this stays visually connected in front and profile views.
+            let side = input.material.x;
+            let curve = input.material.y;
+            let centerline = curve * (0.27 + side * p.x * 0.16);
+            let stroke_width = 0.13 * sqrt(max(0.0, 1.0 - p.x * p.x));
+            let stroke = stroke_width - abs(p.y - centerline);
+            let end = 1.0 - abs(p.x);
+            let edge = min(stroke, end);
+            let aa = max(uv_footprint * 1.5, 0.006);
+            if edge <= -aa { discard; }
+            coverage = smoothstep(-aa, aa, edge);
+            color = vec3<f32>(0.13, 0.085, 0.065);
+        } else if input.material.w == 9.0 {
             let radius = dot(p,p);
             if radius > 0.94 { discard; }
             coverage=1.0-smoothstep(0.94-max(uv_footprint*4.0,0.008),0.94,radius);
