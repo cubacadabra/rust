@@ -8,8 +8,8 @@ not receive file paths or control host audio objects directly.
 {
   "assets": {
     "audio": {
-      "charm-learned": {
-        "path": "assets/audio/charm-learned.wav",
+      "success-chime": {
+        "path": "assets/audio/success-chime.wav",
         "volume": 0.72
       }
     }
@@ -18,8 +18,8 @@ not receive file paths or control host audio objects directly.
 ```
 
 ```luau
-api.audio:play("charm-learned")
-api.audio:play("charm-learned", { volume = 0.5 })
+api.audio:play("success-chime")
+api.audio:play("success-chime", { volume = 0.5 })
 ```
 
 Audio ids are 1–64 ASCII letters, numbers, dots, dashes, or underscores. The
@@ -31,7 +31,7 @@ declared sounds, each no larger than 4 MiB and located under `assets/`.
 The host polls JSON commands through the C/WASM ABI:
 
 ```json
-{"type":"play","id":"charm-learned","volume":1.0}
+{"type":"play","id":"success-chime","volume":1.0}
 ```
 
 The command queue is bounded. When a host is slow or has not implemented audio,

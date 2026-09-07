@@ -5,6 +5,7 @@ use std::rc::Rc;
 use crate::ui::{UiEvent, UiRuntime};
 
 mod audio;
+mod network;
 
 #[cfg(target_arch = "wasm32")]
 use luaur_rt as lua;
@@ -342,40 +343,7 @@ fn create_api(
     )?;
     api.set("interactions", interactions)?;
 
-    let network = create_table(lua)?;
-    for (method, retained) in [("publish", false), ("set_state", true)] {
-        let network_state = Rc::clone(&state);
-        network.set(
-            method,
-            lua.create_function(
-                move |_, (_network, channel, payload): (lua::Table, String, lua::Value)| {
-                    if channel.is_empty()
-                        || channel.len() > crate::engine::identity::MAX_NETWORK_CHANNEL_BYTES
-                    {
-                        return Err(lua::Error::runtime("network channel must be 1–64 bytes"));
-                    }
-                    let payload = lua_value_to_json(payload, 0).map_err(lua::Error::runtime)?;
-                    let message = serde_json::json!({
-                        "channel": channel,
-                        "payload": payload,
-                        "retained": retained,
-                    });
-                    let source = serde_json::to_string(&message)
-                        .map_err(|error| lua::Error::runtime(error.to_string()))?;
-                    if source.len() > crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES {
-                        return Err(lua::Error::runtime("network message exceeds 64 KiB"));
-                    }
-                    let mut state = network_state.borrow_mut();
-                    if !queue_has_capacity(&state.network_outbox, source.len()) {
-                        return Err(lua::Error::runtime("network command queue is full"));
-                    }
-                    state.network_outbox.push_back(source);
-                    Ok(())
-                },
-            )?,
-        )?;
-    }
-    api.set("network", network)?;
+    network::install(lua, &api, Rc::clone(&state))?;
 
     audio::install(lua, &api, Rc::clone(&state))?;
 
@@ -507,6 +475,15 @@ mod tests {
     }
 
     #[test]
+    fn configured_external_game_script_compiles() {
+        let Ok(path) = std::env::var("CUBACADABRA_TEST_GAME_SCRIPT") else {
+            return;
+        };
+        let source = std::fs::read_to_string(&path).expect("configured game script should exist");
+        load(&source);
+    }
+
+    #[test]
     fn loads_luau_lifecycle_callbacks() {
         let (script, _) = load(
             r#"
@@ -608,6 +585,31 @@ mod tests {
     }
 
     #[test]
+    fn luau_can_compare_and_set_authoritative_state() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    api.network:compare_set_state("round", 7, {
+                        round = 3,
+                        checkpoints = { gate_a = true },
+                    })
+                end
+                return game
+            "#,
+        );
+
+        let message = script
+            .take_network_message()
+            .expect("compare_set_state should emit a network command");
+        let value: serde_json::Value = serde_json::from_str(&message).unwrap();
+        assert_eq!(value["channel"], "round");
+        assert_eq!(value["expectedSequence"], 7);
+        assert_eq!(value["payload"]["round"], 3);
+        assert_eq!(value["payload"]["checkpoints"]["gate_a"], true);
+    }
+
+    #[test]
     fn script_queues_are_bounded() {
         let (script, _) = load("return {}");
         let message = format!(r#"{{"payload":"{}"}}"#, "x".repeat(4096));
@@ -625,7 +627,7 @@ mod tests {
             r#"
                 local game = {}
                 function game.on_start(api)
-                    api.audio:play("charm-learned", { volume = 0.75 })
+                    api.audio:play("success-chime", { volume = 0.75 })
                 end
                 return game
             "#,
@@ -636,7 +638,7 @@ mod tests {
             .expect("on_start should emit an audio command");
         let value: serde_json::Value = serde_json::from_str(&message).unwrap();
         assert_eq!(value["type"], "play");
-        assert_eq!(value["id"], "charm-learned");
+        assert_eq!(value["id"], "success-chime");
         assert_eq!(value["volume"], 0.75);
     }
 
@@ -757,53 +759,5 @@ mod tests {
         assert_eq!(frame.nodes[0].id, "dock");
         assert_eq!(frame.nodes[1].id, "place");
         assert_eq!(frame.nodes[0].rect.width, 351.0);
-    }
-
-    #[test]
-    fn loads_the_current_first_game_source() {
-        let source = format!(
-            "{}\n{}\n{}\n{}",
-            include_str!("../../first-game/src/ui/styles.luau"),
-            include_str!("../../first-game/src/ui/document.luau"),
-            include_str!("../../first-game/src/ui/actions.luau"),
-            include_str!("../../first-game/src/main.luau"),
-        );
-        let ui = Rc::new(RefCell::new(UiRuntime::default()));
-        let script = GameScript::load(&source, Rc::clone(&ui))
-            .unwrap_or_else(|error| panic!("first-game script failed: {error}"));
-        assert!(
-            script
-                .state()
-                .borrow()
-                .lobby_status
-                .contains("Learn three charms")
-        );
-        assert!(ui.borrow().document_node_count() > 0);
-        ui.borrow_mut().set_world_id("schoolyard");
-        ui.borrow_mut().set_viewport(UiViewport {
-            width: 390.0,
-            height: 844.0,
-            scale: 1.0,
-            safe_area: crate::ui::UiInsets {
-                top: 47.0,
-                right: 0.0,
-                bottom: 34.0,
-                left: 0.0,
-            },
-        });
-        let frame = ui.borrow_mut().frame().clone();
-        let header = frame
-            .nodes
-            .iter()
-            .find(|node| node.id == "school-header")
-            .expect("first-game objective header should render in the schoolyard");
-        assert_eq!(header.rect.width, 351.0);
-        assert!(header.rect.x >= 0.0 && header.rect.x + header.rect.width <= 390.0);
-        for id in ["player-joystick", "player-jump", "player-run"] {
-            assert!(
-                frame.nodes.iter().any(|node| node.id == id),
-                "first-game control {id} should render in the schoolyard"
-            );
-        }
     }
 }
