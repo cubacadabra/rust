@@ -290,6 +290,7 @@ enum Scenario {
     MotionLineup,
     MotionMoving,
     MotionMovingRaised,
+    HairReview,
     Hero { name: &'static str, yaw: f32, pitch: f32, distance: f32,
         study: super::hero_character::Study, silhouette: bool, motion: bool },
     Orbit { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
@@ -306,6 +307,7 @@ impl Scenario {
             Self::MotionLineup => "motion",
             Self::MotionMoving => "motion-moving",
             Self::MotionMovingRaised => "motion-moving-raised",
+            Self::HairReview => "hair-review",
             Self::Hero {name,..} => name,
             Self::Orbit { name, .. } => name,
         }
@@ -769,6 +771,7 @@ impl HeadlessContext {
         let actor_count = actors.len();
         let magic = matches!(config.avatar, CaptureAvatar::Magic | CaptureAvatar::Wardrobe);
         if magic {
+            self.characters.head_only = matches!(scenario, Scenario::HairReview);
             self.characters.hero_study = if let Scenario::Hero {study,..} = scenario {
                 study
             } else { super::hero_character::Study::Everyday };
@@ -777,7 +780,7 @@ impl HeadlessContext {
             for (rank, actor) in actors.iter().enumerate() {
                 let mut entity = *actor;
                 let recipe = body_recipe(entity.body);
-                if !matches!(scenario, Scenario::MotionLineup | Scenario::Hero {..}) {
+                if !matches!(scenario, Scenario::MotionLineup | Scenario::Hero {..} | Scenario::HairReview) {
                     entity.secondary.stride_blend = if entity.moving {
                         if entity.sprinting {1.0} else {6.4/11.5}
                     } else {0.0};
@@ -794,6 +797,11 @@ impl HeadlessContext {
                 let mut style = palette.avatar;
                 style.body = entity.body;
                 style.outfit = entity.outfit;
+                if matches!(scenario, Scenario::HairReview) {
+                    style.skin = if entity.body == crate::character::BodyId::PersonGirl {
+                        color(0xefb083)
+                    } else { color(0xc98245) };
+                }
                 if matches!(scenario,Scenario::Hero {..}) {
                     style.skin=color(0xe1a66d);
                     style.shirt=color(0x14733e);
@@ -967,8 +975,10 @@ impl HeadlessContext {
                 1.0,
             );
             pass.set_bind_group(0, &globals_bind_group, &[]);
-            pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-            pass.draw(0..vertices.len() as u32, 0..1);
+            if !vertices.is_empty() {
+                pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                pass.draw(0..vertices.len() as u32, 0..1);
+            }
             if magic {
                 self.characters.draw(&mut pass, super::character_material::CharacterPass::Opaque);
                 self.characters.draw(&mut pass, super::character_material::CharacterPass::Face);
@@ -1087,6 +1097,22 @@ fn build_scene(
     let mut distance = 8.0;
     let mut raised = false;
     match scenario {
+        Scenario::HairReview => {
+            vertices.clear();
+            palette.sky = color(0xc6d2d1);
+            for (row, body) in [crate::character::BodyId::PersonGirl, crate::character::BodyId::PersonNonbinary].into_iter().enumerate() {
+                for (col, yaw) in [0.0, -std::f32::consts::FRAC_PI_2, std::f32::consts::PI].into_iter().enumerate() {
+                    actors.push(RenderEntity {
+                        body,
+                        position: [2.3 - col as f32 * 2.3, 1.0 - row as f32 * 2.0, 0.0],
+                        yaw,
+                        pose: CharacterPose::rest(&body_recipe(body).rig),
+                        face: crate::character::FaceParameters::preset(crate::character::FacePreset::Happy),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
         Scenario::Single {
             remote,
             pose,
@@ -1335,6 +1361,13 @@ fn build_scene(
     let aspect = viewport_aspect(width, height);
     let view_projection = Mat4::perspective_rh(62.0_f32.to_radians(), aspect, 0.05, 240.0)
         * Mat4::look_at_rh(camera_position, look_target, Vec3::Y);
+    let (camera_position, view_projection) = if matches!(scenario, Scenario::HairReview) {
+        let position = Vec3::new(0.0, 3.02, -10.0);
+        let half_height = 2.18;
+        let projection = Mat4::orthographic_rh(-half_height * aspect, half_height * aspect,
+            -half_height, half_height, 0.05, 240.0);
+        (position, projection * Mat4::look_at_rh(position, Vec3::new(0.0, 3.02, 0.0), Vec3::Y))
+    } else { (camera_position, view_projection) };
     let globals = Globals {
         view_projection: view_projection.to_cols_array_2d(),
         camera_position: camera_position.extend(1.0).to_array(),

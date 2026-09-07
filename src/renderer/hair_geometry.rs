@@ -15,7 +15,7 @@ pub(super) fn add_parts(parts: &mut Vec<Part>, body: BodyId) -> bool {
         spec: BodyPart::new(Vec3::from_array(style.cap.size), 0.0),
         tint: Tint::Hair,
         feature: Feature::None,
-        shape: Shape::HairCap,
+        shape: Shape::HairScalp,
     });
     for (index, lock) in style.locks.iter().enumerate() {
         parts.push(Part {
@@ -100,8 +100,8 @@ pub(super) fn top(body: BodyId) -> Option<f32> {
 pub(super) fn build(style: u8, index: u8, size: Vec3, subdivisions: u32) -> IndexedMesh {
     let lock = &hair::get(style).locks[index as usize];
     let detail = subdivisions.clamp(1, 4) as usize;
-    let rows = 12 + detail * 5;
-    let radial = 10 + detail * 3;
+    let rows = 16 + detail * 6;
+    let radial = 12 + detail * 4;
     let mut vertices = Vec::with_capacity((rows + 1) * (radial + 1) + 2);
     let mut indices = Vec::with_capacity((rows + 1) * radial * 6);
     for row in 0..=rows {

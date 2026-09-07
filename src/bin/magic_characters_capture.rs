@@ -48,6 +48,7 @@ fn main() {
                     "stills" => HeroCaptureSet::Stills,
                     "motion" => HeroCaptureSet::Motion,
                     "review" => HeroCaptureSet::Review,
+                    "hair" => HeroCaptureSet::Hair,
                     value => usage(&format!("unknown capture set {value:?}")),
                 };
             }
@@ -221,7 +222,7 @@ fn usage(error: &str) -> ! {
     eprintln!(
         "usage: magic_characters_capture [--phase 0|2|3|4|5|6|8|9] [--output DIR] [--seed N] [--pose-time SECONDS] \
          [--width PX] [--height PX] [--portrait-width PX] [--portrait-height PX] \
-         [--quality full|half] [--capture-set full|stills|motion|review] [--motion-mode staged|moving|moving-raised] \
+         [--quality full|half] [--capture-set full|stills|motion|review|hair] [--motion-mode staged|moving|moving-raised] \
          [--palette current|high-contrast] \
          [--avatar legacy|rounded|shape-proof|magic]"
     );

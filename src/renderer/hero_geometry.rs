@@ -14,6 +14,8 @@ pub(super) enum Shape {
     Pebble,
     Pocket,
     HairCap,
+    /// Skull-following foundation for data-authored hairstyles.
+    HairScalp,
     HairLock,
     /// Finite asset/lock indices; mesh identity includes the authored curve.
     HairCurve(u8, u8),
@@ -122,6 +124,23 @@ fn signed_power(x: f32, p: f32) -> f32 {
 
 fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
     let (sin, cos) = angle.sin_cos();
+    if shape == Shape::HairScalp {
+        // Sample the skull at the actual hairline height. Raising the old
+        // cap's vertices without changing their radii exposed skin at temples.
+        let front = (-sin).max(0.0);
+        let bottom = 0.13 + 0.56 * front.powi(2)
+            + 0.19 * cos.abs().powi(6)
+            + 0.025 * (angle * 5.0 + 0.4).sin() * (1.0 - front).powi(2);
+        let height = bottom + (1.0 - bottom) * t;
+        let (rx, rz) = profile(HEAD, height);
+        let comb = 0.006 * (angle * 7.0 + t * 3.0).cos()
+            * (t * std::f32::consts::PI).sin();
+        return Vec3::new(
+            (rx + comb) * signed_power(cos, 0.70),
+            height - 0.5,
+            (rz + comb) * signed_power(sin, 0.70),
+        );
+    }
     if shape == Shape::Hood {
         let (v, u) = (t * std::f32::consts::TAU).sin_cos();
         return Vec3::new(
@@ -251,6 +270,7 @@ pub(super) fn build(shape: Shape, size: Vec3, subdivisions: u32) -> IndexedMesh 
     // Spend vertices on the large head and silhouette, not on a drawstring
     // or three tiny laces. All counts remain fixed per catalog LOD.
     let (radial, rows) = match shape {
+        Shape::HairScalp => (28 + detail * 6, 10 + detail * 4),
         Shape::Head | Shape::HairCap => (16 + detail * 4, 8 + detail * 4),
         Shape::Hood => (16 + detail * 4, 8 + detail),
         Shape::Rib => (16 + detail * 4, 2 + detail / 2),

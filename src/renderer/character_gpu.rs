@@ -183,6 +183,8 @@ pub(super) struct CharacterRenderer {
     effects: wgpu::RenderPipeline,
     pub stats: CharacterStats,
     pub(super) hero_study: super::hero_character::Study,
+    #[cfg(feature = "dev-showcase")]
+    pub(super) head_only: bool,
 }
 
 impl CharacterRenderer {
@@ -319,6 +321,8 @@ impl CharacterRenderer {
         assert!(stats.resident_bytes < MAX_RESIDENCY);
         Self {
             hero_study: super::hero_character::Study::Everyday,
+            #[cfg(feature = "dev-showcase")]
+            head_only: false,
             bodies,
             meshes,
             batches,
@@ -425,6 +429,10 @@ impl CharacterRenderer {
         );
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
+            #[cfg(feature = "dev-showcase")]
+            if self.head_only && part.anchor.joint != crate::character::JointId::Head {
+                continue;
+            }
             let part = &if is_hero(entity) {
                 super::hero_character::study_part(*part, self.hero_study)
             } else {

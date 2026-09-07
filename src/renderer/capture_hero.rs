@@ -70,6 +70,8 @@ pub enum HeroCaptureSet {
     Stills,
     Motion,
     Review,
+    /// One image: girl and nonbinary heads, front/side/back, at one size.
+    Hair,
 }
 
 impl HeroCaptureSet {
@@ -79,6 +81,7 @@ impl HeroCaptureSet {
             Self::Stills => 30,
             Self::Motion => 602,
             Self::Review => 8,
+            Self::Hair => 1,
         }
     }
 
@@ -93,7 +96,7 @@ impl HeroCaptureSet {
     fn includes_static(self, name: &str) -> bool {
         match self {
             Self::Full | Self::Stills => true,
-            Self::Motion => false,
+            Self::Motion | Self::Hair => false,
             Self::Review => matches!(
                 name,
                 "hero-front"
@@ -134,6 +137,9 @@ pub fn capture_phase9_hero_with_set(
         gpu_timestamps: false,
     };
     let mut captures = Vec::new();
+    if capture_set == HeroCaptureSet::Hair {
+        captures.push(context.capture(output_dir, config, Scenario::HairReview)?);
+    }
     if capture_set.includes_stills() {
         for (name, yaw, pitch, distance, time) in [
             ("hero-front", std::f32::consts::PI, 0.18, 4.8, 2.4),
@@ -284,6 +290,9 @@ pub fn capture_phase9_hero_with_set(
         }
         HeroCaptureSet::Review => {
             "Phase 9 review capture set: 8 Everyday-person static views; animation timelines and alternate studies omitted."
+        }
+        HeroCaptureSet::Hair => {
+            "One hair review image: girl above nonbinary; front, side and back from left to right."
         }
     };
     let report = CaptureReport {
