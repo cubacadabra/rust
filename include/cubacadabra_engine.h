@@ -253,6 +253,16 @@ void engine_destroy(CubacadabraEngine *engine);
 
 CubacadabraRenderer *engine_renderer_create(void *native_surface, float width, float height);
 void engine_renderer_resize(CubacadabraRenderer *renderer, float width, float height);
+/* Uploads the package-owned world image atlas and normalized image regions. */
+uint8_t engine_renderer_set_package_image_atlas(
+    CubacadabraRenderer *renderer,
+    uint32_t width,
+    uint32_t height,
+    const uint8_t *pixels,
+    uintptr_t pixel_len,
+    const uint8_t *regions,
+    uintptr_t regions_len
+);
 /* Selects the reversible character visual rollout mode. Returns 1 for
  * legacy (0) or magic (1), and 0 for an invalid mode or null renderer. */
 uint8_t engine_renderer_set_appearance_mode(

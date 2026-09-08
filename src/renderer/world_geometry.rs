@@ -48,6 +48,16 @@ fn add_billboard(
     let frame = 0.18_f32.min(width * 0.08).min(height * 0.08);
     let root = Mat4::from_translation(Vec3::from_array(billboard.position))
         * Mat4::from_rotation_y(billboard.yaw);
+    if !billboard.framed {
+        add_transformed_textured_quad(
+            vertices,
+            root,
+            width,
+            height,
+            texture_bounds,
+        );
+        return;
+    }
     let board_depth = 0.22;
     let board_back = palette.ink;
 

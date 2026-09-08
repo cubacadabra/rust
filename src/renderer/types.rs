@@ -52,6 +52,7 @@ pub(super) struct RenderBillboard {
     pub(super) yaw: f32,
     pub(super) width: f32,
     pub(super) height: f32,
+    pub(super) framed: bool,
 }
 
 #[derive(Clone)]

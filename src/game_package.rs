@@ -692,6 +692,8 @@ pub(crate) struct BillboardDefinition {
     pub(crate) width: f32,
     #[serde(default = "default_billboard_height")]
     pub(crate) height: f32,
+    #[serde(default = "default_true")]
+    pub(crate) framed: bool,
 }
 
 impl BillboardDefinition {

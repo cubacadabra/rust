@@ -599,6 +599,42 @@ pub unsafe extern "C" fn engine_renderer_resize(renderer: *mut Renderer, width: 
     }
 }
 
+/// Uploads the package-owned world image atlas and its normalized image
+/// regions. The host owns both input buffers for the duration of this call.
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
+/// `renderer` must be null or a live pointer returned by
+/// `engine_renderer_create`. When non-zero, `pixels` must reference
+/// `pixel_len` bytes and `regions` must reference `regions_len` UTF-8 bytes
+/// for the duration of this call.
+pub unsafe extern "C" fn engine_renderer_set_package_image_atlas(
+    renderer: *mut Renderer,
+    width: u32,
+    height: u32,
+    pixels: *const u8,
+    pixel_len: usize,
+    regions: *const u8,
+    regions_len: usize,
+) -> u8 {
+    let Some(renderer) = (unsafe { renderer.as_mut() }) else {
+        return 0;
+    };
+    if (pixel_len > 0 && pixels.is_null()) || (regions_len > 0 && regions.is_null()) {
+        return 0;
+    }
+    let pixels = unsafe { slice::from_raw_parts(pixels, pixel_len) };
+    let regions = unsafe { slice::from_raw_parts(regions, regions_len) };
+    let Ok(regions) = std::str::from_utf8(regions) else {
+        return 0;
+    };
+    let Ok(regions) = serde_json::from_str::<std::collections::BTreeMap<String, [f32; 4]>>(regions)
+    else {
+        return 0;
+    };
+    u8::from(renderer.set_package_image_atlas(width, height, pixels, regions))
+}
+
 /// Selects the reversible character renderer rollout mode. `0` is the
 /// legacy hard-cuboid renderer and `1` is the magic instanced renderer. An
 /// invalid value leaves the current mode unchanged and returns zero.

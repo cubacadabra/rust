@@ -8,6 +8,8 @@ use super::ui::{UiInsets, UiPointerPhase, UiViewport};
 #[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
 use std::ptr;
+#[cfg(not(target_arch = "wasm32"))]
+use std::slice;
 
 include!("ffi/control.rs");
 include!("ffi/session.rs");

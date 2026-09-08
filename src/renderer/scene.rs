@@ -356,6 +356,7 @@ fn resolve_world(
                 yaw: billboard.yaw,
                 width: billboard.width.max(0.5),
                 height: billboard.height.max(0.5),
+                framed: billboard.framed,
             })
             .collect(),
         interactions: definition
