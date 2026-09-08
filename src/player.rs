@@ -26,6 +26,7 @@ impl Engine {
                 self.player.grounded = true;
                 self.player.climbing = false;
                 self.player_dead = false;
+                self.player_respawn_event_id = self.player_respawn_event_id.wrapping_add(1).max(1);
                 self.player_events
                     .push_back(crate::types::PlayerEvent::Respawn {
                         checkpoint: self.checkpoint_id.clone(),
@@ -97,6 +98,13 @@ impl Engine {
         };
         self.player.velocity[0] = damp(self.player.velocity[0], target_x, acceleration, delta);
         self.player.velocity[2] = damp(self.player.velocity[2], target_z, acceleration, delta);
+        // Do not let residual approach velocity carry the player straight
+        // through a narrow ladder volume while they are trying to climb.
+        match movement_ladder_axis {
+            Some(LadderAxis::X) => self.player.velocity[0] = 0.0,
+            Some(LadderAxis::Z) => self.player.velocity[2] = 0.0,
+            None => {}
+        }
 
         let ladder = self
             .ladders
@@ -104,10 +112,10 @@ impl Engine {
             .find(|ladder| point_inside_ladder(self.player.position, ladder));
         let ladder_axis = ladder.map(|ladder| ladder.axis);
         let ladder_speed = ladder.map_or(self.physics.climb_speed, |ladder| ladder.climb_speed);
-        let climb_input = ladder_axis.map_or(0.0, |axis| match axis {
-            LadderAxis::X => -direction.x,
-            LadderAxis::Z => -direction.z,
-        });
+        // Once attached, forward/back always means up/down. Tying climbing to
+        // the camera's world-space heading made ladders stop working after the
+        // player orbited the camera.
+        let climb_input = ladder_axis.map_or(0.0, |_| forward);
         let takeoff = self.input.jump && self.player.grounded && ladder_axis.is_none();
         if takeoff {
             self.player.velocity[1] = self.physics.jump_velocity.max(0.1);
@@ -260,16 +268,21 @@ impl Engine {
         if self.player_dead {
             return;
         }
-        let checkpoint = self.checkpoints.iter().enumerate().find(|(index, checkpoint)| {
-            (self.checkpoint_id.is_empty() || *index > self.checkpoint_index)
-                && (self.player.position[0] - checkpoint.position[0])
-                    .hypot(self.player.position[2] - checkpoint.position[2])
-                    <= checkpoint.radius
-                && (self.player.position[1] - checkpoint.position[1]).abs() <= 2.5
-        });
-        let Some((index, checkpoint)) = checkpoint else {
+        let index = if self.checkpoint_id.is_empty() {
+            0
+        } else {
+            self.checkpoint_index.saturating_add(1)
+        };
+        let Some(checkpoint) = self.checkpoints.get(index) else {
             return;
         };
+        let inside = (self.player.position[0] - checkpoint.position[0])
+            .hypot(self.player.position[2] - checkpoint.position[2])
+            <= checkpoint.radius
+            && (self.player.position[1] - checkpoint.position[1]).abs() <= 2.5;
+        if !inside {
+            return;
+        }
         self.checkpoint_id.clone_from(&checkpoint.id);
         self.checkpoint_index = index;
         self.respawn_position = checkpoint.position;

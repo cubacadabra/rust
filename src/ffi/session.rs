@@ -391,6 +391,16 @@ pub unsafe extern "C" fn engine_player_facing_yaw(engine: *const Engine) -> f32 
 }
 
 #[unsafe(no_mangle)]
+/// Increments whenever falling respawns the local player at a checkpoint.
+/// Hosts replicate this with movement so the server can authorize the teleport.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_player_respawn_event_id(engine: *const Engine) -> u32 {
+    unsafe { engine.as_ref() }.map_or(0, Engine::player_respawn_event_id)
+}
+
+#[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.
 pub unsafe extern "C" fn engine_camera_pitch(engine: *const Engine) -> f32 {

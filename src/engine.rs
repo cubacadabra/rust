@@ -71,6 +71,7 @@ pub struct Engine {
     pub(crate) checkpoint_index: usize,
     pub(crate) player_dead: bool,
     pub(crate) player_respawn_at: f32,
+    pub(crate) player_respawn_event_id: u32,
     pub(crate) player_deaths: u32,
     pub(crate) player_events: VecDeque<crate::types::PlayerEvent>,
     pub(crate) build_blocks: Vec<BuildBlock>,

@@ -215,6 +215,8 @@ uintptr_t engine_snapshot_stride(void);
 float engine_camera_yaw(const CubacadabraEngine *engine);
 /* Body heading for replication. Legacy snapshot slot 3 remains camera yaw. */
 float engine_player_facing_yaw(const CubacadabraEngine *engine);
+/* Monotonic signal authorizing a checkpoint-respawn movement teleport. */
+uint32_t engine_player_respawn_event_id(const CubacadabraEngine *engine);
 float engine_camera_pitch(const CubacadabraEngine *engine);
 float engine_camera_distance(const CubacadabraEngine *engine);
 uintptr_t engine_agent_count(const CubacadabraEngine *engine);

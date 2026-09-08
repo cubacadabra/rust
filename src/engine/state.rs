@@ -236,6 +236,10 @@ impl Engine {
         self.launch_event_id
     }
 
+    pub(crate) fn player_respawn_event_id(&self) -> u32 {
+        self.player_respawn_event_id
+    }
+
     pub(crate) fn last_launch_pad(&self) -> usize {
         self.last_launch_pad
     }

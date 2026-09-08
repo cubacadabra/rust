@@ -30,6 +30,7 @@ impl Engine {
             checkpoint_index: usize::MAX,
             player_dead: false,
             player_respawn_at: 0.0,
+            player_respawn_event_id: 0,
             player_deaths: 0,
             player_events: std::collections::VecDeque::new(),
             build_blocks: Vec::new(),

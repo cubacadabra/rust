@@ -130,6 +130,7 @@ fn void_death_respawns_at_the_active_checkpoint() {
     engine.player.grounded = false;
     engine.respawn_position = [2.0, 1.0, 3.0];
     engine.checkpoint_id = "water-tower".to_owned();
+    assert_eq!(engine.player_respawn_event_id(), 0);
 
     for _ in 0..30 {
         engine.step(1.0 / 60.0);
@@ -145,6 +146,7 @@ fn void_death_respawns_at_the_active_checkpoint() {
         }
     }
     assert!(respawned);
+    assert_eq!(engine.player_respawn_event_id(), 1);
 }
 
 #[test]
@@ -156,6 +158,8 @@ fn ladder_converts_forward_motion_into_vertical_climbing() {
     engine.base_obstacles = engine.obstacles.clone();
     engine.player.position = [0.0, 1.0, 0.0];
     engine.player.grounded = true;
+    engine.player.velocity[2] = 5.0;
+    engine.view_yaw = std::f32::consts::FRAC_PI_2;
     engine.ladders = vec![LadderVolume {
         id: "test-ladder".to_owned(),
         bounds: block_bounds([0.0, 3.5, 0.0], [2.0, 5.0, 0.8]),
@@ -169,6 +173,36 @@ fn ladder_converts_forward_motion_into_vertical_climbing() {
     engine.step(1.0 / 60.0);
     assert!(engine.player.climbing);
     assert!(engine.player.velocity[1] > 0.0);
+    assert_eq!(engine.player.velocity[2], 0.0);
+}
+
+#[test]
+fn checkpoints_must_be_reached_in_manifest_order() {
+    let mut engine = Engine::new();
+    engine.checkpoints = vec![
+        crate::world::Checkpoint {
+            id: "first".to_owned(),
+            position: [0.0, 0.0, 0.0],
+            radius: 1.0,
+        },
+        crate::world::Checkpoint {
+            id: "second".to_owned(),
+            position: [10.0, 0.0, 0.0],
+            radius: 1.0,
+        },
+    ];
+
+    engine.player.position = [10.0, 0.0, 0.0];
+    engine.update_player_checkpoints();
+    assert!(engine.checkpoint_id.is_empty());
+
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.update_player_checkpoints();
+    assert_eq!(engine.checkpoint_id, "first");
+
+    engine.player.position = [10.0, 0.0, 0.0];
+    engine.update_player_checkpoints();
+    assert_eq!(engine.checkpoint_id, "second");
 }
 
 #[test]
