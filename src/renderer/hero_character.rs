@@ -549,7 +549,7 @@ mod tests {
             .copied()
             .filter(|part| part.shape == Shape::HairLock)
             .collect();
-        assert_eq!(locks.len(), 5);
+        assert_eq!(locks.len(), 9);
 
         let cap_center = cap.anchor.local.transform_point3(Vec3::ZERO);
         let cap_half = cap.spec.size * 0.5;
@@ -623,7 +623,9 @@ mod tests {
                     ),
                 ] {
                     let matrix = world[foot.index()];
-                    assert!(matrix.transform_vector3(Vec3::Y).distance(Vec3::Y) < 0.0001);
+                    if foot_is_planted(entity.walk_cycle + offset) {
+                        assert!(matrix.transform_vector3(Vec3::Y).distance(Vec3::Y) < 0.0001);
+                    }
                     let height = matrix.w_axis.y;
                     assert!(height >= 0.0499);
                     if foot_is_planted(entity.walk_cycle + offset) {

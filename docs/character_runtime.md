@@ -7,7 +7,8 @@ These reusable engine contracts are independent of visual approval.
 
 The renderer owns a fixed indexed-mesh catalog, batches instances by
 mesh/material and selects three LODs by projected size. Bounds: 50 renderer-only
-characters, 48 parts per recipe, 384 meshes, 32 MiB of character mesh/instance
+characters, 48 rigid parts per recipe plus up to 20 authored hair curves,
+384 base meshes, 32 MiB of character mesh/instance
 buffers. These are engineering limits, not demonstrated mobile frame-time budgets.
 
 The hierarchy has 15 joints. The person hoodie uses authored contours in

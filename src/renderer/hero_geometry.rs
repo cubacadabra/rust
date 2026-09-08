@@ -217,7 +217,7 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
             // retains an irregular silhouette from the rear and low camera.
             let sweep = angle * 7.0 + t * 3.2 + 0.7;
             let lobe = sweep.cos() * 0.018 * (t * std::f32::consts::PI).sin();
-            p.x += cos * lobe + (t * std::f32::consts::PI).sin() * 0.025;
+            p.x += cos * lobe + (t * std::f32::consts::PI).sin() * 0.020;
             p.z += sin * lobe;
             p.y += (angle * 3.0 + t * 2.0).sin() * 0.018 * t * (1.0 - t);
         }
@@ -236,6 +236,10 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
         // Fine ribbing is filtered in the material; modeling it below the
         // angular sampling rate would alias the cuff silhouette.
         _ => {}
+    }
+    if shape == Shape::HairCap {
+        p.x = p.x.clamp(-0.51, 0.51);
+        p.z = p.z.clamp(-0.51, 0.51);
     }
     p
 }

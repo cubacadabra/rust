@@ -1,4 +1,4 @@
-use super::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
+use super::{DEFAULT_ORBIT_DISTANCE, Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
 use crate::types::{
     Agent, AgentPhase, CharacterEntityKind, CharacterSupport, Input, LaunchPadPhase,
 };
@@ -72,7 +72,7 @@ fn zoom_is_reversible_distance_scaled_and_supports_first_person_and_wide_view() 
         engine.input.zoom_delta = delta;
         engine.apply_camera_input();
     }
-    assert!((engine.target_camera_distance - 8.0).abs() < 0.0001);
+    assert!((engine.target_camera_distance - DEFAULT_ORBIT_DISTANCE).abs() < 0.0001);
     engine.input.zoom_delta = 100.0;
     engine.apply_camera_input();
     assert_eq!(engine.target_camera_distance, 120.0);

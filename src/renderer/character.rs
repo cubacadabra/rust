@@ -1050,6 +1050,7 @@ pub(super) fn bounds(body: BodyId, outfit: OutfitId) -> (Vec3, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::renderer::hero_geometry::Shape;
 
     #[test]
     fn camera_anchors_are_body_defined() {
@@ -1061,7 +1062,11 @@ mod tests {
     fn compiled_parts_preserve_face_hand_and_foot_anchors() {
         for body in BodyId::ALL {
             let parts = parts_for(&body_recipe(body), OutfitId::EverydayHoodie);
-            assert!(parts.len() <= 48);
+            let rigid_parts = parts
+                .iter()
+                .filter(|part| !matches!(part.shape, Shape::HairCurve(_, _)))
+                .count();
+            assert!(rigid_parts <= 48);
             assert_eq!(
                 parts
                     .iter()
@@ -1074,7 +1079,7 @@ mod tests {
                     .iter()
                     .filter(|p| matches!(p.feature, Feature::MouthEdge(_)))
                     .count(),
-                if body == BodyId::Person { 2 } else { 0 }
+                if body.is_person() { 2 } else { 0 }
             );
             assert!(
                 parts
@@ -1115,9 +1120,13 @@ mod tests {
         for body in BodyId::ALL {
             for outfit in OutfitId::ALL {
                 let parts = parts_for(&body_recipe(body), outfit);
+                let rigid_parts = parts
+                    .iter()
+                    .filter(|part| !matches!(part.shape, Shape::HairCurve(_, _)))
+                    .count();
                 assert!(
-                    parts.len() <= 48,
-                    "body={body:?} outfit={outfit:?} parts={}",
+                    rigid_parts <= 48,
+                    "body={body:?} outfit={outfit:?} rigid_parts={rigid_parts} total_parts={}",
                     parts.len()
                 );
             }
