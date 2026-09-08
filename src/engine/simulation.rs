@@ -13,9 +13,18 @@ impl Engine {
                     return;
                 }
             }
+            let player_events = self.player_events.drain(..).collect::<Vec<_>>();
+            for event in player_events {
+                if let Err(error) = script.player_event(&event) {
+                    script.state().borrow_mut().last_error = Some(error);
+                    return;
+                }
+            }
             if let Err(error) = script.tick(delta) {
                 script.state().borrow_mut().last_error = Some(error);
             }
+        } else {
+            self.player_events.clear();
         }
         let commands = self
             .script
@@ -126,11 +135,19 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.physics = world.physics;
+        self.ladders = world.ladders;
+        self.checkpoints = world.checkpoints;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = portal.destination_spawn;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
+        self.player.climbing = false;
+        self.player_dead = false;
+        self.respawn_position = portal.destination_spawn;
+        self.checkpoint_id.clear();
+        self.checkpoint_index = usize::MAX;
         self.player.moving = false;
         self.player.sprinting = false;
         self.view_yaw = portal.destination_yaw;
@@ -153,6 +170,9 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.physics = world.physics;
+        self.ladders = world.ladders;
+        self.checkpoints = world.checkpoints;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.active_world = destination;

@@ -1,3 +1,42 @@
+fn add_ladder(vertices: &mut Vec<Vertex>, ladder: &RenderLadder) {
+    let origin = Vec3::from_array(ladder.position);
+    let size = Vec3::from_array(ladder.size);
+    let rail = 0.14;
+    let rung = 0.10;
+    let rung_spacing = 0.62;
+    let bottom = -size.y * 0.5 + 0.15;
+    let top = size.y * 0.5 - 0.15;
+    let rail_span = match ladder.axis {
+        crate::world::LadderAxis::X => size.z,
+        crate::world::LadderAxis::Z => size.x,
+    };
+    for side in [-1.0_f32, 1.0] {
+        let offset = match ladder.axis {
+            crate::world::LadderAxis::X => Vec3::new(0.0, 0.0, side * rail_span * 0.5),
+            crate::world::LadderAxis::Z => Vec3::new(side * rail_span * 0.5, 0.0, 0.0),
+        };
+        add_cuboid(
+            vertices,
+            origin + offset,
+            match ladder.axis {
+                crate::world::LadderAxis::X => Vec3::new(rail, size.y, rail),
+                crate::world::LadderAxis::Z => Vec3::new(rail, size.y, rail),
+            },
+            ladder.color,
+        );
+    }
+    let mut y = bottom;
+    while y <= top {
+        let center = origin + Vec3::new(0.0, y, 0.0);
+        let rung_size = match ladder.axis {
+            crate::world::LadderAxis::X => Vec3::new(size.z, rung, rung),
+            crate::world::LadderAxis::Z => Vec3::new(rung, rung, size.x),
+        };
+        add_cuboid(vertices, center, rung_size, ladder.color);
+        y += rung_spacing;
+    }
+}
+
 fn add_billboard(vertices: &mut Vec<Vertex>, billboard: &RenderBillboard, palette: RenderPalette) {
     let width = billboard.width.max(0.5);
     let height = billboard.height.max(0.5);

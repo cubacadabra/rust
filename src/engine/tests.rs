@@ -3,6 +3,7 @@ use crate::types::{
     Agent, AgentPhase, CharacterEntityKind, CharacterSupport, Input, LaunchPadPhase,
 };
 use crate::ui::{UiInsets, UiViewport};
+use crate::world::{LadderAxis, LadderVolume, PhysicsSettings, block_bounds};
 
 #[test]
 fn starts_at_the_spawn_pad() {
@@ -112,6 +113,62 @@ fn jump_returns_to_ground() {
     }
     assert!(engine.player.grounded);
     assert_eq!(engine.player.position[1], 0.0);
+}
+
+#[test]
+fn void_death_respawns_at_the_active_checkpoint() {
+    let mut engine = Engine::new();
+    engine.physics = PhysicsSettings {
+        ground_collision: false,
+        death_y: -2.0,
+        respawn_delay: 0.2,
+        ..PhysicsSettings::default()
+    };
+    engine.obstacles.clear();
+    engine.base_obstacles.clear();
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.player.grounded = false;
+    engine.respawn_position = [2.0, 1.0, 3.0];
+    engine.checkpoint_id = "water-tower".to_owned();
+
+    for _ in 0..30 {
+        engine.step(1.0 / 60.0);
+    }
+    assert!(engine.player_dead);
+    assert_eq!(engine.player_deaths, 1);
+    let mut respawned = false;
+    for _ in 0..60 {
+        engine.step(1.0 / 60.0);
+        if !engine.player_dead && engine.player.position == [2.0, 1.0, 3.0] {
+            respawned = true;
+            break;
+        }
+    }
+    assert!(respawned);
+}
+
+#[test]
+fn ladder_converts_forward_motion_into_vertical_climbing() {
+    let mut engine = Engine::new();
+    engine.physics.ground_collision = false;
+    engine.physics.death_y = -20.0;
+    engine.obstacles = vec![block_bounds([0.0, 0.5, 0.0], [4.0, 1.0, 4.0])];
+    engine.base_obstacles = engine.obstacles.clone();
+    engine.player.position = [0.0, 1.0, 0.0];
+    engine.player.grounded = true;
+    engine.ladders = vec![LadderVolume {
+        id: "test-ladder".to_owned(),
+        bounds: block_bounds([0.0, 3.5, 0.0], [2.0, 5.0, 0.8]),
+        axis: LadderAxis::Z,
+        climb_speed: 4.0,
+    }];
+    engine.set_input(Input {
+        forward: 1.0,
+        ..Input::default()
+    });
+    engine.step(1.0 / 60.0);
+    assert!(engine.player.climbing);
+    assert!(engine.player.velocity[1] > 0.0);
 }
 
 #[test]

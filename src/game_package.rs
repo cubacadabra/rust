@@ -40,6 +40,30 @@ fn default_scale() -> f32 {
     1.0
 }
 
+fn default_gravity() -> f32 {
+    28.0
+}
+
+fn default_jump_velocity() -> f32 {
+    10.5
+}
+
+fn default_ground_collision() -> bool {
+    true
+}
+
+fn default_void_y() -> f32 {
+    -100.0
+}
+
+fn default_respawn_delay() -> f32 {
+    0.55
+}
+
+fn default_climb_speed() -> f32 {
+    4.5
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GamePackageDefinition {
@@ -125,6 +149,8 @@ impl GamePackageDefinition {
             signs: self.signs.clone(),
             billboards: self.billboards.clone(),
             interactions: Vec::new(),
+            ladders: Vec::new(),
+            checkpoints: Vec::new(),
         };
         std::iter::once(("lobby".to_owned(), lobby))
             .chain(
@@ -178,6 +204,10 @@ pub(crate) struct WorldDefinition {
     pub(crate) billboards: Vec<BillboardDefinition>,
     #[serde(default)]
     pub(crate) interactions: Vec<InteractionDefinition>,
+    #[serde(default)]
+    pub(crate) ladders: Vec<LadderDefinition>,
+    #[serde(default)]
+    pub(crate) checkpoints: Vec<CheckpointDefinition>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -223,6 +253,8 @@ pub(crate) struct WorldSettingsDefinition {
     pub(crate) show_spawn_pad: bool,
     #[serde(default)]
     pub(crate) clouds: Vec<CloudDefinition>,
+    #[serde(default)]
+    pub(crate) physics: PhysicsDefinition,
 }
 
 impl Default for WorldSettingsDefinition {
@@ -234,6 +266,7 @@ impl Default for WorldSettingsDefinition {
             spawn: vec![0.0, 0.0, 0.0],
             show_spawn_pad: true,
             clouds: Vec::new(),
+            physics: PhysicsDefinition::default(),
         }
     }
 }
@@ -244,6 +277,99 @@ impl WorldSettingsDefinition {
             self.spawn.first().copied().unwrap_or(0.0),
             self.spawn.get(1).copied().unwrap_or(0.0),
             self.spawn.get(2).copied().unwrap_or(0.0),
+        ]
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PhysicsDefinition {
+    #[serde(default = "default_gravity")]
+    pub(crate) gravity: f32,
+    #[serde(default = "default_jump_velocity")]
+    pub(crate) jump_velocity: f32,
+    #[serde(default = "default_ground_collision")]
+    pub(crate) ground_collision: bool,
+    #[serde(default)]
+    pub(crate) ground_y: f32,
+    #[serde(default = "default_void_y")]
+    pub(crate) death_y: f32,
+    #[serde(default = "default_respawn_delay")]
+    pub(crate) respawn_delay: f32,
+    #[serde(default = "default_climb_speed")]
+    pub(crate) climb_speed: f32,
+}
+
+impl Default for PhysicsDefinition {
+    fn default() -> Self {
+        Self {
+            gravity: default_gravity(),
+            jump_velocity: default_jump_velocity(),
+            ground_collision: default_ground_collision(),
+            ground_y: 0.0,
+            death_y: default_void_y(),
+            respawn_delay: default_respawn_delay(),
+            climb_speed: default_climb_speed(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LadderDefinition {
+    #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default)]
+    pub(crate) size: Vec<f32>,
+    #[serde(default = "default_ladder_axis")]
+    pub(crate) climb_axis: String,
+    #[serde(default)]
+    pub(crate) color: String,
+    #[serde(default)]
+    pub(crate) climb_speed: Option<f32>,
+}
+
+impl LadderDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
+        ]
+    }
+
+    pub(crate) fn size(&self) -> [f32; 3] {
+        [
+            self.size.first().copied().unwrap_or(1.5),
+            self.size.get(1).copied().unwrap_or(6.0),
+            self.size.get(2).copied().unwrap_or(0.8),
+        ]
+    }
+}
+
+fn default_ladder_axis() -> String {
+    "z".to_owned()
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CheckpointDefinition {
+    #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default = "default_radius")]
+    pub(crate) radius: f32,
+}
+
+impl CheckpointDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
         ]
     }
 }

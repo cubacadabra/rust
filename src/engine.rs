@@ -22,7 +22,7 @@ use crate::types::{
     Agent, BuildBlock, CharacterEmote, CharacterMotionEvent, Input, Player, RemotePlayer,
 };
 use crate::ui::UiRuntime;
-use crate::world::{Aabb, LaunchPad, RuntimeWorld};
+use crate::world::{Aabb, Checkpoint, LadderVolume, LaunchPad, PhysicsSettings, RuntimeWorld};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
 use std::rc::Rc;
@@ -63,6 +63,16 @@ pub struct Engine {
     pub(crate) remote_players: Vec<RemotePlayer>,
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) base_obstacles: Vec<Aabb>,
+    pub(crate) physics: PhysicsSettings,
+    pub(crate) ladders: Vec<LadderVolume>,
+    pub(crate) checkpoints: Vec<Checkpoint>,
+    pub(crate) respawn_position: [f32; 3],
+    pub(crate) checkpoint_id: String,
+    pub(crate) checkpoint_index: usize,
+    pub(crate) player_dead: bool,
+    pub(crate) player_respawn_at: f32,
+    pub(crate) player_deaths: u32,
+    pub(crate) player_events: VecDeque<crate::types::PlayerEvent>,
     pub(crate) build_blocks: Vec<BuildBlock>,
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) input: Input,

@@ -1,9 +1,9 @@
 use crate::engine::{
-    ACCELERATION, AIR_ACCELERATION, BODY_HEIGHT, Engine, GRAVITY, JUMP_VELOCITY, PLAYER_RADIUS,
-    RUN_SPEED, WALK_SPEED, WORLD_LIMIT,
+    ACCELERATION, AIR_ACCELERATION, BODY_HEIGHT, Engine, PLAYER_RADIUS, RUN_SPEED, WALK_SPEED,
+    WORLD_LIMIT,
 };
 use crate::math::{Vec2, damp};
-use crate::world::overlaps_obstacle;
+use crate::world::{LadderAxis, overlaps_obstacle};
 
 #[allow(dead_code)]
 pub(crate) const WALK_CYCLE_DISTANCE: f32 = crate::character::gait::WALK_DISTANCE;
@@ -15,6 +15,26 @@ pub(crate) fn walk_cycle_delta(distance: f32) -> f32 {
 
 impl Engine {
     pub(crate) fn update_player(&mut self, delta: f32) {
+        if self.player_dead {
+            self.input.jump = false;
+            self.input.look_x = 0.0;
+            self.input.look_y = 0.0;
+            self.input.zoom_delta = 0.0;
+            if self.elapsed >= self.player_respawn_at {
+                self.player.position = self.respawn_position;
+                self.player.velocity = [0.0; 3];
+                self.player.grounded = true;
+                self.player.climbing = false;
+                self.player_dead = false;
+                self.player_events
+                    .push_back(crate::types::PlayerEvent::Respawn {
+                        checkpoint: self.checkpoint_id.clone(),
+                        deaths: self.player_deaths,
+                    });
+            }
+            return;
+        }
+
         let was_grounded = self.player.grounded;
         let mut forward = self.input.forward.clamp(-1.0, 1.0);
         let mut strafe = self.input.strafe.clamp(-1.0, 1.0);
@@ -55,8 +75,21 @@ impl Engine {
         }
         let speed = if sprinting { RUN_SPEED } else { WALK_SPEED };
         let input_amount = if moving { input_length.min(1.0) } else { 0.0 };
-        let target_x = direction.x * speed * input_amount;
-        let target_z = direction.z * speed * input_amount;
+        let movement_ladder_axis = self
+            .ladders
+            .iter()
+            .find(|ladder| point_inside_ladder(self.player.position, ladder))
+            .map(|ladder| ladder.axis);
+        let target_x = if movement_ladder_axis == Some(LadderAxis::X) {
+            0.0
+        } else {
+            direction.x * speed * input_amount
+        };
+        let target_z = if movement_ladder_axis == Some(LadderAxis::Z) {
+            0.0
+        } else {
+            direction.z * speed * input_amount
+        };
         let acceleration = if self.player.grounded {
             ACCELERATION
         } else {
@@ -65,9 +98,19 @@ impl Engine {
         self.player.velocity[0] = damp(self.player.velocity[0], target_x, acceleration, delta);
         self.player.velocity[2] = damp(self.player.velocity[2], target_z, acceleration, delta);
 
-        let takeoff = self.input.jump && self.player.grounded;
+        let ladder = self
+            .ladders
+            .iter()
+            .find(|ladder| point_inside_ladder(self.player.position, ladder));
+        let ladder_axis = ladder.map(|ladder| ladder.axis);
+        let ladder_speed = ladder.map_or(self.physics.climb_speed, |ladder| ladder.climb_speed);
+        let climb_input = ladder_axis.map_or(0.0, |axis| match axis {
+            LadderAxis::X => -direction.x,
+            LadderAxis::Z => -direction.z,
+        });
+        let takeoff = self.input.jump && self.player.grounded && ladder_axis.is_none();
         if takeoff {
-            self.player.velocity[1] = JUMP_VELOCITY;
+            self.player.velocity[1] = self.physics.jump_velocity.max(0.1);
             self.player.grounded = false;
         }
         self.input.jump = false;
@@ -88,8 +131,18 @@ impl Engine {
             self.player.walk_cycle +=
                 travelled / crate::character::gait::cycle_distance(run) * std::f32::consts::TAU;
         }
-        self.player.velocity[1] -= GRAVITY * delta;
+        self.player.climbing = ladder_axis.is_some() && climb_input.abs() > 0.1 && !takeoff;
+        if self.player.climbing {
+            self.player.velocity[1] = climb_input * ladder_speed;
+            self.player.grounded = false;
+        } else {
+            self.player.velocity[1] -= self.physics.gravity.max(0.0) * delta;
+        }
         self.move_player_vertically(delta);
+        if self.player.grounded {
+            self.player.climbing = false;
+        }
+        self.check_for_void_death();
         self.player_motion_event = if !was_grounded && self.player.grounded {
             crate::types::CharacterMotionEvent::Landing
         } else if takeoff {
@@ -141,8 +194,8 @@ impl Engine {
                 self.player.grounded = true;
                 return;
             }
-            if next_feet <= 0.0 {
-                self.player.position[1] = 0.0;
+            if self.physics.ground_collision && next_feet <= self.physics.ground_y {
+                self.player.position[1] = self.physics.ground_y;
                 self.player.velocity[1] = 0.0;
                 self.player.grounded = true;
                 return;
@@ -151,14 +204,16 @@ impl Engine {
             let previous_head = previous_feet + BODY_HEIGHT;
             let next_head = next_feet + BODY_HEIGHT;
             let mut ceiling_height = None;
-            for obstacle in &self.obstacles {
-                if !overlaps_obstacle(self.player.position, obstacle, PLAYER_RADIUS) {
-                    continue;
-                }
-                let hit_bottom = previous_head <= obstacle.bottom + epsilon
-                    && next_head >= obstacle.bottom - epsilon;
-                if hit_bottom && ceiling_height.is_none_or(|height| obstacle.bottom < height) {
-                    ceiling_height = Some(obstacle.bottom);
+            if !self.player.climbing {
+                for obstacle in &self.obstacles {
+                    if !overlaps_obstacle(self.player.position, obstacle, PLAYER_RADIUS) {
+                        continue;
+                    }
+                    let hit_bottom = previous_head <= obstacle.bottom + epsilon
+                        && next_head >= obstacle.bottom - epsilon;
+                    if hit_bottom && ceiling_height.is_none_or(|height| obstacle.bottom < height) {
+                        ceiling_height = Some(obstacle.bottom);
+                    }
                 }
             }
             if let Some(height) = ceiling_height {
@@ -183,4 +238,54 @@ impl Engine {
             !overlaps_obstacle(candidate, obstacle, PLAYER_RADIUS)
         })
     }
+
+    fn check_for_void_death(&mut self) {
+        if self.player.position[1] > self.physics.death_y {
+            return;
+        }
+        self.player_dead = true;
+        self.player_respawn_at = self.elapsed + self.physics.respawn_delay;
+        self.player_deaths = self.player_deaths.saturating_add(1);
+        self.player.velocity = [0.0; 3];
+        self.player.climbing = false;
+        self.player_events
+            .push_back(crate::types::PlayerEvent::Death {
+                cause: "fall".to_owned(),
+                checkpoint: self.checkpoint_id.clone(),
+                deaths: self.player_deaths,
+            });
+    }
+
+    pub(crate) fn update_player_checkpoints(&mut self) {
+        if self.player_dead {
+            return;
+        }
+        let checkpoint = self.checkpoints.iter().enumerate().find(|(index, checkpoint)| {
+            (self.checkpoint_id.is_empty() || *index > self.checkpoint_index)
+                && (self.player.position[0] - checkpoint.position[0])
+                    .hypot(self.player.position[2] - checkpoint.position[2])
+                    <= checkpoint.radius
+                && (self.player.position[1] - checkpoint.position[1]).abs() <= 2.5
+        });
+        let Some((index, checkpoint)) = checkpoint else {
+            return;
+        };
+        self.checkpoint_id.clone_from(&checkpoint.id);
+        self.checkpoint_index = index;
+        self.respawn_position = checkpoint.position;
+        self.player_events
+            .push_back(crate::types::PlayerEvent::Checkpoint {
+                id: checkpoint.id.clone(),
+                position: checkpoint.position,
+            });
+    }
+}
+
+fn point_inside_ladder(position: [f32; 3], ladder: &crate::world::LadderVolume) -> bool {
+    position[0] >= ladder.bounds.min_x
+        && position[0] <= ladder.bounds.max_x
+        && position[2] >= ladder.bounds.min_z
+        && position[2] <= ladder.bounds.max_z
+        && position[1] + BODY_HEIGHT >= ladder.bounds.bottom
+        && position[1] <= ladder.bounds.top
 }

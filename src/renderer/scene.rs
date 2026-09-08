@@ -13,8 +13,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
-    AvatarStyle, RenderBlock, RenderCloud, RenderEntity, RenderInteraction, RenderPad,
-    RenderBillboard, RenderPalette, RenderSign, RenderWorld, Renderer,
+    AvatarStyle, RenderBillboard, RenderBlock, RenderCloud, RenderEntity, RenderInteraction,
+    RenderLadder, RenderPad, RenderPalette, RenderSign, RenderWorld, Renderer,
 };
 
 #[cfg(target_os = "ios")]
@@ -273,6 +273,20 @@ fn resolve_world(
                 outline: block.outline,
             })
             .collect(),
+        ladders: definition
+            .ladders
+            .iter()
+            .map(|ladder| RenderLadder {
+                position: ladder.position(),
+                size: ladder.size(),
+                axis: if ladder.climb_axis.eq_ignore_ascii_case("x") {
+                    crate::world::LadderAxis::X
+                } else {
+                    crate::world::LadderAxis::Z
+                },
+                color: resolve_color(&definition.palette, &ladder.color, palette.paper),
+            })
+            .collect(),
         pads: definition
             .launch_pads
             .iter()
@@ -301,6 +315,7 @@ fn resolve_world(
             })
             .collect(),
         ground_size: definition.world.ground_size.max(10.0),
+        ground_y: definition.world.physics.ground_y,
         grid_size: definition.world.grid_size.max(1.0),
         grid_divisions: definition.world.grid_divisions,
         spawn: definition.world.spawn(),

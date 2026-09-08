@@ -14,6 +14,7 @@ impl Engine {
         self.apply_camera_input();
         self.smooth_camera(delta);
         self.update_player(delta);
+        self.update_player_checkpoints();
         self.update_interactions();
         self.sync_interaction_script_state();
         self.tick_script(delta);

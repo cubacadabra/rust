@@ -9,6 +9,14 @@ pub(super) struct RenderBlock {
 }
 
 #[derive(Clone)]
+pub(super) struct RenderLadder {
+    pub(super) position: [f32; 3],
+    pub(super) size: [f32; 3],
+    pub(super) axis: crate::world::LadderAxis,
+    pub(super) color: [f32; 4],
+}
+
+#[derive(Clone)]
 pub(super) struct RenderPad {
     pub(super) x: f32,
     pub(super) z: f32,
@@ -175,9 +183,11 @@ pub(super) struct RenderCloud {
 #[derive(Clone)]
 pub(super) struct RenderWorld {
     pub(super) blocks: Vec<RenderBlock>,
+    pub(super) ladders: Vec<RenderLadder>,
     pub(super) pads: Vec<RenderPad>,
     pub(super) clouds: Vec<RenderCloud>,
     pub(super) ground_size: f32,
+    pub(super) ground_y: f32,
     pub(super) grid_size: f32,
     pub(super) grid_divisions: usize,
     pub(super) spawn: [f32; 3],
@@ -193,9 +203,11 @@ impl Default for RenderWorld {
     fn default() -> Self {
         Self {
             blocks: Vec::new(),
+            ladders: Vec::new(),
             pads: Vec::new(),
             clouds: Vec::new(),
             ground_size: 120.0,
+            ground_y: 0.0,
             grid_size: 112.0,
             grid_divisions: 28,
             spawn: [0.0; 3],

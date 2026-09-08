@@ -3,7 +3,10 @@ use crate::engine::interactions::InteractionRuntime;
 use crate::game_package::GamePackageDefinition;
 use crate::math::horizontal_distance;
 use crate::types::{AgentPhase, BuildBlock};
-use crate::world::{LaunchPad, Portal, RuntimeWorld, block_bounds, slot_offset};
+use crate::world::{
+    Checkpoint, LadderAxis, LadderVolume, LaunchPad, PhysicsSettings, Portal, RuntimeWorld,
+    block_bounds, slot_offset,
+};
 
 impl Engine {
     pub(crate) fn set_launch_pad(
@@ -134,11 +137,19 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.physics = world.physics;
+        self.ladders = world.ladders;
+        self.checkpoints = world.checkpoints;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = world.spawn;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
+        self.player.climbing = false;
+        self.player_dead = false;
+        self.respawn_position = world.spawn;
+        self.checkpoint_id.clear();
+        self.checkpoint_index = usize::MAX;
         self.agents.clear();
         self.next_spawn_at = self.elapsed + 3.0;
         self.write_snapshot();
@@ -222,6 +233,11 @@ impl Engine {
         self.player.position = spawn;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
+        self.player.climbing = false;
+        self.player_dead = false;
+        self.respawn_position = spawn;
+        self.checkpoint_id.clear();
+        self.checkpoint_index = usize::MAX;
         self.player.moving = false;
         self.player.sprinting = false;
         self.write_snapshot();
@@ -271,6 +287,46 @@ impl Engine {
                     .iter()
                     .map(|block| block_bounds(block.position(), block.size()))
                     .collect::<Vec<_>>();
+                let physics = PhysicsSettings {
+                    gravity: definition.world.physics.gravity.max(0.0),
+                    jump_velocity: definition.world.physics.jump_velocity.max(0.0),
+                    ground_collision: definition.world.physics.ground_collision,
+                    ground_y: definition.world.physics.ground_y,
+                    death_y: definition.world.physics.death_y,
+                    respawn_delay: definition.world.physics.respawn_delay.max(0.0),
+                    climb_speed: definition.world.physics.climb_speed.max(0.0),
+                };
+                let ladders = definition
+                    .ladders
+                    .iter()
+                    .map(|ladder| LadderVolume {
+                        id: if ladder.id.is_empty() {
+                            "ladder".to_owned()
+                        } else {
+                            ladder.id.clone()
+                        },
+                        bounds: block_bounds(ladder.position(), ladder.size()),
+                        axis: if ladder.climb_axis.eq_ignore_ascii_case("x") {
+                            LadderAxis::X
+                        } else {
+                            LadderAxis::Z
+                        },
+                        climb_speed: ladder.climb_speed.unwrap_or(physics.climb_speed).max(0.0),
+                    })
+                    .collect::<Vec<_>>();
+                let checkpoints = definition
+                    .checkpoints
+                    .iter()
+                    .map(|checkpoint| Checkpoint {
+                        id: if checkpoint.id.is_empty() {
+                            "checkpoint".to_owned()
+                        } else {
+                            checkpoint.id.clone()
+                        },
+                        position: checkpoint.position(),
+                        radius: checkpoint.radius.max(0.2),
+                    })
+                    .collect::<Vec<_>>();
                 let portals = definition
                     .portals
                     .iter()
@@ -293,9 +349,12 @@ impl Engine {
                     InteractionRuntime::from_definitions(&definition.interactions).world;
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
+                    physics,
                     launch_pads,
                     launch_destinations,
                     obstacles,
+                    ladders,
+                    checkpoints,
                     portals,
                     interactions,
                 }

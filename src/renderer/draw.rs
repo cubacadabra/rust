@@ -6,8 +6,8 @@ use super::CharacterRenderMode;
 #[cfg(debug_assertions)]
 use super::add_floor_pixel_text;
 use super::{
-    Globals, RenderEntity, Renderer, Vertex, add_billboard, add_cloud, add_cuboid, add_cuboid_outline,
-    add_launch_pad, add_pixel_text, add_spawn_pad, faded,
+    Globals, RenderEntity, Renderer, Vertex, add_billboard, add_cloud, add_cuboid,
+    add_cuboid_outline, add_ladder, add_launch_pad, add_pixel_text, add_spawn_pad, faded,
 };
 
 impl Renderer {
@@ -317,13 +317,13 @@ impl Renderer {
         let world = &self.scene.world;
         add_cuboid(
             &mut mesh,
-            Vec3::new(0.0, -0.08, 0.0),
+            Vec3::new(0.0, world.ground_y - 0.08, 0.0),
             Vec3::new(world.ground_size, 0.16, world.ground_size),
             world.palette.ground,
         );
         add_cuboid_outline(
             &mut mesh,
-            Vec3::new(0.0, -0.08, 0.0),
+            Vec3::new(0.0, world.ground_y - 0.08, 0.0),
             Vec3::new(world.ground_size, 0.16, world.ground_size),
             0.035,
             faded(world.palette.ground_edge, 0.46),
@@ -345,6 +345,9 @@ impl Renderer {
                 );
             }
         }
+        for ladder in &world.ladders {
+            add_ladder(&mut mesh, ladder);
+        }
         for billboard in &world.billboards {
             if self
                 .package_image_id
@@ -361,13 +364,13 @@ impl Renderer {
             let offset = -half + index as f32 * grid_step;
             add_cuboid(
                 &mut mesh,
-                Vec3::new(offset, 0.015, 0.0),
+                Vec3::new(offset, world.ground_y + 0.015, 0.0),
                 Vec3::new(0.018, 0.025, world.grid_size),
                 faded(world.palette.grid, 0.34),
             );
             add_cuboid(
                 &mut mesh,
-                Vec3::new(0.0, 0.016, offset),
+                Vec3::new(0.0, world.ground_y + 0.016, offset),
                 Vec3::new(world.grid_size, 0.026, 0.018),
                 faded(world.palette.grid, 0.34),
             );

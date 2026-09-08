@@ -35,11 +35,61 @@ pub(crate) struct Portal {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RuntimeWorld {
     pub(crate) spawn: [f32; 3],
+    pub(crate) physics: PhysicsSettings,
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) launch_destinations: Vec<Option<usize>>,
     pub(crate) obstacles: Vec<Aabb>,
+    pub(crate) ladders: Vec<LadderVolume>,
+    pub(crate) checkpoints: Vec<Checkpoint>,
     pub(crate) portals: Vec<Portal>,
     pub(crate) interactions: Vec<InteractionZone>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PhysicsSettings {
+    pub(crate) gravity: f32,
+    pub(crate) jump_velocity: f32,
+    pub(crate) ground_collision: bool,
+    pub(crate) ground_y: f32,
+    pub(crate) death_y: f32,
+    pub(crate) respawn_delay: f32,
+    pub(crate) climb_speed: f32,
+}
+
+impl Default for PhysicsSettings {
+    fn default() -> Self {
+        Self {
+            gravity: 28.0,
+            jump_velocity: 10.5,
+            ground_collision: true,
+            ground_y: 0.0,
+            death_y: -100.0,
+            respawn_delay: 0.55,
+            climb_speed: 4.5,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct LadderVolume {
+    #[allow(dead_code)]
+    pub(crate) id: String,
+    pub(crate) bounds: Aabb,
+    pub(crate) axis: LadderAxis,
+    pub(crate) climb_speed: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LadderAxis {
+    X,
+    Z,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Checkpoint {
+    pub(crate) id: String,
+    pub(crate) position: [f32; 3],
+    pub(crate) radius: f32,
 }
 
 #[derive(Clone, Debug, Default)]

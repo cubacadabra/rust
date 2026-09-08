@@ -31,6 +31,7 @@ pub(crate) struct Player {
     pub(crate) facing_yaw: f32,
     pub(crate) velocity: [f32; 3],
     pub(crate) grounded: bool,
+    pub(crate) climbing: bool,
     pub(crate) moving: bool,
     pub(crate) sprinting: bool,
     pub(crate) walk_cycle: f32,
@@ -183,11 +184,29 @@ impl Default for Player {
             facing_yaw: 0.0,
             velocity: [0.0; 3],
             grounded: true,
+            climbing: false,
             moving: false,
             sprinting: false,
             walk_cycle: 0.0,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum PlayerEvent {
+    Checkpoint {
+        id: String,
+        position: [f32; 3],
+    },
+    Death {
+        cause: String,
+        checkpoint: String,
+        deaths: u32,
+    },
+    Respawn {
+        checkpoint: String,
+        deaths: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

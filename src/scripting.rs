@@ -50,6 +50,7 @@ pub(crate) struct GameScript {
     on_launch: Option<lua::Function>,
     on_ui_event: Option<lua::Function>,
     on_interaction: Option<lua::Function>,
+    on_player_event: Option<lua::Function>,
     on_network_message: Option<lua::Function>,
     state: Rc<RefCell<ScriptState>>,
     ui: Rc<RefCell<UiRuntime>>,
@@ -71,6 +72,7 @@ impl GameScript {
         let on_launch: Option<lua::Function> = module.get("on_launch")?;
         let on_ui_event: Option<lua::Function> = module.get("on_ui_event")?;
         let on_interaction: Option<lua::Function> = module.get("on_interaction")?;
+        let on_player_event: Option<lua::Function> = module.get("on_player_event")?;
         let on_network_message: Option<lua::Function> = module.get("on_network_message")?;
 
         if let Some(on_start) = on_start {
@@ -84,6 +86,7 @@ impl GameScript {
             on_launch,
             on_ui_event,
             on_interaction,
+            on_player_event,
             on_network_message,
             state,
             ui,
@@ -207,6 +210,63 @@ impl GameScript {
             .set("players", event.players)
             .map_err(|error| error.to_string())?;
         on_interaction
+            .call::<()>((self.api.clone(), value))
+            .map_err(|error| error.to_string())
+    }
+
+    pub(crate) fn player_event(&self, event: &crate::types::PlayerEvent) -> Result<(), String> {
+        let Some(on_player_event) = &self.on_player_event else {
+            return Ok(());
+        };
+        let value = create_table(&self.lua).map_err(|error| error.to_string())?;
+        match event {
+            crate::types::PlayerEvent::Checkpoint { id, position } => {
+                value
+                    .set("kind", "checkpoint")
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("id", id.as_str())
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set(
+                        "position",
+                        self.lua
+                            .create_sequence_from(position.iter().copied())
+                            .map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+            crate::types::PlayerEvent::Death {
+                cause,
+                checkpoint,
+                deaths,
+            } => {
+                value
+                    .set("kind", "death")
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("cause", cause.as_str())
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("checkpoint", checkpoint.as_str())
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("deaths", *deaths)
+                    .map_err(|error| error.to_string())?;
+            }
+            crate::types::PlayerEvent::Respawn { checkpoint, deaths } => {
+                value
+                    .set("kind", "respawn")
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("checkpoint", checkpoint.as_str())
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("deaths", *deaths)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        on_player_event
             .call::<()>((self.api.clone(), value))
             .map_err(|error| error.to_string())
     }
@@ -507,6 +567,28 @@ mod tests {
 
         assert_eq!(script.state().borrow().lobby_status, "ready");
         script.tick(1.0 / 60.0).expect("tick should run");
+    }
+
+    #[test]
+    fn luau_receives_obby_player_events() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_player_event(api, event)
+                    api.lobby:set_status(event.kind .. ":" .. event.deaths)
+                end
+                return game
+            "#,
+        );
+
+        script
+            .player_event(&crate::types::PlayerEvent::Death {
+                cause: "fall".to_owned(),
+                checkpoint: "tower".to_owned(),
+                deaths: 3,
+            })
+            .expect("player event callback should run");
+        assert_eq!(script.state().borrow().lobby_status, "death:3");
     }
 
     #[test]
