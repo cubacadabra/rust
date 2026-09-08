@@ -167,7 +167,7 @@ fn ladder_converts_forward_motion_into_vertical_climbing() {
         climb_speed: 4.0,
     }];
     engine.set_input(Input {
-        forward: 1.0,
+        climb: true,
         ..Input::default()
     });
     engine.step(1.0 / 60.0);

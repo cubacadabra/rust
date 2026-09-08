@@ -27,6 +27,7 @@ void engine_set_input(
     float strafe,
     uint8_t sprint,
     uint8_t jump,
+    uint8_t climb,
     float look_x,
     float look_y,
     float zoom_delta

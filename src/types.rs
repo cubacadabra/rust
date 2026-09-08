@@ -6,6 +6,7 @@ pub(crate) struct Input {
     pub(crate) strafe: f32,
     pub(crate) sprint: bool,
     pub(crate) jump: bool,
+    pub(crate) climb: bool,
     pub(crate) look_x: f32,
     pub(crate) look_y: f32,
     pub(crate) zoom_delta: f32,

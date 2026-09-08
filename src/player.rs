@@ -115,7 +115,7 @@ impl Engine {
         // Once attached, forward/back always means up/down. Tying climbing to
         // the camera's world-space heading made ladders stop working after the
         // player orbited the camera.
-        let climb_input = ladder_axis.map_or(0.0, |_| forward);
+        let climb_input = ladder_axis.map_or(0.0, |_| if self.input.climb { 1.0 } else { forward });
         let takeoff = self.input.jump && self.player.grounded && ladder_axis.is_none();
         if takeoff {
             self.player.velocity[1] = self.physics.jump_velocity.max(0.1);
@@ -295,10 +295,15 @@ impl Engine {
 }
 
 fn point_inside_ladder(position: [f32; 3], ladder: &crate::world::LadderVolume) -> bool {
-    position[0] >= ladder.bounds.min_x
-        && position[0] <= ladder.bounds.max_x
-        && position[2] >= ladder.bounds.min_z
-        && position[2] <= ladder.bounds.max_z
+    // The visual rails are wider than the collision slice. Include the
+    // character's radius plus a small grab margin so approaching the ladder
+    // from either side reliably attaches instead of requiring pixel-perfect
+    // alignment with its center plane.
+    let margin = PLAYER_RADIUS + 0.25;
+    position[0] >= ladder.bounds.min_x - margin
+        && position[0] <= ladder.bounds.max_x + margin
+        && position[2] >= ladder.bounds.min_z - margin
+        && position[2] <= ladder.bounds.max_z + margin
         && position[1] + BODY_HEIGHT >= ladder.bounds.bottom
         && position[1] <= ladder.bounds.top
 }
