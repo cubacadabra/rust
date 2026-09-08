@@ -327,6 +327,28 @@ impl GameScript {
                     .set("maxHealth", *max_health)
                     .map_err(|error| error.to_string())?;
             }
+            crate::types::PlayerEvent::Heal {
+                source,
+                amount,
+                health,
+                max_health,
+            } => {
+                value
+                    .set("kind", "heal")
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("source", source.as_str())
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("amount", *amount)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("health", *health)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("maxHealth", *max_health)
+                    .map_err(|error| error.to_string())?;
+            }
         }
         on_player_event
             .call::<()>((self.api.clone(), value))

@@ -5,7 +5,7 @@ use crate::types::{
 use crate::ui::{UiInsets, UiViewport};
 use crate::world::{
     HazardVolume, HealthSettings, LadderAxis, LadderVolume, PhysicsSettings, RespawnMode,
-    RespawnSettings, block_bounds,
+    RespawnSettings, SafeZone, block_bounds,
 };
 
 #[test]
@@ -224,6 +224,36 @@ fn throttled_damage_events_report_accumulated_damage() {
         engine.player_events.pop_front(),
         Some(crate::types::PlayerEvent::Damage { amount, .. }) if (amount - 30.0).abs() < 0.001
     ));
+}
+
+#[test]
+fn safe_zone_suppresses_damage_and_heals() {
+    let mut engine = Engine::new();
+    engine.hazards = vec![HazardVolume {
+        id: "storm".to_owned(),
+        kind: "damage".to_owned(),
+        bounds: block_bounds([0.0, 0.25, 0.0], [6.0, 0.5, 6.0]),
+        damage_per_second: 100.0,
+    }];
+    engine.safe_zones = vec![SafeZone {
+        id: "beacon".to_owned(),
+        position: [0.0, 0.0, 0.0],
+        radius: 4.0,
+        heal_per_second: 20.0,
+    }];
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.player_health = 40.0;
+    engine.player_max_health = 100.0;
+
+    engine.update_hazards(0.5);
+
+    assert_eq!(engine.player_health, 50.0);
+    assert!(
+        engine
+            .player_events
+            .iter()
+            .any(|event| matches!(event, crate::types::PlayerEvent::Heal { .. }))
+    );
 }
 
 #[test]

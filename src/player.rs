@@ -29,7 +29,9 @@ impl Engine {
                 self.player_max_health = self.health.max.max(1.0);
                 self.player_health = self.health.start.clamp(0.0, self.player_max_health);
                 self.player_damage_since_event = 0.0;
+                self.player_heal_since_event = 0.0;
                 self.player_next_damage_event_at = self.elapsed;
+                self.player_next_heal_event_at = self.elapsed;
                 self.player_respawn_event_id = self.player_respawn_event_id.wrapping_add(1).max(1);
                 self.player_events
                     .push_back(crate::types::PlayerEvent::Respawn {
@@ -284,6 +286,13 @@ impl Engine {
         if self.player_dead {
             return;
         }
+        let active_safe_zone = self
+            .safe_zones
+            .iter()
+            .filter(|safe_zone| player_inside_safe_zone(self.player.position, safe_zone))
+            .max_by(|left, right| left.heal_per_second.total_cmp(&right.heal_per_second))
+            .map(|safe_zone| (safe_zone.id.clone(), safe_zone.heal_per_second));
+        let protected = active_safe_zone.is_some();
         let mut damage = 0.0;
         let mut source = None;
         let mut instant_kill = false;
@@ -293,34 +302,54 @@ impl Engine {
             }
             source.get_or_insert_with(|| hazard.id.clone());
             if hazard.kind.eq_ignore_ascii_case("kill") {
-                instant_kill = true;
+                instant_kill = !protected;
                 break;
             }
-            damage += hazard.damage_per_second * delta;
+            if !protected {
+                damage += hazard.damage_per_second * delta;
+            }
         }
         if instant_kill {
             self.kill_player(source.as_deref().unwrap_or("hazard"));
             return;
         }
-        if damage <= 0.0 {
-            return;
+        if damage > 0.0 {
+            let source = source.unwrap_or_else(|| "hazard".to_owned());
+            self.player_health = (self.player_health - damage).max(0.0);
+            self.player_damage_since_event += damage;
+            if self.elapsed >= self.player_next_damage_event_at || self.player_health <= 0.0 {
+                self.player_next_damage_event_at = self.elapsed + 0.25;
+                self.player_events
+                    .push_back(crate::types::PlayerEvent::Damage {
+                        source: source.clone(),
+                        amount: self.player_damage_since_event,
+                        health: self.player_health,
+                        max_health: self.player_max_health,
+                    });
+                self.player_damage_since_event = 0.0;
+            }
+            if self.player_health <= 0.0 {
+                self.kill_player(&source);
+            }
         }
-        let source = source.unwrap_or_else(|| "hazard".to_owned());
-        self.player_health = (self.player_health - damage).max(0.0);
-        self.player_damage_since_event += damage;
-        if self.elapsed >= self.player_next_damage_event_at || self.player_health <= 0.0 {
-            self.player_next_damage_event_at = self.elapsed + 0.25;
-            self.player_events
-                .push_back(crate::types::PlayerEvent::Damage {
-                    source: source.clone(),
-                    amount: self.player_damage_since_event,
-                    health: self.player_health,
-                    max_health: self.player_max_health,
-                });
-            self.player_damage_since_event = 0.0;
-        }
-        if self.player_health <= 0.0 {
-            self.kill_player(&source);
+        if protected && self.player_health < self.player_max_health {
+            let (source, heal_per_second) = active_safe_zone.expect("protected safe zone");
+            let healing = heal_per_second * delta;
+            if healing > 0.0 {
+                self.player_health = (self.player_health + healing).min(self.player_max_health);
+                self.player_heal_since_event += healing;
+                if self.elapsed >= self.player_next_heal_event_at {
+                    self.player_next_heal_event_at = self.elapsed + 0.25;
+                    self.player_events
+                        .push_back(crate::types::PlayerEvent::Heal {
+                            source,
+                            amount: self.player_heal_since_event,
+                            health: self.player_health,
+                            max_health: self.player_max_health,
+                        });
+                    self.player_heal_since_event = 0.0;
+                }
+            }
         }
     }
 
@@ -360,6 +389,12 @@ fn player_overlaps_hazard(position: [f32; 3], hazard: &HazardVolume) -> bool {
     overlaps_obstacle(position, &hazard.bounds, PLAYER_RADIUS)
         && position[1] <= hazard.bounds.top
         && position[1] + BODY_HEIGHT >= hazard.bounds.bottom
+}
+
+fn player_inside_safe_zone(position: [f32; 3], safe_zone: &crate::world::SafeZone) -> bool {
+    (position[0] - safe_zone.position[0]).hypot(position[2] - safe_zone.position[2])
+        <= safe_zone.radius
+        && (position[1] - safe_zone.position[1]).abs() <= 3.5
 }
 
 fn point_inside_ladder(position: [f32; 3], ladder: &crate::world::LadderVolume) -> bool {

@@ -223,6 +223,12 @@ pub(crate) enum PlayerEvent {
         health: f32,
         max_health: f32,
     },
+    Heal {
+        source: String,
+        amount: f32,
+        health: f32,
+        max_health: f32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

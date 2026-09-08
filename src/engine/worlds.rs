@@ -5,7 +5,7 @@ use crate::math::horizontal_distance;
 use crate::types::{AgentPhase, BuildBlock};
 use crate::world::{
     Checkpoint, HazardVolume, HealthSettings, LadderAxis, LadderVolume, LaunchPad, PhysicsSettings,
-    Portal, RespawnMode, RespawnSettings, RuntimeWorld, block_bounds, slot_offset,
+    Portal, RespawnMode, RespawnSettings, RuntimeWorld, SafeZone, block_bounds, slot_offset,
 };
 
 impl Engine {
@@ -143,6 +143,7 @@ impl Engine {
         self.ladders = world.ladders;
         self.checkpoints = world.checkpoints;
         self.hazards = world.hazards;
+        self.safe_zones = world.safe_zones;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = world.spawn;
@@ -153,6 +154,8 @@ impl Engine {
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
         self.player_damage_since_event = 0.0;
+        self.player_heal_since_event = 0.0;
+        self.player_next_heal_event_at = self.elapsed;
         self.player_next_damage_event_at = self.elapsed;
         self.respawn_position = world.spawn;
         self.checkpoint_id.clear();
@@ -257,6 +260,8 @@ impl Engine {
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
         self.player_damage_since_event = 0.0;
+        self.player_heal_since_event = 0.0;
+        self.player_next_heal_event_at = self.elapsed;
         self.player_next_damage_event_at = self.elapsed;
         self.respawn_position = spawn;
         self.checkpoint_id.clear();
@@ -385,6 +390,20 @@ impl Engine {
                         damage_per_second: hazard.damage_per_second.max(0.0),
                     })
                     .collect::<Vec<_>>();
+                let safe_zones = definition
+                    .safe_zones
+                    .iter()
+                    .map(|safe_zone| SafeZone {
+                        id: if safe_zone.id.is_empty() {
+                            "safe-zone".to_owned()
+                        } else {
+                            safe_zone.id.clone()
+                        },
+                        position: safe_zone.position(),
+                        radius: safe_zone.radius.max(0.5),
+                        heal_per_second: safe_zone.heal_per_second.max(0.0),
+                    })
+                    .collect::<Vec<_>>();
                 let portals = definition
                     .portals
                     .iter()
@@ -418,6 +437,7 @@ impl Engine {
                     portals,
                     interactions,
                     hazards,
+                    safe_zones,
                 }
             })
             .collect::<Vec<_>>();

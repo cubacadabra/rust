@@ -46,6 +46,7 @@ pub(crate) struct RuntimeWorld {
     pub(crate) portals: Vec<Portal>,
     pub(crate) interactions: Vec<InteractionZone>,
     pub(crate) hazards: Vec<HazardVolume>,
+    pub(crate) safe_zones: Vec<SafeZone>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -137,6 +138,14 @@ pub(crate) struct HazardVolume {
     pub(crate) kind: String,
     pub(crate) bounds: Aabb,
     pub(crate) damage_per_second: f32,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SafeZone {
+    pub(crate) id: String,
+    pub(crate) position: [f32; 3],
+    pub(crate) radius: f32,
+    pub(crate) heal_per_second: f32,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -141,6 +141,7 @@ impl Engine {
         self.ladders = world.ladders;
         self.checkpoints = world.checkpoints;
         self.hazards = world.hazards;
+        self.safe_zones = world.safe_zones;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = portal.destination_spawn;
@@ -151,6 +152,8 @@ impl Engine {
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
         self.player_damage_since_event = 0.0;
+        self.player_heal_since_event = 0.0;
+        self.player_next_heal_event_at = self.elapsed;
         self.player_next_damage_event_at = self.elapsed;
         self.queue_player_spawn();
         self.respawn_position = portal.destination_spawn;
@@ -184,12 +187,15 @@ impl Engine {
         self.ladders = world.ladders;
         self.checkpoints = world.checkpoints;
         self.hazards = world.hazards;
+        self.safe_zones = world.safe_zones;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.active_world = destination;
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
         self.player_damage_since_event = 0.0;
+        self.player_heal_since_event = 0.0;
+        self.player_next_heal_event_at = self.elapsed;
         self.player_next_damage_event_at = self.elapsed;
         self.queue_player_spawn();
         if let Some(world_id) = self.world_ids.get(destination).cloned() {

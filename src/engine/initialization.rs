@@ -28,6 +28,7 @@ impl Engine {
             ladders: Vec::new(),
             checkpoints: Vec::new(),
             hazards: Vec::new(),
+            safe_zones: Vec::new(),
             respawn_position: [0.0, 0.0, 11.5],
             checkpoint_id: String::new(),
             checkpoint_index: usize::MAX,
@@ -38,7 +39,9 @@ impl Engine {
             player_health: 100.0,
             player_max_health: 100.0,
             player_damage_since_event: 0.0,
+            player_heal_since_event: 0.0,
             player_next_damage_event_at: 0.0,
+            player_next_heal_event_at: 0.0,
             player_events: std::collections::VecDeque::new(),
             build_blocks: Vec::new(),
             launch_pads: vec![

@@ -24,7 +24,7 @@ use crate::types::{
 use crate::ui::UiRuntime;
 use crate::world::{
     Aabb, Checkpoint, HazardVolume, HealthSettings, LadderVolume, LaunchPad, PhysicsSettings,
-    RespawnSettings, RuntimeWorld,
+    RespawnSettings, RuntimeWorld, SafeZone,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
@@ -72,6 +72,7 @@ pub struct Engine {
     pub(crate) ladders: Vec<LadderVolume>,
     pub(crate) checkpoints: Vec<Checkpoint>,
     pub(crate) hazards: Vec<HazardVolume>,
+    pub(crate) safe_zones: Vec<SafeZone>,
     pub(crate) respawn_position: [f32; 3],
     pub(crate) checkpoint_id: String,
     pub(crate) checkpoint_index: usize,
@@ -82,7 +83,9 @@ pub struct Engine {
     pub(crate) player_health: f32,
     pub(crate) player_max_health: f32,
     pub(crate) player_damage_since_event: f32,
+    pub(crate) player_heal_since_event: f32,
     pub(crate) player_next_damage_event_at: f32,
+    pub(crate) player_next_heal_event_at: f32,
     pub(crate) player_events: VecDeque<crate::types::PlayerEvent>,
     pub(crate) build_blocks: Vec<BuildBlock>,
     pub(crate) launch_pads: Vec<LaunchPad>,

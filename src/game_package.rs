@@ -164,6 +164,7 @@ impl GamePackageDefinition {
             ladders: Vec::new(),
             checkpoints: Vec::new(),
             hazards: Vec::new(),
+            safe_zones: Vec::new(),
         };
         std::iter::once(("lobby".to_owned(), lobby))
             .chain(
@@ -223,6 +224,8 @@ pub(crate) struct WorldDefinition {
     pub(crate) checkpoints: Vec<CheckpointDefinition>,
     #[serde(default)]
     pub(crate) hazards: Vec<HazardDefinition>,
+    #[serde(default)]
+    pub(crate) safe_zones: Vec<SafeZoneDefinition>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -238,6 +241,33 @@ pub(crate) struct HazardDefinition {
     pub(crate) size: Vec<f32>,
     #[serde(default)]
     pub(crate) damage_per_second: f32,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SafeZoneDefinition {
+    #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default = "default_safe_zone_radius")]
+    pub(crate) radius: f32,
+    #[serde(default)]
+    pub(crate) heal_per_second: f32,
+}
+
+fn default_safe_zone_radius() -> f32 {
+    5.0
+}
+
+impl SafeZoneDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
+        ]
+    }
 }
 
 fn default_hazard_kind() -> String {

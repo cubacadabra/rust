@@ -126,6 +126,21 @@ spells, treasures, doors, and checkpoints remain entirely in Luau.
 - `ffi.rs` — C/WASM engine entry points
 - `web_renderer.rs` — `wasm-bindgen` wrapper used by the browser
 
+## Game categories
+
+  1. Obby / precision platformer — jumps, ladders, checkpoints, falling.
+  2. Survival / crafting / base defense — gather, manage resources, return to safety, improve the base.
+  3. Exploration / adventure — discover areas, quests, secrets, NPCs.
+  4. Co-op puzzle / escape room — synchronized switches, logic, shared objectives.
+  5. Combat / PvE / PvP — enemies, weapons, abilities, arenas.
+  6. Racing / time trial — laps, checkpoints, timers, ghosts.
+  7. Tycoon / management — production, upgrades, automation.
+  8. Social sandbox / roleplay — shared spaces, identity, emotes, player-driven activities.
+  9. Collection / pets / creature raising — collect, upgrade, care for, trade.
+  10. Round-based party games — short competitive or cooperative mini-games.
+  11. Builder / creative sandbox — place, modify, and collaboratively build.
+  12. RPG / progression adventure — quests, stats, inventory, unlocks.
+
 ## Where to look next
 
 - [web/README.md](../web/README.md) — generated WASM binding, browser shell,
