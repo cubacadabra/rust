@@ -350,6 +350,8 @@ pub(crate) struct WorldSettingsDefinition {
     pub(crate) grid_size: f32,
     #[serde(default = "default_grid_divisions")]
     pub(crate) grid_divisions: usize,
+    #[serde(default = "default_true")]
+    pub(crate) show_grid: bool,
     #[serde(default)]
     pub(crate) spawn: Vec<f32>,
     #[serde(default = "default_true")]
@@ -370,6 +372,7 @@ impl Default for WorldSettingsDefinition {
             ground_size: default_ground_size(),
             grid_size: default_grid_size(),
             grid_divisions: default_grid_divisions(),
+            show_grid: true,
             spawn: vec![0.0, 0.0, 0.0],
             show_spawn_pad: true,
             clouds: Vec::new(),

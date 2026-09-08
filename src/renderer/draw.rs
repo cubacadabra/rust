@@ -382,23 +382,25 @@ impl Renderer {
                 add_billboard(&mut mesh, billboard, world.palette, texture_bounds);
             }
         }
-        let divisions = world.grid_divisions.clamp(1, 128);
-        let half = world.grid_size * 0.5;
-        let grid_step = world.grid_size / divisions as f32;
-        for index in 0..=divisions {
-            let offset = -half + index as f32 * grid_step;
-            add_cuboid(
-                &mut mesh,
-                Vec3::new(offset, world.ground_y + 0.015, 0.0),
-                Vec3::new(0.018, 0.025, world.grid_size),
-                faded(world.palette.grid, 0.34),
-            );
-            add_cuboid(
-                &mut mesh,
-                Vec3::new(0.0, world.ground_y + 0.016, offset),
-                Vec3::new(world.grid_size, 0.026, 0.018),
-                faded(world.palette.grid, 0.34),
-            );
+        if world.show_grid {
+            let divisions = world.grid_divisions.clamp(1, 128);
+            let half = world.grid_size * 0.5;
+            let grid_step = world.grid_size / divisions as f32;
+            for index in 0..=divisions {
+                let offset = -half + index as f32 * grid_step;
+                add_cuboid(
+                    &mut mesh,
+                    Vec3::new(offset, world.ground_y + 0.015, 0.0),
+                    Vec3::new(0.018, 0.025, world.grid_size),
+                    faded(world.palette.grid, 0.34),
+                );
+                add_cuboid(
+                    &mut mesh,
+                    Vec3::new(0.0, world.ground_y + 0.016, offset),
+                    Vec3::new(world.grid_size, 0.026, 0.018),
+                    faded(world.palette.grid, 0.34),
+                );
+            }
         }
         mesh
     }

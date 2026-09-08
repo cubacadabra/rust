@@ -332,6 +332,7 @@ fn resolve_world(
         ground_y: definition.world.physics.ground_y,
         grid_size: definition.world.grid_size.max(1.0),
         grid_divisions: definition.world.grid_divisions,
+        show_grid: definition.world.show_grid,
         spawn: definition.world.spawn(),
         show_spawn_pad: definition.world.show_spawn_pad,
         palette,
