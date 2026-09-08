@@ -369,6 +369,7 @@ fn default_npc_styles() -> Vec<AvatarStyle> {
     let bodies = [
         crate::character::BodyId::Person,
         crate::character::BodyId::Cat,
+        crate::character::BodyId::Wolf,
         crate::character::BodyId::Dragon,
     ];
     [

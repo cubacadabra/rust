@@ -828,7 +828,7 @@ fn blend_face(current: FaceParameters, target: FaceParameters, delta: f32) -> Fa
 fn default_expression(body: BodyId) -> FacePreset {
     match body {
         BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => FacePreset::Happy,
-        BodyId::Cat => FacePreset::Curious,
+        BodyId::Cat | BodyId::Wolf => FacePreset::Curious,
         BodyId::Dragon => FacePreset::Determined,
     }
 }

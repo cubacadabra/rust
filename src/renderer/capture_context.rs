@@ -206,7 +206,7 @@ impl HeadlessContext {
                     use crate::character::BodyId;
                     match entity.body {
                         BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {}
-                        BodyId::Cat => {
+                        BodyId::Cat | BodyId::Wolf => {
                             style.skin = color(0xc98464);
                             style.shirt = color(0xc7542b);
                         }

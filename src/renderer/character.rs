@@ -138,7 +138,7 @@ pub(super) enum Feature {
     Cloth,
 }
 fn camera_anchors(body: BodyId) -> (Vec3, Vec3) {
-    static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 5]> = std::sync::OnceLock::new();
+    static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 6]> = std::sync::OnceLock::new();
     ANCHORS.get_or_init(|| {
         BodyId::ALL.map(|id| {
             let recipe = body_recipe(id);
@@ -154,7 +154,7 @@ pub(super) fn camera_target(body: BodyId) -> Vec3 {
 }
 
 pub(super) fn world_label_height(body: BodyId) -> f32 {
-    static HEIGHTS: std::sync::OnceLock<[f32; 5]> = std::sync::OnceLock::new();
+    static HEIGHTS: std::sync::OnceLock<[f32; 6]> = std::sync::OnceLock::new();
     HEIGHTS.get_or_init(|| {
         BodyId::ALL.map(|id| {
             let recipe = body_recipe(id);
@@ -178,7 +178,7 @@ pub(super) fn world_label_height(body: BodyId) -> f32 {
                 BodyId::Person => head_center + 0.38 + 0.26 * 0.5,
                 BodyId::PersonGirl => head_center + 0.55 + 0.28 * 0.5,
                 BodyId::PersonNonbinary => head_center + 0.45 + 0.26 * 0.5,
-                BodyId::Cat => {
+                BodyId::Cat | BodyId::Wolf => {
                     let ear = recipe.extras.ear_size.unwrap_or(Vec3::ZERO);
                     head_center + 0.46 + ear.y * 0.5 * 0.22_f32.cos() + ear.x * 0.5 * 0.22_f32.sin()
                 }
@@ -990,7 +990,13 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
                     } else {
                         -0.26
                     };
-            let z = 0.40 + progress * if recipe.id == BodyId::Cat { 0.58 } else { 0.86 };
+            let z = 0.40
+                + progress
+                    * if recipe.id == BodyId::Cat {
+                        0.58
+                    } else {
+                        0.86
+                    };
             let tail = Mat4::from_translation(Vec3::new(x, y, z))
                 * Mat4::from_quat(Quat::from_rotation_x(-0.22 + progress * 0.25));
             let size = if recipe.id == BodyId::Cat {

@@ -173,7 +173,7 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
                     BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {
                         OutfitId::EverydayHoodie
                     }
-                    BodyId::Cat => OutfitId::PufferExplorer,
+                    BodyId::Cat | BodyId::Wolf => OutfitId::PufferExplorer,
                     BodyId::Dragon => OutfitId::ToyKnight,
                 },
                 moving: motion.moving,

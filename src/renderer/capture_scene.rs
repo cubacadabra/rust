@@ -255,13 +255,15 @@ pub(super) fn build_scene(
                         crate::character::BodyId::Person
                         | crate::character::BodyId::PersonGirl
                         | crate::character::BodyId::PersonNonbinary => palette.avatar,
-                        crate::character::BodyId::Cat => super::super::AvatarStyle {
-                            skin: color(0xc98464),
-                            shirt: color(0x5f8f78),
-                            pants: color(0x536a90),
-                            shoes: color(0x293a43),
-                            ..super::super::default_player_style()
-                        },
+                        crate::character::BodyId::Cat | crate::character::BodyId::Wolf => {
+                            super::super::AvatarStyle {
+                                skin: color(0xc98464),
+                                shirt: color(0x5f8f78),
+                                pants: color(0x536a90),
+                                shoes: color(0x293a43),
+                                ..super::super::default_player_style()
+                            }
+                        }
                         crate::character::BodyId::Dragon => super::super::AvatarStyle {
                             skin: color(0x82b78f),
                             shirt: color(0x694c88),

@@ -10,15 +10,17 @@ pub(crate) enum BodyId {
     PersonGirl,
     PersonNonbinary,
     Cat,
+    Wolf,
     Dragon,
 }
 
 impl BodyId {
-    pub(crate) const ALL: [Self; 5] = [
+    pub(crate) const ALL: [Self; 6] = [
         Self::Person,
         Self::PersonGirl,
         Self::PersonNonbinary,
         Self::Cat,
+        Self::Wolf,
         Self::Dragon,
     ];
 
@@ -28,6 +30,7 @@ impl BodyId {
             Self::PersonGirl => "cuba:person-girl.v1",
             Self::PersonNonbinary => "cuba:person-nb.v1",
             Self::Cat => "cuba:cat.v1",
+            Self::Wolf => "cuba:wolf.v1",
             Self::Dragon => "cuba:dragon.v1",
         }
     }
@@ -139,7 +142,7 @@ impl OutfitId {
     pub(crate) const fn supported_by(self, body: BodyId) -> bool {
         match self {
             Self::EverydayHoodie | Self::GlossyRaincoat => true,
-            Self::PufferExplorer => matches!(body, BodyId::Cat),
+            Self::PufferExplorer => matches!(body, BodyId::Cat | BodyId::Wolf),
             Self::StarWizard | Self::ToyKnight => matches!(body, BodyId::Dragon),
             Self::FuzzyPajamas => body.is_person(),
         }
@@ -525,7 +528,7 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             set_joint(&mut rig, JointId::LeftFoot, Vec3::new(0.0, -0.29, -0.13));
             set_joint(&mut rig, JointId::RightFoot, Vec3::new(0.0, -0.29, -0.13));
         }
-        BodyId::Cat => {
+        BodyId::Cat | BodyId::Wolf => {
             set_joint(&mut rig, JointId::Torso, Vec3::new(0.0, 1.64, 0.015));
             set_joint(&mut rig, JointId::Head, Vec3::new(0.0, 1.00, -0.015));
             set_joint(
@@ -589,7 +592,7 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             && default_appearance.colors.skin[3] > 0.0
             && !id.stable_id().is_empty()
     );
-    match id {
+    let mut recipe = match id {
         BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {
             let mut torso = BodyPart::new(Vec3::new(0.90, 1.06, 0.66), 0.15);
             torso.taper = (0.80, 1.0);
@@ -616,7 +619,7 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
                 },
             }
         }
-        BodyId::Cat => {
+        BodyId::Cat | BodyId::Wolf => {
             let mut torso = BodyPart::new(Vec3::new(1.04, 0.98, 0.74), 0.17);
             torso.taper = (1.08, 0.82);
             BodyRecipe {
@@ -690,7 +693,22 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
                 },
             }
         }
+    };
+    if id == BodyId::Wolf {
+        // Wolves share the creature rig, but carry a longer muzzle, broader
+        // shoulders, and a lower, fuller tail than the compact cat body.
+        recipe.torso = BodyPart::new(Vec3::new(1.18, 0.94, 0.86), 0.18);
+        recipe.torso.taper = (1.12, 0.86);
+        recipe.head = BodyPart::new(Vec3::new(1.30, 0.86, 0.88), 0.21);
+        recipe.upper_leg = BodyPart::new(Vec3::new(0.54, 0.60, 0.54), 0.14);
+        recipe.lower_leg = BodyPart::new(Vec3::new(0.51, 0.51, 0.50), 0.13);
+        recipe.foot = BodyPart::new(Vec3::new(0.68, 0.30, 0.82), 0.14);
+        recipe.face.muzzle_y = -0.15;
+        recipe.extras.ear_size = Some(Vec3::new(0.30, 0.56, 0.28));
+        recipe.extras.muzzle_size = Some(Vec3::new(0.60, 0.27, 0.34));
+        recipe.extras.tail_segments = 4;
     }
+    recipe
 }
 
 #[cfg(test)]
@@ -713,9 +731,12 @@ mod tests {
     fn species_have_distinct_silhouette_features() {
         let person = body_recipe(BodyId::Person);
         let cat = body_recipe(BodyId::Cat);
+        let wolf = body_recipe(BodyId::Wolf);
         let dragon = body_recipe(BodyId::Dragon);
         assert!(person.extras.ear_size.is_none());
         assert!(cat.extras.ear_size.is_some());
+        assert!(wolf.extras.muzzle_size.unwrap().x > cat.extras.muzzle_size.unwrap().x);
+        assert_ne!(wolf.head.size, cat.head.size);
         assert!(dragon.extras.horns && dragon.extras.wings);
         assert!(cat.head.size.x > person.head.size.x);
         assert!(dragon.torso.size.x > person.torso.size.x);
