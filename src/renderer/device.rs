@@ -475,8 +475,30 @@ impl Renderer {
         // Keep Android on the single-sample compatibility path; Metal and
         // browser backends retain the validated MSAA path.
         let sample_count = super::targets::select_samples(&adapter, !cfg!(target_os = "android"));
-        let pipeline = world_pipeline(&device, &globals_layout, sample_count, false);
-        let translucent_pipeline = world_pipeline(&device, &globals_layout, sample_count, true);
+        let world_texture_layout = world_texture_bind_group_layout(&device);
+        let placeholder_pixel = [255_u8, 255, 255, 255];
+        let world_texture_bind_group = create_world_texture_bind_group(
+            &device,
+            &queue,
+            &world_texture_layout,
+            1,
+            1,
+            &placeholder_pixel,
+        );
+        let pipeline = world_pipeline(
+            &device,
+            &globals_layout,
+            &world_texture_layout,
+            sample_count,
+            false,
+        );
+        let translucent_pipeline = world_pipeline(
+            &device,
+            &globals_layout,
+            &world_texture_layout,
+            sample_count,
+            true,
+        );
         let characters =
             super::character_gpu::CharacterRenderer::new(&device, &globals_layout, sample_count);
         let presenter = super::targets::Presenter::new(&device, format);
@@ -503,6 +525,8 @@ impl Renderer {
             translucent_pipeline,
             globals_buffer,
             globals_bind_group,
+            world_texture_layout,
+            world_texture_bind_group,
             static_vertex_buffer,
             static_vertex_capacity,
             static_vertex_count: 0,
@@ -527,11 +551,50 @@ impl Renderer {
             // select Legacy before their first sync for staged rollout or
             // instant comparison; changing this setting is presentation-only.
             character_render_mode: super::CharacterRenderMode::Magic,
+            package_image_id: None,
             package_generation: 0,
             active_world: usize::MAX,
             worlds: Vec::new(),
             ui_frame: Default::default(),
         }
+    }
+
+    pub(crate) fn set_package_image(
+        &mut self,
+        id: &str,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> bool {
+        const MAX_IMAGE_DIMENSION: u32 = 2048;
+        const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
+        let Some(byte_count) = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|size| size.checked_mul(4))
+        else {
+            return false;
+        };
+        if id.is_empty()
+            || id.len() > 64
+            || width == 0
+            || height == 0
+            || width > MAX_IMAGE_DIMENSION
+            || height > MAX_IMAGE_DIMENSION
+            || byte_count != pixels.len()
+            || byte_count > MAX_IMAGE_BYTES
+        {
+            return false;
+        }
+        self.world_texture_bind_group = create_world_texture_bind_group(
+            &self.device,
+            &self.queue,
+            &self.world_texture_layout,
+            width,
+            height,
+            pixels,
+        );
+        self.package_image_id = Some(id.to_owned());
+        true
     }
 
     pub fn resize(&mut self, width: f32, height: f32) {
@@ -562,9 +625,99 @@ pub(super) fn create_vertex_buffer(device: &wgpu::Device, capacity: usize) -> wg
     })
 }
 
+pub(super) fn world_texture_bind_group_layout(
+    device: &wgpu::Device,
+) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("cubacadabra world image texture layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
+pub(super) fn create_world_texture_bind_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+) -> wgpu::BindGroup {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("cubacadabra game image"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        texture.as_image_copy(),
+        pixels,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(width * 4),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("cubacadabra game image sampler"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+        ..Default::default()
+    });
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("cubacadabra game image bind group"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    })
+}
+
 pub(super) fn world_pipeline(
     device: &wgpu::Device,
     globals_layout: &wgpu::BindGroupLayout,
+    world_texture_layout: &wgpu::BindGroupLayout,
     samples: u32,
     translucent: bool,
 ) -> wgpu::RenderPipeline {
@@ -574,7 +727,7 @@ pub(super) fn world_pipeline(
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("cubacadabra pipeline layout"),
-        bind_group_layouts: &[Some(globals_layout)],
+        bind_group_layouts: &[Some(globals_layout), Some(world_texture_layout)],
         immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

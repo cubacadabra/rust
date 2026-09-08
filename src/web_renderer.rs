@@ -25,6 +25,17 @@ impl WebRenderer {
         self.renderer.resize(width, height);
     }
 
+    pub fn set_package_image(
+        &mut self,
+        id: &str,
+        width: u32,
+        height: u32,
+        pixels: js_sys::Uint8Array,
+    ) -> bool {
+        self.renderer
+            .set_package_image(id, width, height, &pixels.to_vec())
+    }
+
     /// Selects the staged character visual rollout mode: 0 = legacy, 1 =
     /// magic. Invalid values are rejected without changing the current mode.
     pub fn set_appearance_mode(&mut self, mode: u8) -> bool {

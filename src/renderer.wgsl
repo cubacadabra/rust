@@ -8,6 +8,12 @@ struct Globals {
 @group(0) @binding(0)
 var<uniform> globals: Globals;
 
+@group(1) @binding(0)
+var world_texture: texture_2d<f32>;
+
+@group(1) @binding(1)
+var world_sampler: sampler;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -21,6 +27,8 @@ struct VertexOutput {
     @location(0) world_position: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) color: vec4<f32>,
+    @location(3) tex_coords: vec2<f32>,
+    @location(4) image_invert: f32,
 };
 
 @vertex
@@ -30,6 +38,8 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.world_position = input.position;
     output.normal = input.normal;
     output.color = input.color;
+    output.tex_coords = input.tex_coords;
+    output.image_invert = input.image_invert;
     return output;
 }
 
@@ -44,6 +54,10 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let lit_color = input.color.rgb * lighting + vec3<f32>(rim);
     let distance_to_camera = distance(input.world_position, globals.camera_position.xyz);
     let fog = smoothstep(52.0, 115.0, distance_to_camera);
+    if input.image_invert > 0.5 {
+        let image = textureSampleLevel(world_texture, world_sampler, input.tex_coords, 0.0);
+        return vec4<f32>(mix(image.rgb, globals.fog_color.rgb, fog), image.a * input.color.a);
+    }
     return vec4<f32>(mix(lit_color, globals.fog_color.rgb, fog), input.color.a);
 }
 

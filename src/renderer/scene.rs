@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
     AvatarStyle, RenderBlock, RenderCloud, RenderEntity, RenderInteraction, RenderPad,
-    RenderPalette, RenderSign, RenderWorld, Renderer,
+    RenderBillboard, RenderPalette, RenderSign, RenderWorld, Renderer,
 };
 
 #[cfg(target_os = "ios")]
@@ -315,6 +315,17 @@ fn resolve_world(
                 yaw: sign.yaw,
                 max_width: sign.max_width.max(0.2),
                 color: resolve_color(&definition.palette, &sign.color, palette.paper),
+            })
+            .collect(),
+        billboards: definition
+            .billboards
+            .iter()
+            .map(|billboard| RenderBillboard {
+                image: billboard.image.clone(),
+                position: billboard.position(),
+                yaw: billboard.yaw,
+                width: billboard.width.max(0.5),
+                height: billboard.height.max(0.5),
             })
             .collect(),
         interactions: definition

@@ -1,3 +1,101 @@
+fn add_billboard(vertices: &mut Vec<Vertex>, billboard: &RenderBillboard, palette: RenderPalette) {
+    let width = billboard.width.max(0.5);
+    let height = billboard.height.max(0.5);
+    let frame = 0.18_f32.min(width * 0.08).min(height * 0.08);
+    let root = Mat4::from_translation(Vec3::from_array(billboard.position))
+        * Mat4::from_rotation_y(billboard.yaw);
+    let board_depth = 0.22;
+    let board_back = palette.ink;
+
+    add_transformed_cuboid(
+        vertices,
+        root * Mat4::from_translation(Vec3::new(0.0, 0.0, -0.08)),
+        Vec3::new(width + frame * 2.0, height + frame * 2.0, board_depth),
+        board_back,
+    );
+    add_transformed_textured_quad(
+        vertices,
+        root * Mat4::from_translation(Vec3::new(0.0, 0.0, board_depth * 0.5 + 0.012)),
+        width,
+        height,
+    );
+
+    let frame_color = palette.paper;
+    for x in [-width * 0.5 - frame * 0.5, width * 0.5 + frame * 0.5] {
+        add_transformed_cuboid(
+            vertices,
+            root * Mat4::from_translation(Vec3::new(x, 0.0, 0.10)),
+            Vec3::new(frame, height + frame * 2.0, 0.26),
+            frame_color,
+        );
+    }
+    for y in [-height * 0.5 - frame * 0.5, height * 0.5 + frame * 0.5] {
+        add_transformed_cuboid(
+            vertices,
+            root * Mat4::from_translation(Vec3::new(0.0, y, 0.10)),
+            Vec3::new(width, frame, 0.26),
+            frame_color,
+        );
+    }
+
+    let board_bottom = -height * 0.5 - frame;
+    let post_height = (board_bottom + 0.10).max(0.5);
+    add_transformed_cuboid(
+        vertices,
+        root * Mat4::from_translation(Vec3::new(0.0, post_height * 0.5, -0.01)),
+        Vec3::new(0.34, post_height, 0.34),
+        board_back,
+    );
+    add_transformed_cuboid(
+        vertices,
+        root * Mat4::from_translation(Vec3::new(0.0, 0.12, -0.01)),
+        Vec3::new(2.5, 0.24, 0.78),
+        board_back,
+    );
+    add_transformed_cuboid(
+        vertices,
+        root * Mat4::from_translation(Vec3::new(0.0, 0.28, -0.01)),
+        Vec3::new(1.7, 0.12, 0.58),
+        frame_color,
+    );
+}
+
+fn add_transformed_textured_quad(
+    vertices: &mut Vec<Vertex>,
+    transform: Mat4,
+    width: f32,
+    height: f32,
+) {
+    let half_width = width * 0.5;
+    let half_height = height * 0.5;
+    let positions = [
+        Vec3::new(-half_width, -half_height, 0.0),
+        Vec3::new(half_width, -half_height, 0.0),
+        Vec3::new(half_width, half_height, 0.0),
+        Vec3::new(-half_width, half_height, 0.0),
+    ]
+    .map(|position| transform.transform_point3(position));
+    let normal = transform
+        .transform_vector3(Vec3::Z)
+        .normalize_or_zero()
+        .to_array();
+    let vertices_for_quad = [
+        (positions[0], [0.0, 1.0]),
+        (positions[1], [1.0, 1.0]),
+        (positions[2], [1.0, 0.0]),
+        (positions[0], [0.0, 1.0]),
+        (positions[2], [1.0, 0.0]),
+        (positions[3], [0.0, 0.0]),
+    ];
+    vertices.extend(vertices_for_quad.into_iter().map(|(position, tex_coords)| Vertex {
+        position: position.to_array(),
+        normal,
+        color: [1.0, 1.0, 1.0, 1.0],
+        tex_coords,
+        image_invert: 1.0,
+    }));
+}
+
 fn add_spawn_pad(vertices: &mut Vec<Vertex>, origin: Vec3, palette: RenderPalette, elapsed: f32) {
     add_cylinder(
         vertices,

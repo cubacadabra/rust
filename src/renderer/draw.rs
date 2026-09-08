@@ -6,7 +6,7 @@ use super::CharacterRenderMode;
 #[cfg(debug_assertions)]
 use super::add_floor_pixel_text;
 use super::{
-    Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline,
+    Globals, RenderEntity, Renderer, Vertex, add_billboard, add_cloud, add_cuboid, add_cuboid_outline,
     add_launch_pad, add_pixel_text, add_spawn_pad, faded,
 };
 
@@ -235,6 +235,7 @@ impl Renderer {
                 1.0,
             );
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
+            pass.set_bind_group(1, &self.world_texture_bind_group, &[]);
             if self.static_vertex_count > 0 {
                 pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
                 pass.draw(0..self.static_vertex_count as u32, 0..1);
@@ -342,6 +343,15 @@ impl Renderer {
                     0.025,
                     faded(world.palette.paper, 0.22),
                 );
+            }
+        }
+        for billboard in &world.billboards {
+            if self
+                .package_image_id
+                .as_deref()
+                .is_some_and(|image_id| image_id == billboard.image)
+            {
+                add_billboard(&mut mesh, billboard, world.palette);
             }
         }
         let divisions = world.grid_divisions.clamp(1, 128);

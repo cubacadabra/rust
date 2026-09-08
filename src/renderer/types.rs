@@ -30,6 +30,15 @@ pub(super) struct RenderSign {
 }
 
 #[derive(Clone)]
+pub(super) struct RenderBillboard {
+    pub(super) image: String,
+    pub(super) position: [f32; 3],
+    pub(super) yaw: f32,
+    pub(super) width: f32,
+    pub(super) height: f32,
+}
+
+#[derive(Clone)]
 pub(super) struct RenderInteraction {
     pub(super) id: String,
     pub(super) label: String,
@@ -175,6 +184,7 @@ pub(super) struct RenderWorld {
     pub(super) show_spawn_pad: bool,
     pub(super) palette: RenderPalette,
     pub(super) signs: Vec<RenderSign>,
+    pub(super) billboards: Vec<RenderBillboard>,
     pub(super) interactions: Vec<RenderInteraction>,
     pub(super) effect_templates: std::collections::BTreeMap<String, RenderEffectTemplate>,
 }
@@ -192,6 +202,7 @@ impl Default for RenderWorld {
             show_spawn_pad: true,
             palette: RenderPalette::default(),
             signs: Vec::new(),
+            billboards: Vec::new(),
             interactions: Vec::new(),
             effect_templates: std::collections::BTreeMap::new(),
         }
@@ -285,6 +296,8 @@ pub struct Renderer {
     pub(super) translucent_pipeline: wgpu::RenderPipeline,
     pub(super) globals_buffer: wgpu::Buffer,
     pub(super) globals_bind_group: wgpu::BindGroup,
+    pub(super) world_texture_layout: wgpu::BindGroupLayout,
+    pub(super) world_texture_bind_group: wgpu::BindGroup,
     pub(super) static_vertex_buffer: wgpu::Buffer,
     pub(super) static_vertex_capacity: usize,
     pub(super) static_vertex_count: usize,
@@ -306,6 +319,7 @@ pub struct Renderer {
     pub(super) height: f32,
     pub(super) scene: Scene,
     pub(super) character_render_mode: CharacterRenderMode,
+    pub(super) package_image_id: Option<String>,
     pub(super) package_generation: u32,
     pub(super) active_world: usize,
     pub(super) worlds: Vec<RenderWorld>,

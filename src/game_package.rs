@@ -66,6 +66,8 @@ pub(crate) struct GamePackageDefinition {
     #[serde(default)]
     pub(crate) signs: Vec<SignDefinition>,
     #[serde(default)]
+    pub(crate) billboards: Vec<BillboardDefinition>,
+    #[serde(default)]
     pub(crate) worlds: BTreeMap<String, WorldDefinition>,
     #[serde(default)]
     pub(crate) avatars: AvatarSetDefinition,
@@ -121,6 +123,7 @@ impl GamePackageDefinition {
             blocks: self.blocks.clone(),
             portals: self.portals.clone(),
             signs: self.signs.clone(),
+            billboards: self.billboards.clone(),
             interactions: Vec::new(),
         };
         std::iter::once(("lobby".to_owned(), lobby))
@@ -171,6 +174,8 @@ pub(crate) struct WorldDefinition {
     pub(crate) portals: Vec<PortalDefinition>,
     #[serde(default)]
     pub(crate) signs: Vec<SignDefinition>,
+    #[serde(default)]
+    pub(crate) billboards: Vec<BillboardDefinition>,
     #[serde(default)]
     pub(crate) interactions: Vec<InteractionDefinition>,
 }
@@ -397,6 +402,38 @@ pub(crate) struct SignDefinition {
     pub(crate) max_width: f32,
     #[serde(default)]
     pub(crate) color: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BillboardDefinition {
+    pub(crate) image: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default)]
+    pub(crate) yaw: f32,
+    #[serde(default = "default_billboard_width")]
+    pub(crate) width: f32,
+    #[serde(default = "default_billboard_height")]
+    pub(crate) height: f32,
+}
+
+impl BillboardDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
+        ]
+    }
+}
+
+fn default_billboard_width() -> f32 {
+    7.2
+}
+
+fn default_billboard_height() -> f32 {
+    4.05
 }
 
 impl SignDefinition {
