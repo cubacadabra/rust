@@ -146,6 +146,11 @@ pub struct Engine {
     pub(crate) ui_document_buffer: Vec<u8>,
     pub(crate) interactions: interactions::InteractionRuntime,
     pub(crate) effects: EffectRuntime,
+    /// Position delta still being blended after an authoritative movement
+    /// correction. Corrections arrive asynchronously from the world socket;
+    /// applying them over several simulation ticks avoids a visible snap and
+    /// lets local collision remain the final authority for presentation.
+    pub(crate) pending_reconciliation: [f32; 3],
 }
 
 impl Default for Engine {

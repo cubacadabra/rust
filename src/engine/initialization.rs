@@ -104,6 +104,7 @@ impl Engine {
             ui_document_buffer: Vec::new(),
             interactions: crate::engine::interactions::InteractionRuntime::default(),
             effects: crate::effects::EffectRuntime::default(),
+            pending_reconciliation: [0.0; 3],
         };
         engine.write_snapshot();
         engine

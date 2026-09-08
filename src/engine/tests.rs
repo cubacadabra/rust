@@ -80,6 +80,19 @@ fn reconciliation_preserves_orbit_and_zoom() {
 }
 
 #[test]
+fn reconciliation_blends_position_instead_of_snapping() {
+    let mut engine = Engine::new();
+    let original = engine.player.position;
+    engine.reconcile_player([6.0, 0.0, original[2]], 0.5);
+
+    assert_eq!(engine.player.position, original);
+    engine.step(1.0 / 60.0);
+
+    assert!(engine.player.position[0] > original[0]);
+    assert!(engine.player.position[0] < 6.0);
+}
+
+#[test]
 fn zoom_is_reversible_distance_scaled_and_supports_first_person_and_wide_view() {
     let mut engine = Engine::new();
     for delta in [12.0, -12.0] {

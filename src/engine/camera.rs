@@ -20,16 +20,26 @@ impl Engine {
         self.target_camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
     }
 
-    /// Apply a server correction to the locally predicted player. The server
-    /// validates travel distance rather than simulating rigid-body collisions.
+    /// Queue a server correction for the locally predicted player. The server
+    /// validates travel distance rather than simulating rigid-body collisions,
+    /// so applying its position as an immediate snap can fight local obstacle
+    /// collision and look like a random teleport. The player loop blends this
+    /// delta over subsequent ticks instead.
     pub fn reconcile_player(&mut self, position: [f32; 3], yaw: f32) {
-        self.player.position = position;
-        self.player.velocity = [0.0; 3];
-        self.player.grounded = position[1] <= 0.05;
+        for (pending, (&target, &current)) in self
+            .pending_reconciliation
+            .iter_mut()
+            .zip(position.iter().zip(self.player.position.iter()))
+        {
+            if target.is_finite() && current.is_finite() {
+                // Corrections are absolute server positions. Replace the
+                // outstanding delta instead of accumulating stale packets.
+                *pending = target - current;
+            }
+        }
         if yaw.is_finite() {
             self.player.facing_yaw = yaw;
         }
-        self.write_snapshot();
     }
 
     pub fn camera(&self) -> [f32; 3] {

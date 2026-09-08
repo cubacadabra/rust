@@ -144,6 +144,7 @@ impl Engine {
         self.safe_zones = world.safe_zones;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
+        self.pending_reconciliation = [0.0; 3];
         self.player.position = portal.destination_spawn;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
@@ -190,6 +191,7 @@ impl Engine {
         self.safe_zones = world.safe_zones;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
+        self.pending_reconciliation = [0.0; 3];
         self.active_world = destination;
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);

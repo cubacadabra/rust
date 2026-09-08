@@ -146,6 +146,7 @@ impl Engine {
         self.safe_zones = world.safe_zones;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
+        self.pending_reconciliation = [0.0; 3];
         self.player.position = world.spawn;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
@@ -251,6 +252,7 @@ impl Engine {
         self.agents = selected_agents;
         self.launch_pads.clear();
         self.set_interaction_world(Vec::new());
+        self.pending_reconciliation = [0.0; 3];
         self.next_spawn_at = f32::MAX;
         self.player.position = spawn;
         self.player.velocity = [0.0; 3];

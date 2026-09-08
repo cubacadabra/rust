@@ -22,6 +22,7 @@ impl Engine {
             self.input.zoom_delta = 0.0;
             if self.elapsed >= self.player_respawn_at {
                 self.player.position = self.respawn_position;
+                self.pending_reconciliation = [0.0; 3];
                 self.player.velocity = [0.0; 3];
                 self.player.grounded = true;
                 self.player.climbing = false;
@@ -43,6 +44,8 @@ impl Engine {
             }
             return;
         }
+
+        self.apply_pending_reconciliation(delta);
 
         let was_grounded = self.player.grounded;
         let mut forward = self.input.forward.clamp(-1.0, 1.0);
@@ -184,6 +187,44 @@ impl Engine {
             self.player.position[2] = candidate[2];
         } else {
             self.player.velocity[2] = 0.0;
+        }
+    }
+
+    fn apply_pending_reconciliation(&mut self, delta: f32) {
+        let blend = (1.0 - (-18.0 * delta).exp()).clamp(0.0, 1.0);
+        if blend <= 0.0 {
+            return;
+        }
+
+        // Reconcile one horizontal axis at a time through the same occupancy
+        // test used by normal movement. A server that does not simulate this
+        // world's blocks must never pull the local avatar into a wall.
+        for axis in [0usize, 2usize] {
+            let correction = self.pending_reconciliation[axis] * blend;
+            if correction.abs() <= 0.0001 {
+                continue;
+            }
+            let mut candidate = self.player.position;
+            candidate[axis] += correction;
+            if self.player_can_occupy(candidate) {
+                self.player.position[axis] = candidate[axis];
+                self.pending_reconciliation[axis] -= correction;
+            } else {
+                // The local collision model has better information than the
+                // transport correction at this point. Drop this component so
+                // repeated packets cannot pin the player against a wall.
+                self.pending_reconciliation[axis] = 0.0;
+            }
+        }
+
+        let vertical_correction = self.pending_reconciliation[1] * blend;
+        self.player.position[1] += vertical_correction;
+        self.pending_reconciliation[1] -= vertical_correction;
+
+        for pending in &mut self.pending_reconciliation {
+            if pending.abs() < 0.001 {
+                *pending = 0.0;
+            }
         }
     }
 
