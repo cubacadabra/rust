@@ -240,6 +240,8 @@ impl GameScript {
                 cause,
                 checkpoint,
                 deaths,
+                health,
+                max_health,
             } => {
                 value
                     .set("kind", "death")
@@ -253,8 +255,19 @@ impl GameScript {
                 value
                     .set("deaths", *deaths)
                     .map_err(|error| error.to_string())?;
+                value
+                    .set("health", *health)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("maxHealth", *max_health)
+                    .map_err(|error| error.to_string())?;
             }
-            crate::types::PlayerEvent::Respawn { checkpoint, deaths } => {
+            crate::types::PlayerEvent::Respawn {
+                checkpoint,
+                deaths,
+                health,
+                max_health,
+            } => {
                 value
                     .set("kind", "respawn")
                     .map_err(|error| error.to_string())?;
@@ -263,6 +276,34 @@ impl GameScript {
                     .map_err(|error| error.to_string())?;
                 value
                     .set("deaths", *deaths)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("health", *health)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("maxHealth", *max_health)
+                    .map_err(|error| error.to_string())?;
+            }
+            crate::types::PlayerEvent::Damage {
+                source,
+                amount,
+                health,
+                max_health,
+            } => {
+                value
+                    .set("kind", "damage")
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("source", source.as_str())
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("amount", *amount)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("health", *health)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("maxHealth", *max_health)
                     .map_err(|error| error.to_string())?;
             }
         }
@@ -586,6 +627,8 @@ mod tests {
                 cause: "fall".to_owned(),
                 checkpoint: "tower".to_owned(),
                 deaths: 3,
+                health: 0.0,
+                max_health: 100.0,
             })
             .expect("player event callback should run");
         assert_eq!(script.state().borrow().lobby_status, "death:3");

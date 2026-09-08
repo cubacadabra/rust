@@ -4,8 +4,8 @@ use crate::game_package::GamePackageDefinition;
 use crate::math::horizontal_distance;
 use crate::types::{AgentPhase, BuildBlock};
 use crate::world::{
-    Checkpoint, LadderAxis, LadderVolume, LaunchPad, PhysicsSettings, Portal, RuntimeWorld,
-    block_bounds, slot_offset,
+    Checkpoint, HazardVolume, HealthSettings, LadderAxis, LadderVolume, LaunchPad, PhysicsSettings,
+    Portal, RespawnMode, RespawnSettings, RuntimeWorld, block_bounds, slot_offset,
 };
 
 impl Engine {
@@ -138,8 +138,11 @@ impl Engine {
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.physics = world.physics;
+        self.health = world.health;
+        self.respawn = world.respawn;
         self.ladders = world.ladders;
         self.checkpoints = world.checkpoints;
+        self.hazards = world.hazards;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = world.spawn;
@@ -147,6 +150,9 @@ impl Engine {
         self.player.grounded = true;
         self.player.climbing = false;
         self.player_dead = false;
+        self.player_max_health = self.health.max.max(1.0);
+        self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_next_damage_event_at = self.elapsed;
         self.respawn_position = world.spawn;
         self.checkpoint_id.clear();
         self.checkpoint_index = usize::MAX;
@@ -235,6 +241,9 @@ impl Engine {
         self.player.grounded = true;
         self.player.climbing = false;
         self.player_dead = false;
+        self.player_max_health = self.health.max.max(1.0);
+        self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_next_damage_event_at = self.elapsed;
         self.respawn_position = spawn;
         self.checkpoint_id.clear();
         self.checkpoint_index = usize::MAX;
@@ -296,6 +305,27 @@ impl Engine {
                     respawn_delay: definition.world.physics.respawn_delay.max(0.0),
                     climb_speed: definition.world.physics.climb_speed.max(0.0),
                 };
+                let health = HealthSettings {
+                    max: definition.world.health.max.max(1.0),
+                    start: definition
+                        .world
+                        .health
+                        .start
+                        .clamp(0.0, definition.world.health.max.max(1.0)),
+                };
+                let respawn = RespawnSettings {
+                    mode: if definition.world.respawn.mode.eq_ignore_ascii_case("spawn") {
+                        RespawnMode::Spawn
+                    } else {
+                        RespawnMode::Checkpoint
+                    },
+                    delay: definition
+                        .world
+                        .respawn
+                        .delay
+                        .unwrap_or(physics.respawn_delay)
+                        .max(0.0),
+                };
                 let ladders = definition
                     .ladders
                     .iter()
@@ -327,6 +357,20 @@ impl Engine {
                         radius: checkpoint.radius.max(0.2),
                     })
                     .collect::<Vec<_>>();
+                let hazards = definition
+                    .hazards
+                    .iter()
+                    .map(|hazard| HazardVolume {
+                        id: if hazard.id.is_empty() {
+                            "hazard".to_owned()
+                        } else {
+                            hazard.id.clone()
+                        },
+                        kind: hazard.kind.clone(),
+                        bounds: block_bounds(hazard.position(), hazard.size()),
+                        damage_per_second: hazard.damage_per_second.max(0.0),
+                    })
+                    .collect::<Vec<_>>();
                 let portals = definition
                     .portals
                     .iter()
@@ -350,6 +394,8 @@ impl Engine {
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
                     physics,
+                    health,
+                    respawn,
                     launch_pads,
                     launch_destinations,
                     obstacles,
@@ -357,6 +403,7 @@ impl Engine {
                     checkpoints,
                     portals,
                     interactions,
+                    hazards,
                 }
             })
             .collect::<Vec<_>>();

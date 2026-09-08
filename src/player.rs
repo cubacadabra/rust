@@ -3,7 +3,7 @@ use crate::engine::{
     WORLD_LIMIT,
 };
 use crate::math::{Vec2, damp};
-use crate::world::{LadderAxis, overlaps_obstacle};
+use crate::world::{HazardVolume, LadderAxis, RespawnMode, overlaps_obstacle};
 
 #[allow(dead_code)]
 pub(crate) const WALK_CYCLE_DISTANCE: f32 = crate::character::gait::WALK_DISTANCE;
@@ -26,11 +26,16 @@ impl Engine {
                 self.player.grounded = true;
                 self.player.climbing = false;
                 self.player_dead = false;
+                self.player_max_health = self.health.max.max(1.0);
+                self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+                self.player_next_damage_event_at = self.elapsed;
                 self.player_respawn_event_id = self.player_respawn_event_id.wrapping_add(1).max(1);
                 self.player_events
                     .push_back(crate::types::PlayerEvent::Respawn {
                         checkpoint: self.checkpoint_id.clone(),
                         deaths: self.player_deaths,
+                        health: self.player_health,
+                        max_health: self.player_max_health,
                     });
             }
             return;
@@ -251,17 +256,69 @@ impl Engine {
         if self.player.position[1] > self.physics.death_y {
             return;
         }
+        self.kill_player("fall");
+    }
+
+    fn kill_player(&mut self, cause: &str) {
+        if self.player_dead {
+            return;
+        }
         self.player_dead = true;
-        self.player_respawn_at = self.elapsed + self.physics.respawn_delay;
+        self.player_health = 0.0;
+        self.player_respawn_at = self.elapsed + self.respawn.delay;
         self.player_deaths = self.player_deaths.saturating_add(1);
         self.player.velocity = [0.0; 3];
         self.player.climbing = false;
         self.player_events
             .push_back(crate::types::PlayerEvent::Death {
-                cause: "fall".to_owned(),
+                cause: cause.to_owned(),
                 checkpoint: self.checkpoint_id.clone(),
                 deaths: self.player_deaths,
+                health: self.player_health,
+                max_health: self.player_max_health,
             });
+    }
+
+    pub(crate) fn update_hazards(&mut self, delta: f32) {
+        if self.player_dead {
+            return;
+        }
+        let mut damage = 0.0;
+        let mut source = None;
+        let mut instant_kill = false;
+        for hazard in &self.hazards {
+            if !player_overlaps_hazard(self.player.position, hazard) {
+                continue;
+            }
+            source.get_or_insert_with(|| hazard.id.clone());
+            if hazard.kind.eq_ignore_ascii_case("kill") {
+                instant_kill = true;
+                break;
+            }
+            damage += hazard.damage_per_second * delta;
+        }
+        if instant_kill {
+            self.kill_player(source.as_deref().unwrap_or("hazard"));
+            return;
+        }
+        if damage <= 0.0 {
+            return;
+        }
+        let source = source.unwrap_or_else(|| "hazard".to_owned());
+        self.player_health = (self.player_health - damage).max(0.0);
+        if self.elapsed >= self.player_next_damage_event_at || self.player_health <= 0.0 {
+            self.player_next_damage_event_at = self.elapsed + 0.25;
+            self.player_events
+                .push_back(crate::types::PlayerEvent::Damage {
+                    source: source.clone(),
+                    amount: damage,
+                    health: self.player_health,
+                    max_health: self.player_max_health,
+                });
+        }
+        if self.player_health <= 0.0 {
+            self.kill_player(&source);
+        }
     }
 
     pub(crate) fn update_player_checkpoints(&mut self) {
@@ -285,13 +342,21 @@ impl Engine {
         }
         self.checkpoint_id.clone_from(&checkpoint.id);
         self.checkpoint_index = index;
-        self.respawn_position = checkpoint.position;
+        if self.respawn.mode == RespawnMode::Checkpoint {
+            self.respawn_position = checkpoint.position;
+        }
         self.player_events
             .push_back(crate::types::PlayerEvent::Checkpoint {
                 id: checkpoint.id.clone(),
                 position: checkpoint.position,
             });
     }
+}
+
+fn player_overlaps_hazard(position: [f32; 3], hazard: &HazardVolume) -> bool {
+    overlaps_obstacle(position, &hazard.bounds, PLAYER_RADIUS)
+        && position[1] <= hazard.bounds.top
+        && position[1] + BODY_HEIGHT >= hazard.bounds.bottom
 }
 
 fn point_inside_ladder(position: [f32; 3], ladder: &crate::world::LadderVolume) -> bool {

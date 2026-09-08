@@ -36,6 +36,8 @@ pub(crate) struct Portal {
 pub(crate) struct RuntimeWorld {
     pub(crate) spawn: [f32; 3],
     pub(crate) physics: PhysicsSettings,
+    pub(crate) health: HealthSettings,
+    pub(crate) respawn: RespawnSettings,
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) launch_destinations: Vec<Option<usize>>,
     pub(crate) obstacles: Vec<Aabb>,
@@ -43,6 +45,43 @@ pub(crate) struct RuntimeWorld {
     pub(crate) checkpoints: Vec<Checkpoint>,
     pub(crate) portals: Vec<Portal>,
     pub(crate) interactions: Vec<InteractionZone>,
+    pub(crate) hazards: Vec<HazardVolume>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HealthSettings {
+    pub(crate) max: f32,
+    pub(crate) start: f32,
+}
+
+impl Default for HealthSettings {
+    fn default() -> Self {
+        Self {
+            max: 100.0,
+            start: 100.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum RespawnMode {
+    Checkpoint,
+    Spawn,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RespawnSettings {
+    pub(crate) mode: RespawnMode,
+    pub(crate) delay: f32,
+}
+
+impl Default for RespawnSettings {
+    fn default() -> Self {
+        Self {
+            mode: RespawnMode::Checkpoint,
+            delay: 0.55,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -90,6 +129,14 @@ pub(crate) struct Checkpoint {
     pub(crate) id: String,
     pub(crate) position: [f32; 3],
     pub(crate) radius: f32,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct HazardVolume {
+    pub(crate) id: String,
+    pub(crate) kind: String,
+    pub(crate) bounds: Aabb,
+    pub(crate) damage_per_second: f32,
 }
 
 #[derive(Clone, Debug, Default)]

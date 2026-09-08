@@ -64,6 +64,18 @@ fn default_climb_speed() -> f32 {
     4.5
 }
 
+fn default_max_health() -> f32 {
+    100.0
+}
+
+fn default_start_health() -> f32 {
+    100.0
+}
+
+fn default_respawn_mode() -> String {
+    "checkpoint".to_owned()
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GamePackageDefinition {
@@ -151,6 +163,7 @@ impl GamePackageDefinition {
             interactions: Vec::new(),
             ladders: Vec::new(),
             checkpoints: Vec::new(),
+            hazards: Vec::new(),
         };
         std::iter::once(("lobby".to_owned(), lobby))
             .chain(
@@ -208,6 +221,45 @@ pub(crate) struct WorldDefinition {
     pub(crate) ladders: Vec<LadderDefinition>,
     #[serde(default)]
     pub(crate) checkpoints: Vec<CheckpointDefinition>,
+    #[serde(default)]
+    pub(crate) hazards: Vec<HazardDefinition>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HazardDefinition {
+    #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default = "default_hazard_kind")]
+    pub(crate) kind: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default)]
+    pub(crate) size: Vec<f32>,
+    #[serde(default)]
+    pub(crate) damage_per_second: f32,
+}
+
+fn default_hazard_kind() -> String {
+    "damage".to_owned()
+}
+
+impl HazardDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
+        ]
+    }
+
+    pub(crate) fn size(&self) -> [f32; 3] {
+        [
+            self.size.first().copied().unwrap_or(0.0),
+            self.size.get(1).copied().unwrap_or(0.0),
+            self.size.get(2).copied().unwrap_or(0.0),
+        ]
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -255,6 +307,10 @@ pub(crate) struct WorldSettingsDefinition {
     pub(crate) clouds: Vec<CloudDefinition>,
     #[serde(default)]
     pub(crate) physics: PhysicsDefinition,
+    #[serde(default)]
+    pub(crate) health: HealthDefinition,
+    #[serde(default)]
+    pub(crate) respawn: RespawnDefinition,
 }
 
 impl Default for WorldSettingsDefinition {
@@ -267,6 +323,44 @@ impl Default for WorldSettingsDefinition {
             show_spawn_pad: true,
             clouds: Vec::new(),
             physics: PhysicsDefinition::default(),
+            health: HealthDefinition::default(),
+            respawn: RespawnDefinition::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HealthDefinition {
+    #[serde(default = "default_max_health")]
+    pub(crate) max: f32,
+    #[serde(default = "default_start_health")]
+    pub(crate) start: f32,
+}
+
+impl Default for HealthDefinition {
+    fn default() -> Self {
+        Self {
+            max: default_max_health(),
+            start: default_start_health(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RespawnDefinition {
+    #[serde(default = "default_respawn_mode")]
+    pub(crate) mode: String,
+    #[serde(default)]
+    pub(crate) delay: Option<f32>,
+}
+
+impl Default for RespawnDefinition {
+    fn default() -> Self {
+        Self {
+            mode: default_respawn_mode(),
+            delay: None,
         }
     }
 }
@@ -698,6 +792,44 @@ mod tests {
         assert_eq!(lobby.world.clouds[0].position(), [4.0, 5.0, 6.0]);
         assert_eq!(lobby.launch_pads[0].label, "SUN COURT");
         assert!(!lobby.blocks[0].outline);
+    }
+
+    #[test]
+    fn parses_general_survival_rules_without_obby_fields() {
+        let package = GamePackageDefinition::parse(
+            r##"{
+                "startWorld":"survival",
+                "lobby":false,
+                "worlds":{
+                    "survival":{
+                        "world":{
+                            "spawn":[0,1,2],
+                            "health":{"max":75,"start":50},
+                            "respawn":{"mode":"spawn","delay":1.2}
+                        },
+                        "hazards":[{
+                            "id":"deep-water",
+                            "kind":"damage",
+                            "position":[0,0.25,0],
+                            "size":[10,0.5,10],
+                            "damagePerSecond":18
+                        }]
+                    }
+                }
+            }"##,
+        )
+        .expect("survival package should parse");
+        let world = package
+            .world_entries()
+            .into_iter()
+            .find(|(id, _)| id == "survival")
+            .expect("survival world should be present")
+            .1;
+        assert_eq!(world.world.health.max, 75.0);
+        assert_eq!(world.world.health.start, 50.0);
+        assert_eq!(world.world.respawn.mode, "spawn");
+        assert_eq!(world.hazards.len(), 1);
+        assert_eq!(world.hazards[0].damage_per_second, 18.0);
     }
 
     #[test]

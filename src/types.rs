@@ -203,10 +203,20 @@ pub(crate) enum PlayerEvent {
         cause: String,
         checkpoint: String,
         deaths: u32,
+        health: f32,
+        max_health: f32,
     },
     Respawn {
         checkpoint: String,
         deaths: u32,
+        health: f32,
+        max_health: f32,
+    },
+    Damage {
+        source: String,
+        amount: f32,
+        health: f32,
+        max_health: f32,
     },
 }
 

@@ -136,8 +136,11 @@ impl Engine {
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.physics = world.physics;
+        self.health = world.health;
+        self.respawn = world.respawn;
         self.ladders = world.ladders;
         self.checkpoints = world.checkpoints;
+        self.hazards = world.hazards;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.player.position = portal.destination_spawn;
@@ -145,6 +148,9 @@ impl Engine {
         self.player.grounded = true;
         self.player.climbing = false;
         self.player_dead = false;
+        self.player_max_health = self.health.max.max(1.0);
+        self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_next_damage_event_at = self.elapsed;
         self.respawn_position = portal.destination_spawn;
         self.checkpoint_id.clear();
         self.checkpoint_index = usize::MAX;
@@ -171,11 +177,17 @@ impl Engine {
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.physics = world.physics;
+        self.health = world.health;
+        self.respawn = world.respawn;
         self.ladders = world.ladders;
         self.checkpoints = world.checkpoints;
+        self.hazards = world.hazards;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.active_world = destination;
+        self.player_max_health = self.health.max.max(1.0);
+        self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_next_damage_event_at = self.elapsed;
         if let Some(world_id) = self.world_ids.get(destination).cloned() {
             self.ui.borrow_mut().set_world_id(&world_id);
         }

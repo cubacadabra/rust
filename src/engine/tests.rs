@@ -3,7 +3,10 @@ use crate::types::{
     Agent, AgentPhase, CharacterEntityKind, CharacterSupport, Input, LaunchPadPhase,
 };
 use crate::ui::{UiInsets, UiViewport};
-use crate::world::{LadderAxis, LadderVolume, PhysicsSettings, block_bounds};
+use crate::world::{
+    HazardVolume, HealthSettings, LadderAxis, LadderVolume, PhysicsSettings, RespawnMode,
+    RespawnSettings, block_bounds,
+};
 
 #[test]
 fn starts_at_the_spawn_pad() {
@@ -147,6 +150,54 @@ fn void_death_respawns_at_the_active_checkpoint() {
     }
     assert!(respawned);
     assert_eq!(engine.player_respawn_event_id(), 1);
+}
+
+#[test]
+fn damage_hazard_can_kill_and_spawn_respawn_restores_health() {
+    let mut engine = Engine::new();
+    engine.obstacles.clear();
+    engine.base_obstacles.clear();
+    engine.physics.ground_collision = true;
+    engine.physics.ground_y = 0.0;
+    engine.health = HealthSettings {
+        max: 100.0,
+        start: 100.0,
+    };
+    engine.respawn = RespawnSettings {
+        mode: RespawnMode::Spawn,
+        delay: 0.1,
+    };
+    engine.respawn_position = [4.0, 0.0, 4.0];
+    engine.checkpoint_id = "route-marker".to_owned();
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.player.grounded = true;
+    engine.player_health = 100.0;
+    engine.player_max_health = 100.0;
+    engine.hazards = vec![HazardVolume {
+        id: "poison-water".to_owned(),
+        kind: "damage".to_owned(),
+        bounds: block_bounds([0.0, 0.25, 0.0], [6.0, 0.5, 6.0]),
+        damage_per_second: 100.0,
+    }];
+
+    for _ in 0..25 {
+        engine.step(0.05);
+        if engine.player_dead {
+            break;
+        }
+    }
+    assert!(engine.player_dead);
+    assert_eq!(engine.player_health, 0.0);
+
+    for _ in 0..10 {
+        engine.step(0.05);
+        if !engine.player_dead {
+            break;
+        }
+    }
+    assert!(!engine.player_dead);
+    assert_eq!(engine.player.position, [4.0, 0.0, 4.0]);
+    assert_eq!(engine.player_health, 100.0);
 }
 
 #[test]
