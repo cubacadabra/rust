@@ -37,6 +37,7 @@ impl Engine {
             player_deaths: 0,
             player_health: 100.0,
             player_max_health: 100.0,
+            player_damage_since_event: 0.0,
             player_next_damage_event_at: 0.0,
             player_events: std::collections::VecDeque::new(),
             build_blocks: Vec::new(),

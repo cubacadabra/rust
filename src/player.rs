@@ -28,6 +28,7 @@ impl Engine {
                 self.player_dead = false;
                 self.player_max_health = self.health.max.max(1.0);
                 self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+                self.player_damage_since_event = 0.0;
                 self.player_next_damage_event_at = self.elapsed;
                 self.player_respawn_event_id = self.player_respawn_event_id.wrapping_add(1).max(1);
                 self.player_events
@@ -306,15 +307,17 @@ impl Engine {
         }
         let source = source.unwrap_or_else(|| "hazard".to_owned());
         self.player_health = (self.player_health - damage).max(0.0);
+        self.player_damage_since_event += damage;
         if self.elapsed >= self.player_next_damage_event_at || self.player_health <= 0.0 {
             self.player_next_damage_event_at = self.elapsed + 0.25;
             self.player_events
                 .push_back(crate::types::PlayerEvent::Damage {
                     source: source.clone(),
-                    amount: damage,
+                    amount: self.player_damage_since_event,
                     health: self.player_health,
                     max_health: self.player_max_health,
                 });
+            self.player_damage_since_event = 0.0;
         }
         if self.player_health <= 0.0 {
             self.kill_player(&source);

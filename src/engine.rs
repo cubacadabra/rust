@@ -81,6 +81,7 @@ pub struct Engine {
     pub(crate) player_deaths: u32,
     pub(crate) player_health: f32,
     pub(crate) player_max_health: f32,
+    pub(crate) player_damage_since_event: f32,
     pub(crate) player_next_damage_event_at: f32,
     pub(crate) player_events: VecDeque<crate::types::PlayerEvent>,
     pub(crate) build_blocks: Vec<BuildBlock>,

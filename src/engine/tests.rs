@@ -201,6 +201,32 @@ fn damage_hazard_can_kill_and_spawn_respawn_restores_health() {
 }
 
 #[test]
+fn throttled_damage_events_report_accumulated_damage() {
+    let mut engine = Engine::new();
+    engine.hazards = vec![HazardVolume {
+        id: "heat".to_owned(),
+        kind: "damage".to_owned(),
+        bounds: block_bounds([0.0, 0.25, 0.0], [6.0, 0.5, 6.0]),
+        damage_per_second: 100.0,
+    }];
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.player_health = 100.0;
+    engine.player_max_health = 100.0;
+    engine.player_next_damage_event_at = 1.0;
+
+    engine.update_hazards(0.1);
+    engine.update_hazards(0.1);
+    assert!(engine.player_events.is_empty());
+
+    engine.elapsed = 1.0;
+    engine.update_hazards(0.1);
+    assert!(matches!(
+        engine.player_events.pop_front(),
+        Some(crate::types::PlayerEvent::Damage { amount, .. }) if (amount - 30.0).abs() < 0.001
+    ));
+}
+
+#[test]
 fn ladder_converts_forward_motion_into_vertical_climbing() {
     let mut engine = Engine::new();
     engine.physics.ground_collision = false;

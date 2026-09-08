@@ -195,6 +195,11 @@ impl Default for Player {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum PlayerEvent {
+    Spawn {
+        health: f32,
+        max_health: f32,
+        deaths: u32,
+    },
     Checkpoint {
         id: String,
         position: [f32; 3],

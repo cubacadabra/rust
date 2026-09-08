@@ -81,6 +81,8 @@ impl Engine {
                     if let Some(index) = self.world_ids.iter().position(|id| id == &world_id) {
                         self.start_world(index);
                     }
+                } else {
+                    self.queue_player_spawn();
                 }
                 true
             }

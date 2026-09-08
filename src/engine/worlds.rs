@@ -152,14 +152,27 @@ impl Engine {
         self.player_dead = false;
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_damage_since_event = 0.0;
         self.player_next_damage_event_at = self.elapsed;
         self.respawn_position = world.spawn;
         self.checkpoint_id.clear();
         self.checkpoint_index = usize::MAX;
         self.agents.clear();
         self.next_spawn_at = self.elapsed + 3.0;
+        if self.script.is_some() {
+            self.queue_player_spawn();
+        }
         self.write_snapshot();
         true
+    }
+
+    pub(crate) fn queue_player_spawn(&mut self) {
+        self.player_events
+            .push_back(crate::types::PlayerEvent::Spawn {
+                health: self.player_health,
+                max_health: self.player_max_health,
+                deaths: self.player_deaths,
+            });
     }
 
     pub(crate) fn set_build_block_count(&mut self, count: usize) {
@@ -243,6 +256,7 @@ impl Engine {
         self.player_dead = false;
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_damage_since_event = 0.0;
         self.player_next_damage_event_at = self.elapsed;
         self.respawn_position = spawn;
         self.checkpoint_id.clear();

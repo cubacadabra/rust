@@ -219,7 +219,28 @@ impl GameScript {
             return Ok(());
         };
         let value = create_table(&self.lua).map_err(|error| error.to_string())?;
+        value
+            .set("type", "player")
+            .map_err(|error| error.to_string())?;
         match event {
+            crate::types::PlayerEvent::Spawn {
+                health,
+                max_health,
+                deaths,
+            } => {
+                value
+                    .set("kind", "spawn")
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("health", *health)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("maxHealth", *max_health)
+                    .map_err(|error| error.to_string())?;
+                value
+                    .set("deaths", *deaths)
+                    .map_err(|error| error.to_string())?;
+            }
             crate::types::PlayerEvent::Checkpoint { id, position } => {
                 value
                     .set("kind", "checkpoint")
@@ -616,7 +637,7 @@ mod tests {
             r#"
                 local game = {}
                 function game.on_player_event(api, event)
-                    api.lobby:set_status(event.kind .. ":" .. event.deaths)
+                    api.lobby:set_status(event.type .. ":" .. event.kind .. ":" .. event.deaths)
                 end
                 return game
             "#,
@@ -631,7 +652,7 @@ mod tests {
                 max_health: 100.0,
             })
             .expect("player event callback should run");
-        assert_eq!(script.state().borrow().lobby_status, "death:3");
+        assert_eq!(script.state().borrow().lobby_status, "player:death:3");
     }
 
     #[test]

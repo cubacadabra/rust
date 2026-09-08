@@ -150,7 +150,9 @@ impl Engine {
         self.player_dead = false;
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_damage_since_event = 0.0;
         self.player_next_damage_event_at = self.elapsed;
+        self.queue_player_spawn();
         self.respawn_position = portal.destination_spawn;
         self.checkpoint_id.clear();
         self.checkpoint_index = usize::MAX;
@@ -187,7 +189,9 @@ impl Engine {
         self.active_world = destination;
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
+        self.player_damage_since_event = 0.0;
         self.player_next_damage_event_at = self.elapsed;
+        self.queue_player_spawn();
         if let Some(world_id) = self.world_ids.get(destination).cloned() {
             self.ui.borrow_mut().set_world_id(&world_id);
         }
