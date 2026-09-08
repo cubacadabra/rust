@@ -37,7 +37,12 @@ fn add_ladder(vertices: &mut Vec<Vertex>, ladder: &RenderLadder) {
     }
 }
 
-fn add_billboard(vertices: &mut Vec<Vertex>, billboard: &RenderBillboard, palette: RenderPalette) {
+fn add_billboard(
+    vertices: &mut Vec<Vertex>,
+    billboard: &RenderBillboard,
+    palette: RenderPalette,
+    texture_bounds: [f32; 4],
+) {
     let width = billboard.width.max(0.5);
     let height = billboard.height.max(0.5);
     let frame = 0.18_f32.min(width * 0.08).min(height * 0.08);
@@ -57,6 +62,7 @@ fn add_billboard(vertices: &mut Vec<Vertex>, billboard: &RenderBillboard, palett
         root * Mat4::from_translation(Vec3::new(0.0, 0.0, board_depth * 0.5 + 0.012)),
         width,
         height,
+        texture_bounds,
     );
 
     let frame_color = palette.paper;
@@ -104,6 +110,7 @@ fn add_transformed_textured_quad(
     transform: Mat4,
     width: f32,
     height: f32,
+    texture_bounds: [f32; 4],
 ) {
     let half_width = width * 0.5;
     let half_height = height * 0.5;
@@ -132,6 +139,7 @@ fn add_transformed_textured_quad(
         color: [1.0, 1.0, 1.0, 1.0],
         tex_coords,
         image_invert: 1.0,
+        texture_bounds,
     }));
 }
 
@@ -542,22 +550,25 @@ fn add_triangle(
             position: a.to_array(),
             normal,
             color,
-            tex_coords: [0.0, 0.0],
-            image_invert: 0.0,
+        tex_coords: [0.0, 0.0],
+        image_invert: 0.0,
+        texture_bounds: [0.0, 0.0, 1.0, 1.0],
         },
         Vertex {
             position: b.to_array(),
             normal,
             color,
-            tex_coords: [0.0, 0.0],
-            image_invert: 0.0,
+        tex_coords: [0.0, 0.0],
+        image_invert: 0.0,
+        texture_bounds: [0.0, 0.0, 1.0, 1.0],
         },
         Vertex {
             position: c.to_array(),
             normal,
             color,
-            tex_coords: [0.0, 0.0],
-            image_invert: 0.0,
+        tex_coords: [0.0, 0.0],
+        image_invert: 0.0,
+        texture_bounds: [0.0, 0.0, 1.0, 1.0],
         },
     ]);
 }

@@ -154,6 +154,8 @@ impl GamePackageDefinition {
     pub(crate) fn world_entries(&self) -> Vec<(String, WorldDefinition)> {
         let lobby = WorldDefinition {
             palette: self.palette.clone(),
+            materials: BTreeMap::new(),
+            ground_material: None,
             world: self.world.clone(),
             launch_pads: self.launch_pads.clone(),
             blocks: self.blocks.clone(),
@@ -205,6 +207,10 @@ pub(crate) struct WorldDefinition {
     #[serde(default)]
     pub(crate) palette: BTreeMap<String, String>,
     #[serde(default)]
+    pub(crate) materials: BTreeMap<String, MaterialDefinition>,
+    #[serde(default)]
+    pub(crate) ground_material: Option<String>,
+    #[serde(default)]
     pub(crate) world: WorldSettingsDefinition,
     #[serde(default)]
     pub(crate) launch_pads: Vec<LaunchPadDefinition>,
@@ -226,6 +232,21 @@ pub(crate) struct WorldDefinition {
     pub(crate) hazards: Vec<HazardDefinition>,
     #[serde(default)]
     pub(crate) safe_zones: Vec<SafeZoneDefinition>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MaterialDefinition {
+    #[serde(default)]
+    pub(crate) image: String,
+    #[serde(default = "default_material_tile_size")]
+    pub(crate) tile_u: f32,
+    #[serde(default = "default_material_tile_size")]
+    pub(crate) tile_v: f32,
+}
+
+fn default_material_tile_size() -> f32 {
+    8.0
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -565,6 +586,8 @@ pub(crate) struct BlockDefinition {
     pub(crate) size: Vec<f32>,
     #[serde(default)]
     pub(crate) color: String,
+    #[serde(default)]
+    pub(crate) material: Option<String>,
     #[serde(default = "default_true")]
     pub(crate) outline: bool,
 }

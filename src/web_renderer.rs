@@ -36,6 +36,22 @@ impl WebRenderer {
             .set_package_image(id, width, height, &pixels.to_vec())
     }
 
+    pub fn set_package_image_atlas(
+        &mut self,
+        width: u32,
+        height: u32,
+        pixels: js_sys::Uint8Array,
+        regions: &str,
+    ) -> bool {
+        let Ok(regions) =
+            serde_json::from_str::<std::collections::BTreeMap<String, [f32; 4]>>(regions)
+        else {
+            return false;
+        };
+        self.renderer
+            .set_package_image_atlas(width, height, &pixels.to_vec(), regions)
+    }
+
     /// Selects the staged character visual rollout mode: 0 = legacy, 1 =
     /// magic. Invalid values are rejected without changing the current mode.
     pub fn set_appearance_mode(&mut self, mode: u8) -> bool {

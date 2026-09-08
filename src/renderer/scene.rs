@@ -262,7 +262,20 @@ fn resolve_world(
         ink: resolve_color(&definition.palette, "ink", defaults.ink),
         paper: resolve_color(&definition.palette, "paper", defaults.paper),
     };
+    let resolve_material = |id: &str| {
+        definition.materials.get(id).and_then(|material| {
+            (!material.image.is_empty()).then(|| super::RenderMaterial {
+                image: material.image.clone(),
+                tile_u: material.tile_u.max(0.05),
+                tile_v: material.tile_v.max(0.05),
+            })
+        })
+    };
     RenderWorld {
+        ground_material: definition
+            .ground_material
+            .as_deref()
+            .and_then(resolve_material),
         blocks: definition
             .blocks
             .iter()
@@ -270,6 +283,7 @@ fn resolve_world(
                 position: block.position(),
                 size: block.size(),
                 color: resolve_color(&definition.palette, &block.color, super::color(0xffffff)),
+                material: block.material.as_deref().and_then(resolve_material),
                 outline: block.outline,
             })
             .collect(),

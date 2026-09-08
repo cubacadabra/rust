@@ -7,7 +7,8 @@ use super::CharacterRenderMode;
 use super::add_floor_pixel_text;
 use super::{
     Globals, RenderEntity, Renderer, Vertex, add_billboard, add_cloud, add_cuboid,
-    add_cuboid_outline, add_ladder, add_launch_pad, add_pixel_text, add_spawn_pad, faded,
+    add_cuboid_outline, add_ladder, add_launch_pad, add_pixel_text, add_spawn_pad,
+    add_textured_cuboid, faded,
 };
 
 impl Renderer {
@@ -315,12 +316,26 @@ impl Renderer {
     fn build_static_vertices(&self) -> Vec<Vertex> {
         let mut mesh = Vec::with_capacity(16_384);
         let world = &self.scene.world;
-        add_cuboid(
-            &mut mesh,
-            Vec3::new(0.0, world.ground_y - 0.08, 0.0),
-            Vec3::new(world.ground_size, 0.16, world.ground_size),
-            world.palette.ground,
-        );
+        if let Some(material) = world
+            .ground_material
+            .as_ref()
+            .filter(|material| self.package_image_regions.contains_key(&material.image))
+        {
+            add_textured_cuboid(
+                &mut mesh,
+                Vec3::new(0.0, world.ground_y - 0.08, 0.0),
+                Vec3::new(world.ground_size, 0.16, world.ground_size),
+                material,
+                self.package_image_regions[&material.image],
+            );
+        } else {
+            add_cuboid(
+                &mut mesh,
+                Vec3::new(0.0, world.ground_y - 0.08, 0.0),
+                Vec3::new(world.ground_size, 0.16, world.ground_size),
+                world.palette.ground,
+            );
+        }
         add_cuboid_outline(
             &mut mesh,
             Vec3::new(0.0, world.ground_y - 0.08, 0.0),
@@ -329,12 +344,26 @@ impl Renderer {
             faded(world.palette.ground_edge, 0.46),
         );
         for block in &world.blocks {
-            add_cuboid(
-                &mut mesh,
-                Vec3::from_array(block.position),
-                Vec3::from_array(block.size),
-                block.color,
-            );
+            if let Some(material) = block
+                .material
+                .as_ref()
+                .filter(|material| self.package_image_regions.contains_key(&material.image))
+            {
+                add_textured_cuboid(
+                    &mut mesh,
+                    Vec3::from_array(block.position),
+                    Vec3::from_array(block.size),
+                    material,
+                    self.package_image_regions[&material.image],
+                );
+            } else {
+                add_cuboid(
+                    &mut mesh,
+                    Vec3::from_array(block.position),
+                    Vec3::from_array(block.size),
+                    block.color,
+                );
+            }
             if block.outline {
                 add_cuboid_outline(
                     &mut mesh,
@@ -349,12 +378,8 @@ impl Renderer {
             add_ladder(&mut mesh, ladder);
         }
         for billboard in &world.billboards {
-            if self
-                .package_image_id
-                .as_deref()
-                .is_some_and(|image_id| image_id == billboard.image)
-            {
-                add_billboard(&mut mesh, billboard, world.palette);
+            if let Some(&texture_bounds) = self.package_image_regions.get(&billboard.image) {
+                add_billboard(&mut mesh, billboard, world.palette, texture_bounds);
             }
         }
         let divisions = world.grid_divisions.clamp(1, 128);
@@ -786,6 +811,7 @@ mod tests {
                 color: [1.0, 1.0, 1.0, alpha],
                 tex_coords: [0.0; 2],
                 image_invert: 0.0,
+                texture_bounds: [0.0, 0.0, 1.0, 1.0],
             }; 3]
         };
         let mut source = Vec::new();

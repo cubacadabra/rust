@@ -551,7 +551,7 @@ impl Renderer {
             // select Legacy before their first sync for staged rollout or
             // instant comparison; changing this setting is presentation-only.
             character_render_mode: super::CharacterRenderMode::Magic,
-            package_image_id: None,
+            package_image_regions: std::collections::BTreeMap::new(),
             package_generation: 0,
             active_world: usize::MAX,
             worlds: Vec::new(),
@@ -593,7 +593,56 @@ impl Renderer {
             height,
             pixels,
         );
-        self.package_image_id = Some(id.to_owned());
+        self.package_image_regions
+            .insert(id.to_owned(), [0.0, 0.0, 1.0, 1.0]);
+        true
+    }
+
+    pub(crate) fn set_package_image_atlas(
+        &mut self,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+        regions: std::collections::BTreeMap<String, [f32; 4]>,
+    ) -> bool {
+        const MAX_IMAGE_DIMENSION: u32 = 2048;
+        const MAX_IMAGE_BYTES: usize = 16 * 1024 * 1024;
+        let Some(byte_count) = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|size| size.checked_mul(4))
+        else {
+            return false;
+        };
+        if width == 0
+            || height == 0
+            || width > MAX_IMAGE_DIMENSION
+            || height > MAX_IMAGE_DIMENSION
+            || byte_count != pixels.len()
+            || byte_count > MAX_IMAGE_BYTES
+            || regions.len() > 32
+            || regions.iter().any(|(id, bounds)| {
+                id.is_empty()
+                    || id.len() > 64
+                    || bounds
+                        .iter()
+                        .any(|value| !value.is_finite() || *value < 0.0)
+                    || bounds[0] + bounds[2] > 1.0
+                    || bounds[1] + bounds[3] > 1.0
+                    || bounds[2] <= 0.0
+                    || bounds[3] <= 0.0
+            })
+        {
+            return false;
+        }
+        self.world_texture_bind_group = create_world_texture_bind_group(
+            &self.device,
+            &self.queue,
+            &self.world_texture_layout,
+            width,
+            height,
+            pixels,
+        );
+        self.package_image_regions = regions;
         true
     }
 

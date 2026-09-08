@@ -29,6 +29,7 @@ fn add_soft_support_shadow(vertices: &mut Vec<Vertex>, center: Vec3, radius: f32
         ],
         tex_coords: [0.0, 0.0],
         image_invert: 0.0,
+        texture_bounds: [0.0, 0.0, 1.0, 1.0],
     };
     for ring in 0..4 {
         let inner = ring as f32 / 4.0;
@@ -183,6 +184,126 @@ fn add_transformed_cuboid(
         normal(Vec3::NEG_Y),
         color,
     );
+}
+
+fn add_textured_cuboid(
+    vertices: &mut Vec<Vertex>,
+    center: Vec3,
+    size: Vec3,
+    material: &RenderMaterial,
+    texture_bounds: [f32; 4],
+) {
+    let transform = Mat4::from_translation(center);
+    let half = size * 0.5;
+    let corners = [
+        Vec3::new(-half.x, -half.y, -half.z),
+        Vec3::new(half.x, -half.y, -half.z),
+        Vec3::new(half.x, half.y, -half.z),
+        Vec3::new(-half.x, half.y, -half.z),
+        Vec3::new(-half.x, -half.y, half.z),
+        Vec3::new(half.x, -half.y, half.z),
+        Vec3::new(half.x, half.y, half.z),
+        Vec3::new(-half.x, half.y, half.z),
+    ]
+    .map(|corner| transform.transform_point3(corner));
+    let normal = |direction: Vec3| transform.transform_vector3(direction).normalize_or_zero();
+    let uv = |u: f32, v: f32| [u, v];
+    let x_tiles = size.x / material.tile_u;
+    let y_tiles = size.y / material.tile_v;
+    let z_tiles = size.z / material.tile_u;
+
+    add_textured_quad(
+        vertices,
+        corners[0],
+        corners[1],
+        corners[2],
+        corners[3],
+        normal(Vec3::NEG_Z),
+        [uv(0.0, y_tiles), uv(x_tiles, y_tiles), uv(x_tiles, 0.0), uv(0.0, 0.0)],
+        texture_bounds,
+    );
+    add_textured_quad(
+        vertices,
+        corners[5],
+        corners[4],
+        corners[7],
+        corners[6],
+        normal(Vec3::Z),
+        [uv(0.0, y_tiles), uv(z_tiles, y_tiles), uv(z_tiles, 0.0), uv(0.0, 0.0)],
+        texture_bounds,
+    );
+    add_textured_quad(
+        vertices,
+        corners[1],
+        corners[5],
+        corners[6],
+        corners[2],
+        normal(Vec3::X),
+        [uv(0.0, y_tiles), uv(z_tiles, y_tiles), uv(z_tiles, 0.0), uv(0.0, 0.0)],
+        texture_bounds,
+    );
+    add_textured_quad(
+        vertices,
+        corners[4],
+        corners[0],
+        corners[3],
+        corners[7],
+        normal(Vec3::NEG_X),
+        [uv(0.0, y_tiles), uv(z_tiles, y_tiles), uv(z_tiles, 0.0), uv(0.0, 0.0)],
+        texture_bounds,
+    );
+    add_textured_quad(
+        vertices,
+        corners[3],
+        corners[2],
+        corners[6],
+        corners[7],
+        normal(Vec3::Y),
+        [uv(0.0, z_tiles), uv(x_tiles, z_tiles), uv(x_tiles, 0.0), uv(0.0, 0.0)],
+        texture_bounds,
+    );
+    add_textured_quad(
+        vertices,
+        corners[4],
+        corners[5],
+        corners[1],
+        corners[0],
+        normal(Vec3::NEG_Y),
+        [uv(0.0, z_tiles), uv(x_tiles, z_tiles), uv(x_tiles, 0.0), uv(0.0, 0.0)],
+        texture_bounds,
+    );
+}
+
+fn add_textured_quad(
+    vertices: &mut Vec<Vertex>,
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    d: Vec3,
+    normal: Vec3,
+    tex_coords: [[f32; 2]; 4],
+    texture_bounds: [f32; 4],
+) {
+    for (position, tex_coords) in [(a, tex_coords[0]), (b, tex_coords[1]), (c, tex_coords[2])] {
+        vertices.push(Vertex {
+            position: position.to_array(),
+            normal: normal.to_array(),
+            color: [1.0; 4],
+            tex_coords,
+            image_invert: 1.0,
+            texture_bounds,
+        });
+    }
+    for (position, tex_coords) in [(a, tex_coords[0]), (c, tex_coords[2]), (d, tex_coords[3])] {
+        vertices.push(Vertex {
+            position: position.to_array(),
+            normal: normal.to_array(),
+            color: [1.0; 4],
+            tex_coords,
+            image_invert: 1.0,
+            texture_bounds,
+        });
+    }
 }
 
 #[allow(dead_code)]
@@ -349,6 +470,7 @@ fn add_rounded_transformed_cuboid(
             color,
             tex_coords: source.uv,
             image_invert: 0.0,
+            texture_bounds: [0.0, 0.0, 1.0, 1.0],
         });
     }
 }

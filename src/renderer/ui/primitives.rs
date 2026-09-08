@@ -170,6 +170,7 @@ fn add_ui_image_triangle(
             color: [1.0, 1.0, 1.0, opacity],
             tex_coords,
             image_invert: f32::from(invert),
+            texture_bounds: [0.0, 0.0, 1.0, 1.0],
         });
     }
 }
@@ -191,6 +192,7 @@ fn add_ui_tinted_image_triangle(
             color,
             tex_coords,
             image_invert: 0.0,
+            texture_bounds: [0.0, 0.0, 1.0, 1.0],
         });
     }
 }
@@ -212,6 +214,7 @@ fn add_ui_triangle(
             color,
             tex_coords: [-1.0, -1.0],
             image_invert: 0.0,
+            texture_bounds: [0.0, 0.0, 1.0, 1.0],
         });
     }
 }
@@ -231,6 +234,7 @@ fn add_ui_gradient_triangle(
             color,
             tex_coords: [-1.0, -1.0],
             image_invert: 0.0,
+            texture_bounds: [0.0, 0.0, 1.0, 1.0],
         });
     }
 }
@@ -248,4 +252,3 @@ fn faded(mut color: [f32; 4], opacity: f32) -> [f32; 4] {
     color[3] *= opacity;
     color
 }
-

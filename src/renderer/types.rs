@@ -5,7 +5,15 @@ pub(super) struct RenderBlock {
     pub(super) position: [f32; 3],
     pub(super) size: [f32; 3],
     pub(super) color: [f32; 4],
+    pub(super) material: Option<RenderMaterial>,
     pub(super) outline: bool,
+}
+
+#[derive(Clone)]
+pub(super) struct RenderMaterial {
+    pub(super) image: String,
+    pub(super) tile_u: f32,
+    pub(super) tile_v: f32,
 }
 
 #[derive(Clone)]
@@ -183,6 +191,7 @@ pub(super) struct RenderCloud {
 #[derive(Clone)]
 pub(super) struct RenderWorld {
     pub(super) blocks: Vec<RenderBlock>,
+    pub(super) ground_material: Option<RenderMaterial>,
     pub(super) ladders: Vec<RenderLadder>,
     pub(super) pads: Vec<RenderPad>,
     pub(super) clouds: Vec<RenderCloud>,
@@ -203,6 +212,7 @@ impl Default for RenderWorld {
     fn default() -> Self {
         Self {
             blocks: Vec::new(),
+            ground_material: None,
             ladders: Vec::new(),
             pads: Vec::new(),
             clouds: Vec::new(),
@@ -229,6 +239,7 @@ pub(super) struct Vertex {
     pub(super) color: [f32; 4],
     pub(super) tex_coords: [f32; 2],
     pub(super) image_invert: f32,
+    pub(super) texture_bounds: [f32; 4],
 }
 
 impl Vertex {
@@ -240,7 +251,8 @@ impl Vertex {
             1 => Float32x3,
             2 => Float32x4,
             3 => Float32x2,
-            4 => Float32
+            4 => Float32,
+            5 => Float32x4
         ],
     };
 }
@@ -331,7 +343,7 @@ pub struct Renderer {
     pub(super) height: f32,
     pub(super) scene: Scene,
     pub(super) character_render_mode: CharacterRenderMode,
-    pub(super) package_image_id: Option<String>,
+    pub(super) package_image_regions: std::collections::BTreeMap<String, [f32; 4]>,
     pub(super) package_generation: u32,
     pub(super) active_world: usize,
     pub(super) worlds: Vec<RenderWorld>,
