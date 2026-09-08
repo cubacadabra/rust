@@ -170,6 +170,14 @@ impl Engine {
         true
     }
 
+    #[cfg(feature = "studio-network")]
+    pub fn start_world_by_id(&mut self, world_id: &str) -> bool {
+        self.world_ids
+            .iter()
+            .position(|candidate| candidate == world_id)
+            .is_some_and(|index| self.start_world(index))
+    }
+
     pub(crate) fn queue_player_spawn(&mut self) {
         self.player_events
             .push_back(crate::types::PlayerEvent::Spawn {

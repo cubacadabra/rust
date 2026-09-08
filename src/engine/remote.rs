@@ -409,6 +409,16 @@ impl Engine {
         true
     }
 
+    #[cfg(feature = "studio-network")]
+    pub fn studio_reset_remote_session(&mut self) {
+        self.reset_remote_session();
+    }
+
+    #[cfg(feature = "studio-network")]
+    pub fn studio_apply_remote_update_json(&mut self, source: &str) -> bool {
+        self.apply_remote_update_json(source)
+    }
+
     fn apply_remote_appearance(
         &self,
         player: &mut RemotePlayer,

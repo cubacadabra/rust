@@ -120,6 +120,11 @@ impl Engine {
             .is_some_and(|script| script.enqueue_network_message(source))
     }
 
+    #[cfg(feature = "studio-network")]
+    pub fn studio_receive_network_message_json(&mut self, source: &str) -> bool {
+        self.receive_network_message_json(source)
+    }
+
     pub(crate) fn prepare_network_receive_buffer(&mut self, length: usize) -> *mut u8 {
         if length > crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES {
             self.network_receive_buffer.clear();
@@ -155,6 +160,14 @@ impl Engine {
 
     pub(crate) fn network_message(&self) -> &[u8] {
         &self.network_message_buffer
+    }
+
+    #[cfg(feature = "studio-network")]
+    pub fn studio_poll_network_message(&mut self) -> Option<String> {
+        if !self.poll_network_message() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(self.network_message()).into_owned())
     }
 
     pub(crate) fn poll_audio_message(&mut self) -> bool {
