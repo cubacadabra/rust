@@ -1,22 +1,22 @@
+mod camera;
 #[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
 pub(crate) mod capture;
-#[cfg(feature = "dev-showcase")]
-pub(crate) mod validation;
-mod device;
-mod draw;
-mod effects;
 mod character;
-mod camera;
 mod character_gpu;
 mod character_material;
 mod character_quality;
-mod targets;
-mod rounded_geometry;
-mod hero_geometry;
+mod device;
+mod draw;
+mod effects;
 mod hair_geometry;
 mod hero_character;
+mod hero_geometry;
+mod rounded_geometry;
 mod scene;
+mod targets;
 mod ui;
+#[cfg(feature = "dev-showcase")]
+pub(crate) mod validation;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};

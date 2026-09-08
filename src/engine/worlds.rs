@@ -289,7 +289,8 @@ impl Engine {
                         })
                     })
                     .collect::<Vec<_>>();
-                let interactions = InteractionRuntime::from_definitions(&definition.interactions).world;
+                let interactions =
+                    InteractionRuntime::from_definitions(&definition.interactions).world;
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
                     launch_pads,

@@ -106,9 +106,10 @@ pub(crate) fn stable_identity(value: &str) -> u64 {
 pub(crate) fn valid_remote_message(message: &RemoteStateMessage) -> bool {
     message.version == REMOTE_PROTOCOL_VERSION
         && message.sequence > 0
-        && message.world_id.as_deref().is_none_or(|world| {
-            valid_identifier(world, MAX_WORLD_ID_BYTES)
-        })
+        && message
+            .world_id
+            .as_deref()
+            .is_none_or(|world| valid_identifier(world, MAX_WORLD_ID_BYTES))
         && message.players.len() <= crate::engine::MAX_AGENTS
         && message.players.iter().all(valid_remote_player)
 }

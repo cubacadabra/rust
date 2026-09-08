@@ -676,8 +676,8 @@ fn populate(characters: &mut CharacterRenderer, count: usize, phase: f32) {
         };
         let mut style = super::default_player_style();
         style.body = crate::character::BodyId::ALL[index % crate::character::BodyId::ALL.len()];
-        let requested_outfit = crate::character::OutfitId::ALL
-            [index % crate::character::OutfitId::ALL.len()];
+        let requested_outfit =
+            crate::character::OutfitId::ALL[index % crate::character::OutfitId::ALL.len()];
         style.outfit = requested_outfit
             .supported_by(style.body)
             .then_some(requested_outfit)
@@ -686,7 +686,10 @@ fn populate(characters: &mut CharacterRenderer, count: usize, phase: f32) {
         let outfit = style.outfit;
         let walk_cycle = phase + index as f32 * 0.37;
         let pose = crate::character::Pose::locomotion(
-            &crate::character::body_recipe(body).rig, walk_cycle, count > 3, index % 2 == 0,
+            &crate::character::body_recipe(body).rig,
+            walk_cycle,
+            count > 3,
+            index % 2 == 0,
         );
         style.skin = super::color([0xe8ae86, 0xc98464, 0x82b78f][index % 3]);
         style.shirt = super::color([0x2d6663, 0x5f8f78, 0x694c88][index % 3]);

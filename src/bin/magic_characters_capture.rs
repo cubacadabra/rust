@@ -1,9 +1,9 @@
 #[cfg(not(target_arch = "wasm32"))]
 use cubacadabra_engine::dev_showcase::{
-    capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3, capture_phase5_outfits,
-    capture_phase6_report, capture_phase8_rollout, capture_phase9_hero_with_set,
-    capture_phase4_motion_with_mode, CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality,
-    HeroCaptureSet, MotionCaptureMode,
+    CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, HeroCaptureSet,
+    MotionCaptureMode, capture_phase0_baseline, capture_phase2_shape_proof, capture_phase3,
+    capture_phase4_motion_with_mode, capture_phase5_outfits, capture_phase6_report,
+    capture_phase8_rollout, capture_phase9_hero_with_set,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::env;
@@ -81,7 +81,8 @@ fn main() {
         }
     }
 
-    let output = output.unwrap_or_else(|| PathBuf::from(format!("target/character-review/phase{phase}")));
+    let output =
+        output.unwrap_or_else(|| PathBuf::from(format!("target/character-review/phase{phase}")));
     if phase != 9 && capture_set != HeroCaptureSet::Full {
         usage("--capture-set is only supported for Phase 9");
     }

@@ -48,7 +48,8 @@ impl Engine {
             self.player.facing_yaw = self.view_yaw;
         } else if moving {
             let heading = (-direction.x).atan2(-direction.z);
-            let turn = (heading - self.player.facing_yaw).sin()
+            let turn = (heading - self.player.facing_yaw)
+                .sin()
                 .atan2((heading - self.player.facing_yaw).cos());
             self.player.facing_yaw += turn * (1.0 - (-16.0 * delta).exp());
         }
@@ -84,8 +85,8 @@ impl Engine {
         if travelled > 0.0 && self.player.grounded {
             let actual_speed = travelled / delta.max(0.0001);
             let run = crate::character::gait::run_amount(actual_speed);
-            self.player.walk_cycle += travelled / crate::character::gait::cycle_distance(run)
-                * std::f32::consts::TAU;
+            self.player.walk_cycle +=
+                travelled / crate::character::gait::cycle_distance(run) * std::f32::consts::TAU;
         }
         self.player.velocity[1] -= GRAVITY * delta;
         self.move_player_vertically(delta);

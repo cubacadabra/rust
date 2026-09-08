@@ -33,7 +33,10 @@ impl BodyId {
     }
 
     pub(crate) const fn is_person(self) -> bool {
-        matches!(self, Self::Person | Self::PersonGirl | Self::PersonNonbinary)
+        matches!(
+            self,
+            Self::Person | Self::PersonGirl | Self::PersonNonbinary
+        )
     }
 
     pub(crate) fn hair_color(self) -> [f32; 4] {
@@ -92,10 +95,7 @@ pub(crate) const VIBRANT_HOODIE_COLORS: [[f32; 4]; 18] = [
 pub(crate) fn vibrant_hoodie_color(index: usize) -> [f32; 4] {
     // A coprime step gives a shuffled palette order while guaranteeing that
     // the first full palette cycle never repeats a color.
-    let palette_index = index
-        .wrapping_mul(7)
-        .wrapping_add(3)
-        % VIBRANT_HOODIE_COLORS.len();
+    let palette_index = index.wrapping_mul(7).wrapping_add(3) % VIBRANT_HOODIE_COLORS.len();
     VIBRANT_HOODIE_COLORS[palette_index]
 }
 
@@ -508,8 +508,16 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
         BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {
             set_joint(&mut rig, JointId::Torso, Vec3::new(0.0, 1.68, 0.0));
             set_joint(&mut rig, JointId::Head, Vec3::new(0.0, 1.02, 0.0));
-            set_joint(&mut rig, JointId::LeftUpperArm, Vec3::new(-0.59, -0.01, 0.0));
-            set_joint(&mut rig, JointId::RightUpperArm, Vec3::new(0.59, -0.01, 0.0));
+            set_joint(
+                &mut rig,
+                JointId::LeftUpperArm,
+                Vec3::new(-0.59, -0.01, 0.0),
+            );
+            set_joint(
+                &mut rig,
+                JointId::RightUpperArm,
+                Vec3::new(0.59, -0.01, 0.0),
+            );
             set_joint(&mut rig, JointId::LeftUpperLeg, Vec3::new(-0.22, 0.87, 0.0));
             set_joint(&mut rig, JointId::RightUpperLeg, Vec3::new(0.22, 0.87, 0.0));
             set_joint(&mut rig, JointId::LeftLowerLeg, Vec3::new(0.0, -0.53, 0.0));
@@ -520,8 +528,16 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
         BodyId::Cat => {
             set_joint(&mut rig, JointId::Torso, Vec3::new(0.0, 1.64, 0.015));
             set_joint(&mut rig, JointId::Head, Vec3::new(0.0, 1.00, -0.015));
-            set_joint(&mut rig, JointId::LeftUpperArm, Vec3::new(-0.62, -0.03, 0.0));
-            set_joint(&mut rig, JointId::RightUpperArm, Vec3::new(0.62, -0.03, 0.0));
+            set_joint(
+                &mut rig,
+                JointId::LeftUpperArm,
+                Vec3::new(-0.62, -0.03, 0.0),
+            );
+            set_joint(
+                &mut rig,
+                JointId::RightUpperArm,
+                Vec3::new(0.62, -0.03, 0.0),
+            );
             set_joint(&mut rig, JointId::LeftLowerArm, Vec3::new(0.0, -0.54, 0.0));
             set_joint(&mut rig, JointId::RightLowerArm, Vec3::new(0.0, -0.54, 0.0));
             set_joint(&mut rig, JointId::LeftHand, Vec3::new(0.0, -0.45, -0.02));
@@ -540,8 +556,16 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             set_joint(&mut rig, JointId::RightUpperArm, Vec3::new(0.69, 0.07, 0.0));
             set_joint(&mut rig, JointId::LeftHand, Vec3::new(0.0, -0.47, -0.03));
             set_joint(&mut rig, JointId::RightHand, Vec3::new(0.0, -0.47, -0.03));
-            set_joint(&mut rig, JointId::LeftUpperLeg, Vec3::new(-0.31, 0.88, 0.02));
-            set_joint(&mut rig, JointId::RightUpperLeg, Vec3::new(0.31, 0.88, 0.02));
+            set_joint(
+                &mut rig,
+                JointId::LeftUpperLeg,
+                Vec3::new(-0.31, 0.88, 0.02),
+            );
+            set_joint(
+                &mut rig,
+                JointId::RightUpperLeg,
+                Vec3::new(0.31, 0.88, 0.02),
+            );
             set_joint(&mut rig, JointId::LeftLowerLeg, Vec3::new(0.0, -0.55, 0.0));
             set_joint(&mut rig, JointId::RightLowerLeg, Vec3::new(0.0, -0.55, 0.0));
             set_joint(&mut rig, JointId::LeftFoot, Vec3::new(0.0, -0.28, -0.16));
@@ -596,75 +620,75 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
             let mut torso = BodyPart::new(Vec3::new(1.04, 0.98, 0.74), 0.17);
             torso.taper = (1.08, 0.82);
             BodyRecipe {
-            id,
-            rig,
-            torso,
-            head: BodyPart::new(Vec3::new(1.18, 0.82, 0.76), 0.20),
-            upper_arm: BodyPart::new(Vec3::new(0.37, 0.55, 0.43), 0.11),
-            lower_arm: BodyPart::new(Vec3::new(0.36, 0.48, 0.41), 0.11),
-            hand: BodyPart::new(Vec3::new(0.47, 0.30, 0.44), 0.13),
-            upper_leg: BodyPart::new(Vec3::new(0.50, 0.56, 0.50), 0.13),
-            lower_leg: BodyPart::new(Vec3::new(0.48, 0.48, 0.47), 0.12),
-            foot: BodyPart::new(Vec3::new(0.62, 0.29, 0.74), 0.13),
-            face: FaceAnchors {
-                eye_y: 0.11,
-                eye_x: 0.22,
-                eye_size: Vec2::new(0.19, 0.25),
-                eye_tilt: 0.055,
-                face_z: -0.387,
-                brow_y: 0.27,
-                brow_width: 0.20,
-                mouth_y: -0.17,
-                mouth_width: 0.28,
-                muzzle_y: -0.12,
-            },
-            first_person_anchor: Vec3::new(0.0, 2.70, -0.04),
-            third_person_target: Vec3::new(0.0, 1.55, 0.0),
-            extras: SpeciesExtras {
-                ear_size: Some(Vec3::new(0.34, 0.50, 0.30)),
-                muzzle_size: Some(Vec3::new(0.48, 0.24, 0.26)),
-                tail_segments: 3,
-                horns: false,
-                wings: false,
-            },
-        }
+                id,
+                rig,
+                torso,
+                head: BodyPart::new(Vec3::new(1.18, 0.82, 0.76), 0.20),
+                upper_arm: BodyPart::new(Vec3::new(0.37, 0.55, 0.43), 0.11),
+                lower_arm: BodyPart::new(Vec3::new(0.36, 0.48, 0.41), 0.11),
+                hand: BodyPart::new(Vec3::new(0.47, 0.30, 0.44), 0.13),
+                upper_leg: BodyPart::new(Vec3::new(0.50, 0.56, 0.50), 0.13),
+                lower_leg: BodyPart::new(Vec3::new(0.48, 0.48, 0.47), 0.12),
+                foot: BodyPart::new(Vec3::new(0.62, 0.29, 0.74), 0.13),
+                face: FaceAnchors {
+                    eye_y: 0.11,
+                    eye_x: 0.22,
+                    eye_size: Vec2::new(0.19, 0.25),
+                    eye_tilt: 0.055,
+                    face_z: -0.387,
+                    brow_y: 0.27,
+                    brow_width: 0.20,
+                    mouth_y: -0.17,
+                    mouth_width: 0.28,
+                    muzzle_y: -0.12,
+                },
+                first_person_anchor: Vec3::new(0.0, 2.70, -0.04),
+                third_person_target: Vec3::new(0.0, 1.55, 0.0),
+                extras: SpeciesExtras {
+                    ear_size: Some(Vec3::new(0.34, 0.50, 0.30)),
+                    muzzle_size: Some(Vec3::new(0.48, 0.24, 0.26)),
+                    tail_segments: 3,
+                    horns: false,
+                    wings: false,
+                },
+            }
         }
         BodyId::Dragon => {
             let mut torso = BodyPart::new(Vec3::new(1.16, 1.08, 0.84), 0.18);
             torso.taper = (0.92, 1.08);
             BodyRecipe {
-            id,
-            rig,
-            torso,
-            head: BodyPart::new(Vec3::new(1.10, 0.86, 0.92), 0.19),
-            upper_arm: BodyPart::new(Vec3::new(0.40, 0.58, 0.47), 0.12),
-            lower_arm: BodyPart::new(Vec3::new(0.39, 0.53, 0.45), 0.11),
-            hand: BodyPart::new(Vec3::new(0.50, 0.31, 0.47), 0.13),
-            upper_leg: BodyPart::new(Vec3::new(0.54, 0.62, 0.54), 0.13),
-            lower_leg: BodyPart::new(Vec3::new(0.51, 0.51, 0.50), 0.12),
-            foot: BodyPart::new(Vec3::new(0.74, 0.35, 0.98), 0.14),
-            face: FaceAnchors {
-                eye_y: 0.11,
-                eye_x: 0.21,
-                eye_size: Vec2::new(0.20, 0.23),
-                eye_tilt: -0.09,
-                face_z: -0.467,
-                brow_y: 0.27,
-                brow_width: 0.23,
-                mouth_y: -0.16,
-                mouth_width: 0.31,
-                muzzle_y: -0.09,
-            },
-            first_person_anchor: Vec3::new(0.0, 2.74, -0.07),
-            third_person_target: Vec3::new(0.0, 1.62, 0.02),
-            extras: SpeciesExtras {
-                ear_size: None,
-                muzzle_size: Some(Vec3::new(0.56, 0.29, 0.36)),
-                tail_segments: 4,
-                horns: true,
-                wings: true,
-            },
-        }
+                id,
+                rig,
+                torso,
+                head: BodyPart::new(Vec3::new(1.10, 0.86, 0.92), 0.19),
+                upper_arm: BodyPart::new(Vec3::new(0.40, 0.58, 0.47), 0.12),
+                lower_arm: BodyPart::new(Vec3::new(0.39, 0.53, 0.45), 0.11),
+                hand: BodyPart::new(Vec3::new(0.50, 0.31, 0.47), 0.13),
+                upper_leg: BodyPart::new(Vec3::new(0.54, 0.62, 0.54), 0.13),
+                lower_leg: BodyPart::new(Vec3::new(0.51, 0.51, 0.50), 0.12),
+                foot: BodyPart::new(Vec3::new(0.74, 0.35, 0.98), 0.14),
+                face: FaceAnchors {
+                    eye_y: 0.11,
+                    eye_x: 0.21,
+                    eye_size: Vec2::new(0.20, 0.23),
+                    eye_tilt: -0.09,
+                    face_z: -0.467,
+                    brow_y: 0.27,
+                    brow_width: 0.23,
+                    mouth_y: -0.16,
+                    mouth_width: 0.31,
+                    muzzle_y: -0.09,
+                },
+                first_person_anchor: Vec3::new(0.0, 2.74, -0.07),
+                third_person_target: Vec3::new(0.0, 1.62, 0.02),
+                extras: SpeciesExtras {
+                    ear_size: None,
+                    muzzle_size: Some(Vec3::new(0.56, 0.29, 0.36)),
+                    tail_segments: 4,
+                    horns: true,
+                    wings: true,
+                },
+            }
         }
     }
 }
@@ -695,8 +719,18 @@ mod tests {
         assert!(dragon.extras.horns && dragon.extras.wings);
         assert!(cat.head.size.x > person.head.size.x);
         assert!(dragon.torso.size.x > person.torso.size.x);
-        assert!(person.rig.joints[JointId::LeftUpperArm.index()].rest.translation.x.abs()
-            < cat.rig.joints[JointId::LeftUpperArm.index()].rest.translation.x.abs());
+        assert!(
+            person.rig.joints[JointId::LeftUpperArm.index()]
+                .rest
+                .translation
+                .x
+                .abs()
+                < cat.rig.joints[JointId::LeftUpperArm.index()]
+                    .rest
+                    .translation
+                    .x
+                    .abs()
+        );
     }
 
     #[test]

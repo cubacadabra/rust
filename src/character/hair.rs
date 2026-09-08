@@ -34,8 +34,14 @@ pub(crate) struct HairLock {
 }
 
 const SOURCES: [(&str, &str); 2] = [
-    ("ponytail.json", include_str!("../../assets/characters/person/hair/ponytail.json")),
-    ("shag.json", include_str!("../../assets/characters/person/hair/shag.json")),
+    (
+        "ponytail.json",
+        include_str!("../../assets/characters/person/hair/ponytail.json"),
+    ),
+    (
+        "shag.json",
+        include_str!("../../assets/characters/person/hair/shag.json"),
+    ),
 ];
 
 pub(crate) fn for_body(body: BodyId) -> Option<(u8, &'static HairStyle)> {
@@ -86,14 +92,19 @@ fn load(_name: &str, source: &str) -> HairStyle {
     {
         let directory = std::env::var_os("CUBACADABRA_HAIR_DIR")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from(concat!(
-                env!("CARGO_MANIFEST_DIR"), "/assets/characters/person/hair"
-            )));
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/assets/characters/person/hair"
+                ))
+            });
         let path = directory.join(_name);
         match std::fs::read_to_string(&path) {
             Ok(text) => match parse(&text) {
                 Ok(style) => return style,
-                Err(error) => log::warn!("Hair asset {}: {error}; using bundled data", path.display()),
+                Err(error) => {
+                    log::warn!("Hair asset {}: {error}; using bundled data", path.display())
+                }
             },
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
                 log::warn!("Hair asset {}: {error}; using bundled data", path.display());

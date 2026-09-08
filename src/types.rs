@@ -112,7 +112,9 @@ pub(crate) enum CharacterEmote {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) enum CharacterSupport {
-    Grounded { height: f32 },
+    Grounded {
+        height: f32,
+    },
     Airborne,
     #[default]
     Unknown,

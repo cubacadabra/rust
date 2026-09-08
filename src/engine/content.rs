@@ -119,7 +119,8 @@ impl Engine {
         let Some(source) = crate::engine::identity::bounded_utf8(
             &self.network_receive_buffer,
             crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES,
-        ).map(str::to_owned) else {
+        )
+        .map(str::to_owned) else {
             return false;
         };
         self.receive_network_message_json(&source)

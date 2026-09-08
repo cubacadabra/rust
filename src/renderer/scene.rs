@@ -89,10 +89,8 @@ impl Renderer {
         self.scene.agents.clear();
         self.scene.remote_players.clear();
         self.scene.remote_names.clear();
-        self.scene.player_style = style_from_appearance(
-            engine.player_appearance(),
-            self.scene.player_style,
-        );
+        self.scene.player_style =
+            style_from_appearance(engine.player_appearance(), self.scene.player_style);
         let reduced_effects = engine.reduced_effects();
         if self.scene.reduced_effects != reduced_effects {
             // A quality preference is presentation state, but changing it
@@ -134,14 +132,14 @@ impl Renderer {
                 CharacterEntityKind::LocalPlayer => {
                     self.scene.player = render_entity(sample, style, animation)
                 }
-                CharacterEntityKind::LocalNpc => {
-                    self.scene
-                        .agents
-                        .push(render_entity(sample, style, animation))
-                }
-                CharacterEntityKind::RemotePlayer => self.scene.remote_players.push(render_entity(
-                    sample, style, animation,
-                )),
+                CharacterEntityKind::LocalNpc => self
+                    .scene
+                    .agents
+                    .push(render_entity(sample, style, animation)),
+                CharacterEntityKind::RemotePlayer => self
+                    .scene
+                    .remote_players
+                    .push(render_entity(sample, style, animation)),
             }
             if sample.key.kind == CharacterEntityKind::RemotePlayer {
                 let fallback = format!("PLAYER {}", remote_index + 1);
@@ -436,7 +434,9 @@ fn style_from_appearance(appearance: &CharacterAppearance, fallback: AvatarStyle
         pants: appearance.colors.secondary,
         shoes: appearance.colors.sole,
         body: appearance.body,
-        outfit: outfit.then_some(appearance.outfit).unwrap_or(fallback.outfit),
+        outfit: outfit
+            .then_some(appearance.outfit)
+            .unwrap_or(fallback.outfit),
         face: appearance.face,
     }
 }

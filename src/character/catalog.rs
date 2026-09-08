@@ -2,8 +2,8 @@
 
 #![allow(dead_code)]
 
-use super::{BodyId, OutfitId};
 use super::definition::EquipmentSlot;
+use super::{BodyId, OutfitId};
 use serde::Deserialize;
 
 const MAX_TEXTURE_PAYLOAD: u64 = 8 * 1024 * 1024;
@@ -129,13 +129,13 @@ pub(crate) fn validate_catalog(source: &str) -> Result<CatalogValidationReport, 
             ));
         }
         if id.material_family().is_empty()
-            || outfit
-                .occupied_slots
-                .iter()
-                .any(|slot| slot.is_empty())
+            || outfit.occupied_slots.iter().any(|slot| slot.is_empty())
             || outfit.conflicts.iter().any(String::is_empty)
         {
-            return Err(format!("outfit {:?} has empty slot/material metadata", outfit.id));
+            return Err(format!(
+                "outfit {:?} has empty slot/material metadata",
+                outfit.id
+            ));
         }
         for body in &outfit.supported_bodies {
             let body_id = BodyId::from_stable_id(body)
@@ -210,7 +210,13 @@ pub(crate) fn validate_style_examples(
                 .all(|value| value.is_finite() && *value > 0.0)
             || !example.radius.is_finite()
             || example.radius < 0.0
-            || example.radius > example.dimensions.iter().copied().fold(f32::INFINITY, f32::min) * 0.5
+            || example.radius
+                > example
+                    .dimensions
+                    .iter()
+                    .copied()
+                    .fold(f32::INFINITY, f32::min)
+                    * 0.5
             || example.lod.near < example.lod.mid
             || example.lod.mid < example.lod.far
             || example.lod.far == 0

@@ -15,7 +15,8 @@ fn main() {
         .map(PathBuf::from)
         .or_else(|| (!style_examples).then(|| PathBuf::from("assets/characters/catalog.json")));
     if style_examples {
-        let path = path.unwrap_or_else(|| PathBuf::from("assets/characters/soft_cubism_examples.json"));
+        let path =
+            path.unwrap_or_else(|| PathBuf::from("assets/characters/soft_cubism_examples.json"));
         match validate_style_examples(&path) {
             Ok(report) => println!(
                 "valid Phase 8 style examples: schema={} examples={}",

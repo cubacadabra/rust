@@ -22,7 +22,8 @@ impl Engine {
             .as_ref()
             .map(|script| script.take_effect_commands())
             .unwrap_or_default();
-        self.effects.apply(commands, self.elapsed, self.active_world);
+        self.effects
+            .apply(commands, self.elapsed, self.active_world);
     }
 
     pub(super) fn update_launch_pads(&mut self) {

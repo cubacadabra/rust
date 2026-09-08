@@ -1,7 +1,7 @@
-use crate::engine::{DEFAULT_LAUNCH_COUNTDOWN, Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
-use crate::math::Random;
 use crate::character::definition::CharacterAppearance;
 use crate::engine::identity::{STATUS_APPLIED, STATUS_INVALID};
+use crate::engine::{DEFAULT_LAUNCH_COUNTDOWN, Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
+use crate::math::Random;
 use crate::types::{CharacterEmote, CharacterMotionEvent, Input, Player};
 use crate::ui::UiRuntime;
 use crate::world::{LaunchPad, block_bounds};

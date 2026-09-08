@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use super::{create_table, lua, lua_value_to_json, queue_has_capacity, ScriptState};
+use super::{ScriptState, create_table, lua, lua_value_to_json, queue_has_capacity};
 
 pub(super) fn install(
     lua: &lua::Lua,

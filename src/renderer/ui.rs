@@ -45,16 +45,12 @@ pub(super) fn add_world_label(
                         .iter()
                         .find(|glyph| glyph.character == '?')
                 })
-                .map(|glyph| {
-                    glyph.metrics.advance_width * font_size / WORLD_LABEL_FONT_ATLAS_SIZE
-                })
+                .map(|glyph| glyph.metrics.advance_width * font_size / WORLD_LABEL_FONT_ATLAS_SIZE)
                 .unwrap_or(font_size * 0.55)
         })
         .sum::<f32>();
     let available_width = (frame.viewport.width - 8.0).max(1.0);
-    let bubble_width = (text_width + 24.0)
-        .clamp(58.0, 250.0)
-        .min(available_width);
+    let bubble_width = (text_width + 24.0).clamp(58.0, 250.0).min(available_width);
     let bubble_height = (font_size + 13.0).clamp(25.0, 34.0);
     let half_width = bubble_width * 0.5;
     let x = center_x.clamp(half_width + 4.0, frame.viewport.width - half_width - 4.0);
@@ -94,13 +90,7 @@ pub(super) fn add_world_label(
         (tail_center, y + bubble_height + 7.0),
         [0.98, 0.98, 0.94, 0.98],
     );
-    add_rounded_rect(
-        vertices,
-        frame,
-        bubble,
-        10.0,
-        [0.98, 0.98, 0.94, 0.98],
-    );
+    add_rounded_rect(vertices, frame, bubble, 10.0, [0.98, 0.98, 0.94, 0.98]);
     add_world_label_text(
         vertices,
         frame,

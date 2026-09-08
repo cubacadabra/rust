@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::effects::{valid_effect_id, EffectCommand, MAX_EFFECT_COMMANDS};
+use crate::effects::{EffectCommand, MAX_EFFECT_COMMANDS, valid_effect_id};
 
-use super::{create_table, lua, ScriptState};
+use super::{ScriptState, create_table, lua};
 
 pub(super) fn install(
     lua: &lua::Lua,

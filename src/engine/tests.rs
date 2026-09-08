@@ -27,14 +27,19 @@ fn movement_accelerates_in_view_direction() {
 fn idle_orbit_keeps_body_heading_and_holds_view_after_release() {
     let mut engine = Engine::new();
     for _ in 0..120 {
-        engine.set_input(Input { look_x: 12.0, ..Input::default() });
+        engine.set_input(Input {
+            look_x: 12.0,
+            ..Input::default()
+        });
         engine.step(1.0 / 60.0);
         let local = engine.character_motion_samples().next().unwrap();
         assert_eq!(local.facing_yaw, 0.0);
         assert_eq!(local.look_yaw, 0.0);
     }
     let requested = engine.target_yaw;
-    for _ in 0..240 { engine.step(1.0 / 60.0); }
+    for _ in 0..240 {
+        engine.step(1.0 / 60.0);
+    }
     assert!((engine.view_yaw - requested).sin().abs() < 0.001);
     assert_eq!(engine.player.facing_yaw, 0.0);
 }
@@ -43,13 +48,18 @@ fn idle_orbit_keeps_body_heading_and_holds_view_after_release() {
 fn movement_turns_body_and_stop_does_not_snap_to_camera() {
     let mut engine = Engine::new();
     for _ in 0..60 {
-        engine.set_input(Input { strafe: 1.0, ..Input::default() });
+        engine.set_input(Input {
+            strafe: 1.0,
+            ..Input::default()
+        });
         engine.step(1.0 / 60.0);
     }
     let facing = engine.player.facing_yaw;
     assert!((facing + std::f32::consts::FRAC_PI_2).abs() < 0.001);
     engine.set_input(Input::default());
-    for _ in 0..180 { engine.step(1.0 / 60.0); }
+    for _ in 0..180 {
+        engine.step(1.0 / 60.0);
+    }
     assert_eq!(engine.player.facing_yaw, facing);
 }
 
@@ -336,9 +346,8 @@ fn local_appearance_is_atomic_and_revisioned() {
     assert!((engine.player_appearance.colors.primary[0] - 23.0 / 255.0).abs() < 1e-6);
 
     assert_eq!(
-        engine.set_local_appearance_json(
-            r##"{"version":1,"body":"cuba:dragon.v1","revision":1}"##,
-        ),
+        engine
+            .set_local_appearance_json(r##"{"version":1,"body":"cuba:dragon.v1","revision":1}"##,),
         2
     );
     assert_eq!(engine.player_appearance.body, crate::character::BodyId::Cat);
@@ -357,7 +366,9 @@ fn versioned_remote_roster_preserves_identity_through_reorder() {
     let first_samples: Vec<_> = engine.character_motion_samples().collect();
     let alice = first_samples
         .iter()
-        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer && sample.position[0] == 1.0)
+        .find(|sample| {
+            sample.key.kind == CharacterEntityKind::RemotePlayer && sample.position[0] == 1.0
+        })
         .expect("alice sample");
     let alice_identity = alice.key.identity;
     assert_eq!(alice.key.generation, 7);
@@ -378,7 +389,9 @@ fn versioned_remote_roster_preserves_identity_through_reorder() {
     assert!(engine.apply_remote_update_json(second));
     let alice_after = engine
         .character_motion_samples()
-        .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer && sample.position[0] == 3.0)
+        .find(|sample| {
+            sample.key.kind == CharacterEntityKind::RemotePlayer && sample.position[0] == 3.0
+        })
         .expect("reordered alice sample");
     assert_eq!(alice_after.key.identity, alice_identity);
     assert_eq!(alice_after.key.generation, 7);
@@ -618,9 +631,11 @@ fn remote_identity_is_hidden_in_other_world_and_returns_with_same_appearance() {
         .find(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
         .expect("lobby remote");
     assert!(engine.start_world(1));
-    assert!(!engine
-        .character_motion_samples()
-        .any(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer));
+    assert!(
+        !engine
+            .character_motion_samples()
+            .any(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+    );
     assert!(engine.start_world(0));
     let after = engine
         .character_motion_samples()

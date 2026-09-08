@@ -6,13 +6,13 @@
 //! kept out of normal client builds so fixtures cannot change simulation
 //! capacity, public snapshots, or runtime resource lifetime.
 
+use super::character_quality::{
+    CHARACTER_FAR_PLANE, CharacterLod, LOD_FAR_PIXELS, LOD_HYSTERESIS_PIXELS, LOD_NEAR_PIXELS,
+    MAX_EFFECTS, MAX_EFFECTS_PER_CHARACTER,
+};
 use super::{
     DEPTH_FORMAT, Globals, RenderEntity, RenderPalette, Vertex, add_avatar, add_cuboid,
     add_legacy_avatar, color,
-};
-use super::character_quality::{
-    CHARACTER_FAR_PLANE, LOD_FAR_PIXELS, LOD_HYSTERESIS_PIXELS, LOD_NEAR_PIXELS, MAX_EFFECTS,
-    MAX_EFFECTS_PER_CHARACTER, CharacterLod,
 };
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -282,14 +282,29 @@ enum Scenario {
         camera_yaw: f32,
         silhouette: bool,
     },
-    WardrobeLineup { name: &'static str, camera_yaw: f32 },
+    WardrobeLineup {
+        name: &'static str,
+        camera_yaw: f32,
+    },
     MotionLineup,
     MotionMoving,
     MotionMovingRaised,
     HairReview,
-    Hero { name: &'static str, yaw: f32, pitch: f32, distance: f32,
-        study: super::hero_character::Study, silhouette: bool, motion: bool },
-    Orbit { name: &'static str, yaw: f32, pitch: f32, distance: f32 },
+    Hero {
+        name: &'static str,
+        yaw: f32,
+        pitch: f32,
+        distance: f32,
+        study: super::hero_character::Study,
+        silhouette: bool,
+        motion: bool,
+    },
+    Orbit {
+        name: &'static str,
+        yaw: f32,
+        pitch: f32,
+        distance: f32,
+    },
 }
 
 impl Scenario {
@@ -304,7 +319,7 @@ impl Scenario {
             Self::MotionMoving => "motion-moving",
             Self::MotionMovingRaised => "motion-moving-raised",
             Self::HairReview => "hair-review",
-            Self::Hero {name,..} => name,
+            Self::Hero { name, .. } => name,
             Self::Orbit { name, .. } => name,
         }
     }
@@ -334,16 +349,58 @@ const PHASE2_SCENARIOS: [Scenario; 4] = [
 ];
 
 const PHASE5_SCENARIOS: [Scenario; 10] = [
-    Scenario::WardrobeLineup { name: "wardrobe-front", camera_yaw: std::f32::consts::PI },
-    Scenario::WardrobeLineup { name: "wardrobe-three-quarter", camera_yaw: 2.55 },
-    Scenario::WardrobeLineup { name: "wardrobe-side", camera_yaw: std::f32::consts::FRAC_PI_2 },
-    Scenario::WardrobeLineup { name: "wardrobe-back", camera_yaw: 0.0 },
-    Scenario::Orbit { name: "orbit-front-close", yaw: std::f32::consts::PI, pitch: 0.0, distance: 2.3 },
-    Scenario::Orbit { name: "orbit-side-close", yaw: std::f32::consts::FRAC_PI_2, pitch: 0.0, distance: 2.3 },
-    Scenario::Orbit { name: "orbit-front-default", yaw: std::f32::consts::PI, pitch: 0.2, distance: 8.0 },
-    Scenario::Orbit { name: "orbit-overhead-wide", yaw: 2.3, pitch: 1.3, distance: 120.0 },
-    Scenario::Orbit { name: "orbit-first-person-entry", yaw: 1.0, pitch: 0.2, distance: 1.7 },
-    Scenario::Orbit { name: "orbit-first-person", yaw: 1.0, pitch: 0.2, distance: 0.0 },
+    Scenario::WardrobeLineup {
+        name: "wardrobe-front",
+        camera_yaw: std::f32::consts::PI,
+    },
+    Scenario::WardrobeLineup {
+        name: "wardrobe-three-quarter",
+        camera_yaw: 2.55,
+    },
+    Scenario::WardrobeLineup {
+        name: "wardrobe-side",
+        camera_yaw: std::f32::consts::FRAC_PI_2,
+    },
+    Scenario::WardrobeLineup {
+        name: "wardrobe-back",
+        camera_yaw: 0.0,
+    },
+    Scenario::Orbit {
+        name: "orbit-front-close",
+        yaw: std::f32::consts::PI,
+        pitch: 0.0,
+        distance: 2.3,
+    },
+    Scenario::Orbit {
+        name: "orbit-side-close",
+        yaw: std::f32::consts::FRAC_PI_2,
+        pitch: 0.0,
+        distance: 2.3,
+    },
+    Scenario::Orbit {
+        name: "orbit-front-default",
+        yaw: std::f32::consts::PI,
+        pitch: 0.2,
+        distance: 8.0,
+    },
+    Scenario::Orbit {
+        name: "orbit-overhead-wide",
+        yaw: 2.3,
+        pitch: 1.3,
+        distance: 120.0,
+    },
+    Scenario::Orbit {
+        name: "orbit-first-person-entry",
+        yaw: 1.0,
+        pitch: 0.2,
+        distance: 1.7,
+    },
+    Scenario::Orbit {
+        name: "orbit-first-person",
+        yaw: 1.0,
+        pitch: 0.2,
+        distance: 0.0,
+    },
 ];
 
 const PHASE0_SCENARIOS: [Scenario; 15] = [
@@ -638,7 +695,6 @@ pub fn capture_phase8_rollout(
     Ok(report)
 }
 
-
 #[path = "capture_context.rs"]
 mod context;
 #[path = "capture_scene.rs"]
@@ -646,8 +702,8 @@ mod scene;
 use context::HeadlessContext;
 
 mod tests {
-    use super::*;
     use super::scene::{build_scene, crowd_actors, dimensions, world_viewport};
+    use super::*;
 
     #[test]
     fn phase0_dimensions_keep_portrait_world_letterbox() {

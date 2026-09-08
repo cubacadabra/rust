@@ -35,7 +35,12 @@ pub(super) fn android_log(message: impl AsRef<str>) {
     use std::os::raw::{c_char, c_int};
     #[link(name = "log")]
     unsafe extern "C" {
-        fn __android_log_print(priority: c_int, tag: *const c_char, format: *const c_char, ...) -> c_int;
+        fn __android_log_print(
+            priority: c_int,
+            tag: *const c_char,
+            format: *const c_char,
+            ...
+        ) -> c_int;
     }
     let Ok(message) = CString::new(message.as_ref()) else {
         return;
@@ -43,7 +48,12 @@ pub(super) fn android_log(message: impl AsRef<str>) {
     const TAG: &[u8] = b"RustRenderer\0";
     const FORMAT: &[u8] = b"%s\0";
     unsafe {
-        __android_log_print(4, TAG.as_ptr().cast(), FORMAT.as_ptr().cast(), message.as_ptr());
+        __android_log_print(
+            4,
+            TAG.as_ptr().cast(),
+            FORMAT.as_ptr().cast(),
+            message.as_ptr(),
+        );
     }
 }
 
@@ -149,8 +159,7 @@ fn create_ui_texture_atlas(
         for row in 0..height {
             for column in 0..width {
                 let coverage = glyph.bitmap[row * width + column];
-                let index = ((WORLD_LABEL_FONT_ATLAS_Y as usize + row)
-                    * UI_ATLAS_WIDTH as usize
+                let index = ((WORLD_LABEL_FONT_ATLAS_Y as usize + row) * UI_ATLAS_WIDTH as usize
                     + glyph.x as usize
                     + column)
                     * 4;
@@ -328,9 +337,7 @@ impl Renderer {
         device.on_uncaptured_error(Arc::new(|error| {
             android_log(format!("Android wgpu uncaptured error: {error}"));
         }));
-        let renderer = Self::from_parts(
-            surface, adapter, device, queue, width, height, false,
-        );
+        let renderer = Self::from_parts(surface, adapter, device, queue, width, height, false);
         #[cfg(target_os = "android")]
         android_log("Android renderer resources initialized");
         Some(renderer)

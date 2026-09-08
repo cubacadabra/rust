@@ -20,8 +20,8 @@ pub(crate) fn foot_is_planted(phase: f32) -> bool {
 
 pub(crate) use animation::{AnimationOutput, CharacterPresentationState, SecondaryMotion};
 pub(crate) use definition::{
-    AppearanceInput, BodyId, BodyPart, BodyRecipe, CharacterAppearance, CharacterColors,
-    OutfitId, body_recipe, resolve_appearance,
+    AppearanceInput, BodyId, BodyPart, BodyRecipe, CharacterAppearance, CharacterColors, OutfitId,
+    body_recipe, resolve_appearance,
 };
 pub(crate) use face::{FaceParameters, FacePreset};
 pub(crate) use rig::{JointId, Pose};

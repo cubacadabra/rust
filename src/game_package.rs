@@ -616,10 +616,7 @@ mod tests {
             }"##,
         )
         .expect("interaction contract should parse");
-        let interaction = package.world_entries()[1]
-            .1
-            .interactions[0]
-            .clone();
+        let interaction = package.world_entries()[1].1.interactions[0].clone();
         assert_eq!(interaction.kind, "zone");
         assert_eq!(interaction.position(), [-4.0, 0.0, -8.0]);
         assert_eq!(interaction.label, "BLUE BUTTON");

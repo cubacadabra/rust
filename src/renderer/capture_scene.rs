@@ -14,9 +14,9 @@ pub(super) fn build_scene(
     height: u32,
 ) -> (Vec<Vertex>, Vec<RenderEntity>, Globals, [f32; 4]) {
     let mut palette = capture_palette(config.palette);
-    if matches!(scenario,Scenario::Hero {..}) {
-        palette.sky=color(0xf3ece0);
-        palette.ground=color(0xe1d9c9);
+    if matches!(scenario, Scenario::Hero { .. }) {
+        palette.sky = color(0xf3ece0);
+        palette.ground = color(0xe1d9c9);
     }
     let mut vertices = Vec::with_capacity(50 * 10 * 36);
     let mut rounded_mesh_cache = super::super::rounded_geometry::RoundedMeshCache::default();
@@ -36,14 +36,25 @@ pub(super) fn build_scene(
         Scenario::HairReview => {
             vertices.clear();
             palette.sky = color(0xc6d2d1);
-            for (row, body) in [crate::character::BodyId::PersonGirl, crate::character::BodyId::PersonNonbinary].into_iter().enumerate() {
-                for (col, yaw) in [0.0, -std::f32::consts::FRAC_PI_2, std::f32::consts::PI].into_iter().enumerate() {
+            for (row, body) in [
+                crate::character::BodyId::PersonGirl,
+                crate::character::BodyId::PersonNonbinary,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                for (col, yaw) in [0.0, -std::f32::consts::FRAC_PI_2, std::f32::consts::PI]
+                    .into_iter()
+                    .enumerate()
+                {
                     actors.push(RenderEntity {
                         body,
                         position: [2.3 - col as f32 * 2.3, 1.0 - row as f32 * 2.0, 0.0],
                         yaw,
                         pose: CharacterPose::rest(&body_recipe(body).rig),
-                        face: crate::character::FaceParameters::preset(crate::character::FacePreset::Happy),
+                        face: crate::character::FaceParameters::preset(
+                            crate::character::FacePreset::Happy,
+                        ),
                         ..Default::default()
                     });
                 }
@@ -185,13 +196,22 @@ pub(super) fn build_scene(
                 ..Default::default()
             });
         }
-        Scenario::Hero {motion,..} => {
-            let mut actor = if motion {motion::actors(config.pose_time)[0]} else {hero::actor(config.pose_time)};
-            actor.position[0]=0.0;
-            actor.position[2]=0.0;
-            let alpha=0.32/(1.0+actor.position[1].max(0.0)*0.8);
+        Scenario::Hero { motion, .. } => {
+            let mut actor = if motion {
+                motion::actors(config.pose_time)[0]
+            } else {
+                hero::actor(config.pose_time)
+            };
+            actor.position[0] = 0.0;
+            actor.position[2] = 0.0;
+            let alpha = 0.32 / (1.0 + actor.position[1].max(0.0) * 0.8);
             actors.push(actor);
-            super::super::add_soft_support_shadow(&mut vertices,Vec3::new(0.0,0.011,-0.04),0.92,[0.13,0.18,0.16,alpha]);
+            super::super::add_soft_support_shadow(
+                &mut vertices,
+                Vec3::new(0.0, 0.011, -0.04),
+                0.92,
+                [0.13, 0.18, 0.16, alpha],
+            );
         }
     }
     if raised {
@@ -276,7 +296,8 @@ pub(super) fn build_scene(
         Camera::Third => {
             let vertical = (distance * (-0.095_f32).sin()).clamp(-2.0, distance);
             let camera_yaw = match scenario {
-                Scenario::ShapeLineup { camera_yaw, .. } | Scenario::WardrobeLineup { camera_yaw, .. } => camera_yaw,
+                Scenario::ShapeLineup { camera_yaw, .. }
+                | Scenario::WardrobeLineup { camera_yaw, .. } => camera_yaw,
                 Scenario::MotionLineup | Scenario::MotionMoving | Scenario::MotionMovingRaised => {
                     motion::CAMERA_YAW
                 }
@@ -291,19 +312,50 @@ pub(super) fn build_scene(
             (position, target)
         }
     };
-    let (camera_position, look_target) = if let Scenario::Orbit { yaw, pitch, distance, .. } | Scenario::Hero { yaw, pitch, distance, .. } = scenario {
-        super::super::camera::orbit(Vec3::ZERO, crate::character::BodyId::Person, yaw, pitch, distance)
-    } else { (camera_position, look_target) };
+    let (camera_position, look_target) = if let Scenario::Orbit {
+        yaw,
+        pitch,
+        distance,
+        ..
+    }
+    | Scenario::Hero {
+        yaw,
+        pitch,
+        distance,
+        ..
+    } = scenario
+    {
+        super::super::camera::orbit(
+            Vec3::ZERO,
+            crate::character::BodyId::Person,
+            yaw,
+            pitch,
+            distance,
+        )
+    } else {
+        (camera_position, look_target)
+    };
     let aspect = viewport_aspect(width, height);
     let view_projection = Mat4::perspective_rh(62.0_f32.to_radians(), aspect, 0.05, 240.0)
         * Mat4::look_at_rh(camera_position, look_target, Vec3::Y);
     let (camera_position, view_projection) = if matches!(scenario, Scenario::HairReview) {
         let position = Vec3::new(0.0, 3.02, -10.0);
         let half_height = 2.18;
-        let projection = Mat4::orthographic_rh(-half_height * aspect, half_height * aspect,
-            -half_height, half_height, 0.05, 240.0);
-        (position, projection * Mat4::look_at_rh(position, Vec3::new(0.0, 3.02, 0.0), Vec3::Y))
-    } else { (camera_position, view_projection) };
+        let projection = Mat4::orthographic_rh(
+            -half_height * aspect,
+            half_height * aspect,
+            -half_height,
+            half_height,
+            0.05,
+            240.0,
+        );
+        (
+            position,
+            projection * Mat4::look_at_rh(position, Vec3::new(0.0, 3.02, 0.0), Vec3::Y),
+        )
+    } else {
+        (camera_position, view_projection)
+    };
     let globals = Globals {
         view_projection: view_projection.to_cols_array_2d(),
         camera_position: camera_position.extend(1.0).to_array(),

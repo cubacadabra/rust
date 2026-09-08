@@ -1,7 +1,7 @@
 //! Headless GPU setup, rendering, readback, and capture measurement.
 
-use super::*;
 use super::scene::{align_to, build_scene, capture_palette, dimensions, world_viewport, write_png};
+use super::*;
 use crate::character::{Pose as CharacterPose, body_recipe};
 use glam::{Mat4, Vec3};
 use std::path::Path;
@@ -42,7 +42,7 @@ impl HeadlessContext {
         })
         .map_err(|error| format!("headless adapter unavailable: {error}"))?;
         let adapter_info = adapter.get_info();
-        let samples=super::super::targets::select_samples(&adapter,antialias);
+        let samples = super::super::targets::select_samples(&adapter, antialias);
         let limits = wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits());
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("cubacadabra phase 0 capture device"),
@@ -97,7 +97,10 @@ impl HeadlessContext {
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             }),
-            multisample: wgpu::MultisampleState {count:samples,..Default::default()},
+            multisample: wgpu::MultisampleState {
+                count: samples,
+                ..Default::default()
+            },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
                 entry_point: Some("fs_main"),
@@ -135,24 +138,44 @@ impl HeadlessContext {
         let build_started = Instant::now();
         let (vertices, actors, globals, sky) = build_scene(config, scenario, width, height);
         let actor_count = actors.len();
-        let magic = matches!(config.avatar, CaptureAvatar::Magic | CaptureAvatar::Wardrobe);
+        let magic = matches!(
+            config.avatar,
+            CaptureAvatar::Magic | CaptureAvatar::Wardrobe
+        );
         if magic {
             self.characters.head_only = matches!(scenario, Scenario::HairReview);
-            self.characters.hero_study = if let Scenario::Hero {study,..} = scenario {
+            self.characters.hero_study = if let Scenario::Hero { study, .. } = scenario {
                 study
-            } else { super::super::hero_character::Study::Everyday };
+            } else {
+                super::super::hero_character::Study::Everyday
+            };
             self.characters.begin();
             let palette = capture_palette(config.palette);
             for (rank, actor) in actors.iter().enumerate() {
                 let mut entity = *actor;
                 let recipe = body_recipe(entity.body);
-                if !matches!(scenario, Scenario::MotionLineup | Scenario::Hero {..} | Scenario::HairReview) {
+                if !matches!(
+                    scenario,
+                    Scenario::MotionLineup | Scenario::Hero { .. } | Scenario::HairReview
+                ) {
                     entity.secondary.stride_blend = if entity.moving {
-                        if entity.sprinting {1.0} else {6.4/11.5}
-                    } else {0.0};
-                    entity.support = if matches!(scenario, Scenario::Single {pose:Pose::Jump,..}) {
+                        if entity.sprinting { 1.0 } else { 6.4 / 11.5 }
+                    } else {
+                        0.0
+                    };
+                    entity.support = if matches!(
+                        scenario,
+                        Scenario::Single {
+                            pose: Pose::Jump,
+                            ..
+                        }
+                    ) {
                         crate::types::CharacterSupport::Airborne
-                    } else {crate::types::CharacterSupport::Grounded {height:entity.position[1]}};
+                    } else {
+                        crate::types::CharacterSupport::Grounded {
+                            height: entity.position[1],
+                        }
+                    };
                     entity.pose = CharacterPose::locomotion(
                         &recipe.rig,
                         entity.walk_cycle,
@@ -166,15 +189,20 @@ impl HeadlessContext {
                 if matches!(scenario, Scenario::HairReview) {
                     style.skin = if entity.body == crate::character::BodyId::PersonGirl {
                         color(0xefb083)
-                    } else { color(0xc98245) };
+                    } else {
+                        color(0xc98245)
+                    };
                 }
-                if matches!(scenario,Scenario::Hero {..}) {
-                    style.skin=color(0xe1a66d);
-                    style.shirt=color(0x14733e);
-                    style.pants=color(0x243349);
-                    style.shoes=color(0x23563b);
+                if matches!(scenario, Scenario::Hero { .. }) {
+                    style.skin = color(0xe1a66d);
+                    style.shirt = color(0x14733e);
+                    style.pants = color(0x243349);
+                    style.shoes = color(0x23563b);
                 }
-                if matches!(scenario, Scenario::ShapeLineup { .. } | Scenario::MotionLineup) {
+                if matches!(
+                    scenario,
+                    Scenario::ShapeLineup { .. } | Scenario::MotionLineup
+                ) {
                     use crate::character::BodyId;
                     match entity.body {
                         BodyId::Person | BodyId::PersonGirl | BodyId::PersonNonbinary => {}
@@ -200,26 +228,56 @@ impl HeadlessContext {
                         ([0.46, 0.28, 0.18, 1.0], [0.69, 0.47, 0.50, 1.0]),
                     ];
                     (style.skin, style.shirt) = palettes[rank % palettes.len()];
-                    style.pants = if rank == 5 { [0.58, 0.38, 0.46, 1.0] } else { [0.24, 0.31, 0.42, 1.0] };
+                    style.pants = if rank == 5 {
+                        [0.58, 0.38, 0.46, 1.0]
+                    } else {
+                        [0.24, 0.31, 0.42, 1.0]
+                    };
                     style.shoes = [0.18, 0.22, 0.28, 1.0];
-                    entity.face = crate::character::FaceParameters::preset(crate::character::FacePreset::Happy);
+                    entity.face = crate::character::FaceParameters::preset(
+                        crate::character::FacePreset::Happy,
+                    );
                 }
-                let lod = if let Scenario::Orbit { yaw, pitch, distance, .. } | Scenario::Hero { yaw, pitch, distance, .. } = scenario {
-                    let (position, target) = super::super::camera::orbit(Vec3::ZERO, entity.body, yaw, pitch, distance);
+                let lod = if let Scenario::Orbit {
+                    yaw,
+                    pitch,
+                    distance,
+                    ..
+                }
+                | Scenario::Hero {
+                    yaw,
+                    pitch,
+                    distance,
+                    ..
+                } = scenario
+                {
+                    let (position, target) =
+                        super::super::camera::orbit(Vec3::ZERO, entity.body, yaw, pitch, distance);
                     let view = Mat4::look_at_rh(position, target, Vec3::Y);
                     super::super::character_quality::select_lod(
-                        super::super::character_quality::projected_height(entity, view, viewport[3] as f32), None)
-                } else { CharacterLod::Mid };
-                self.characters.add_with_quality(
-                    entity,
-                    style,
-                    palette.ink,
-                    lod,
-                    rank,
-                    false,
-                );
+                        super::super::character_quality::projected_height(
+                            entity,
+                            view,
+                            viewport[3] as f32,
+                        ),
+                        None,
+                    )
+                } else {
+                    CharacterLod::Mid
+                };
+                self.characters
+                    .add_with_quality(entity, style, palette.ink, lod, rank, false);
             }
-            if matches!(scenario, Scenario::ShapeLineup { silhouette: true, .. } | Scenario::Hero {silhouette:true,..}) {
+            if matches!(
+                scenario,
+                Scenario::ShapeLineup {
+                    silhouette: true,
+                    ..
+                } | Scenario::Hero {
+                    silhouette: true,
+                    ..
+                }
+            ) {
                 self.characters.make_silhouette();
             }
             self.characters.upload(&self.queue);
@@ -263,12 +321,24 @@ impl HeadlessContext {
             view_formats: &[],
         });
         let color_view = color_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let multisample_view = (self.samples>1).then(|| self.device.create_texture(&wgpu::TextureDescriptor {
-            label:Some("hero multisample color"),
-            size:wgpu::Extent3d {width,height,depth_or_array_layers:1},mip_level_count:1,
-            sample_count:self.samples,dimension:wgpu::TextureDimension::D2,
-            format:wgpu::TextureFormat::Rgba8Unorm,usage:wgpu::TextureUsages::RENDER_ATTACHMENT,view_formats:&[],
-        }).create_view(&wgpu::TextureViewDescriptor::default()));
+        let multisample_view = (self.samples > 1).then(|| {
+            self.device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some("hero multisample color"),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: self.samples,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                })
+                .create_view(&wgpu::TextureViewDescriptor::default())
+        });
         let depth_view = self
             .device
             .create_texture(&wgpu::TextureDescriptor {
@@ -308,7 +378,7 @@ impl HeadlessContext {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: multisample_view.as_ref().unwrap_or(&color_view),
                     depth_slice: None,
-                    resolve_target: multisample_view.as_ref().map(|_|&color_view),
+                    resolve_target: multisample_view.as_ref().map(|_| &color_view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: sky[0] as f64,
@@ -346,9 +416,18 @@ impl HeadlessContext {
                 pass.draw(0..vertices.len() as u32, 0..1);
             }
             if magic {
-                self.characters.draw(&mut pass, super::super::character_material::CharacterPass::Opaque);
-                self.characters.draw(&mut pass, super::super::character_material::CharacterPass::Face);
-                self.characters.draw(&mut pass, super::super::character_material::CharacterPass::Effect);
+                self.characters.draw(
+                    &mut pass,
+                    super::super::character_material::CharacterPass::Opaque,
+                );
+                self.characters.draw(
+                    &mut pass,
+                    super::super::character_material::CharacterPass::Face,
+                );
+                self.characters.draw(
+                    &mut pass,
+                    super::super::character_material::CharacterPass::Effect,
+                );
             }
         }
         encoder.copy_texture_to_buffer(
@@ -400,16 +479,32 @@ impl HeadlessContext {
             image: file_name,
             width,
             height,
-            sample_count:self.samples,
+            sample_count: self.samples,
             world_viewport: viewport,
             actor_count,
             vertex_count: vertices.len()
-                + if magic { self.characters.stats.triangles * 3 } else { 0 },
+                + if magic {
+                    self.characters.stats.triangles * 3
+                } else {
+                    0
+                },
             triangle_count: vertices.len() / 3
-                + if magic { self.characters.stats.triangles } else { 0 },
+                + if magic {
+                    self.characters.stats.triangles
+                } else {
+                    0
+                },
             render_mode: if magic { "magic" } else { "legacy" },
-            character_draws: if magic { self.characters.stats.draws } else { 0 },
-            character_instances: if magic { self.characters.stats.instances } else { 0 },
+            character_draws: if magic {
+                self.characters.stats.draws
+            } else {
+                0
+            },
+            character_instances: if magic {
+                self.characters.stats.instances
+            } else {
+                0
+            },
             character_mesh_uploads: if magic {
                 self.characters.stats.mesh_uploads
             } else {
@@ -421,10 +516,20 @@ impl HeadlessContext {
                 0
             },
             estimated_vertex_upload_bytes: vertex_upload_bytes
-                + if magic { self.characters.stats.upload_bytes } else { 0 },
+                + if magic {
+                    self.characters.stats.upload_bytes
+                } else {
+                    0
+                },
             estimated_resource_bytes: vertex_upload_bytes
                 + readback_size as usize
-                + width as usize * height as usize * if self.samples>1 {4+8*self.samples as usize} else {8}
+                + width as usize
+                    * height as usize
+                    * if self.samples > 1 {
+                        4 + 8 * self.samples as usize
+                    } else {
+                        8
+                    }
                 + if magic {
                     self.characters.stats.resident_bytes
                 } else {

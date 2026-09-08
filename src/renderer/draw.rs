@@ -2,13 +2,13 @@ use super::character_material::CharacterPass;
 use super::character_quality;
 use glam::{Mat4, Vec3};
 
+use super::CharacterRenderMode;
+#[cfg(debug_assertions)]
+use super::add_floor_pixel_text;
 use super::{
     Globals, RenderEntity, Renderer, Vertex, add_cloud, add_cuboid, add_cuboid_outline,
     add_launch_pad, add_pixel_text, add_spawn_pad, faded,
 };
-#[cfg(debug_assertions)]
-use super::add_floor_pixel_text;
-use super::CharacterRenderMode;
 
 impl Renderer {
     pub fn draw(&mut self) {
@@ -50,19 +50,18 @@ impl Renderer {
             &mut self.translucent_vertices,
         );
         sort_translucent(&mut self.translucent_vertices, camera_position, target);
-        let dynamic_count = self.opaque_vertices.len()
-            + shadow_vertices.len()
-            + self.translucent_vertices.len();
+        let dynamic_count =
+            self.opaque_vertices.len() + shadow_vertices.len() + self.translucent_vertices.len();
         let magic_mode = self.character_render_mode == CharacterRenderMode::Magic;
         self.characters.begin();
         let character_ink = self.scene.world.palette.ink;
         let reduced_effects = self.scene.reduced_effects;
         let lods = &mut self.scene.lods;
         let mut add_character = |characters: &mut super::character_gpu::CharacterRenderer,
-                             entity: RenderEntity,
-                             style: super::AvatarStyle,
-                             rank: usize,
-                             reduced_effects: bool| {
+                                 entity: RenderEntity,
+                                 style: super::AvatarStyle,
+                                 rank: usize,
+                                 reduced_effects: bool| {
             let aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
             let Some(lod) = character_quality::is_visible(entity, view, aspect).then(|| {
                 character_quality::select_lod(
@@ -74,14 +73,7 @@ impl Renderer {
                 return;
             };
             lods.insert(entity.key, lod);
-            characters.add_with_quality(
-                entity,
-                style,
-                character_ink,
-                lod,
-                rank,
-                reduced_effects,
-            );
+            characters.add_with_quality(entity, style, character_ink, lod, rank, reduced_effects);
         };
         if magic_mode {
             // Local player first gives deterministic priority if a development
@@ -89,13 +81,7 @@ impl Renderer {
             if self.scene.camera[2] > 0.75 {
                 let mut local = self.scene.player;
                 local.camera_fade = super::camera::fade(distance);
-                add_character(
-                    &mut self.characters,
-                    local,
-                    local.style,
-                    0,
-                    reduced_effects,
-                );
+                add_character(&mut self.characters, local, local.style, 0, reduced_effects);
             }
             for (index, player) in self.scene.remote_players.iter().enumerate() {
                 add_character(
@@ -132,10 +118,9 @@ impl Renderer {
         );
         ui_vertices.extend(super::ui::build_ui_vertices(&self.ui_frame));
         #[cfg(target_os = "android")]
-        if !super::device::ANDROID_FIRST_FRAME_REPORTED.swap(
-            true,
-            std::sync::atomic::Ordering::Relaxed,
-        ) {
+        if !super::device::ANDROID_FIRST_FRAME_REPORTED
+            .swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
             super::device::android_log(format!(
                 "Android first frame camera={:?} world_vertices={} \
                  ui_vertices={} characters={} instances={} character_draws={} culled={}",
@@ -187,10 +172,9 @@ impl Renderer {
             | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 #[cfg(target_os = "android")]
-                if !super::device::ANDROID_SURFACE_WARNING_REPORTED.swap(
-                    true,
-                    std::sync::atomic::Ordering::Relaxed,
-                ) {
+                if !super::device::ANDROID_SURFACE_WARNING_REPORTED
+                    .swap(true, std::sync::atomic::Ordering::Relaxed)
+                {
                     super::device::android_log(
                         "Android surface became outdated or lost; reconfiguring",
                     );
@@ -202,10 +186,9 @@ impl Renderer {
             | wgpu::CurrentSurfaceTexture::Occluded
             | wgpu::CurrentSurfaceTexture::Validation => {
                 #[cfg(target_os = "android")]
-                if !super::device::ANDROID_SURFACE_WARNING_REPORTED.swap(
-                    true,
-                    std::sync::atomic::Ordering::Relaxed,
-                ) {
+                if !super::device::ANDROID_SURFACE_WARNING_REPORTED
+                    .swap(true, std::sync::atomic::Ordering::Relaxed)
+                {
                     super::device::android_log(
                         "Android surface frame unavailable (timeout, occluded, or validation)",
                     );
@@ -306,9 +289,9 @@ impl Renderer {
         self.presenter.draw(&mut encoder, &self.targets, &view);
         self.queue.submit(Some(encoder.finish()));
         frame.present();
-}
+    }
 
-/// Keep the 3D world in its normal landscape composition when a window
+    /// Keep the 3D world in its normal landscape composition when a window
     /// becomes portrait-ish. The UI pass still covers the full scene so touch
     /// controls can adapt to the actual window dimensions.
     fn world_viewport(&self) -> (f32, f32, f32, f32) {
@@ -534,19 +517,16 @@ impl Renderer {
                     .get(index % self.scene.npc_styles.len().max(1))
                     .copied()
                     .unwrap_or(self.scene.player_style);
-                super::add_legacy_avatar(
-                    &mut mesh,
-                    *agent,
-                    style,
-                    self.scene.world.palette.ink,
-                );
+                super::add_legacy_avatar(&mut mesh, *agent, style, self.scene.world.palette.ink);
             }
         }
         mesh
     }
 
     fn build_support_shadows(&self, view: Mat4, aspect: f32) -> Vec<Vertex> {
-        let mut shadows = Vec::with_capacity(504 * (1 + self.scene.agents.len() + self.scene.remote_players.len()));
+        let mut shadows = Vec::with_capacity(
+            504 * (1 + self.scene.agents.len() + self.scene.remote_players.len()),
+        );
         let mut add = |entity: RenderEntity| {
             if !entity.position.iter().all(|value| value.is_finite()) {
                 return;
@@ -565,15 +545,16 @@ impl Renderer {
                     && (entity.position[2] - z).abs() <= sz * 0.5
                     && (height - (block.position[1] + block.size[1] * 0.5)).abs() < 0.08
             }) {
-                let edge_x = (block.size[0] * 0.5 - (entity.position[0] - block.position[0]).abs()).max(0.04);
-                let edge_z = (block.size[2] * 0.5 - (entity.position[2] - block.position[2]).abs()).max(0.04);
+                let edge_x = (block.size[0] * 0.5 - (entity.position[0] - block.position[0]).abs())
+                    .max(0.04);
+                let edge_z = (block.size[2] * 0.5 - (entity.position[2] - block.position[2]).abs())
+                    .max(0.04);
                 radius = radius.min(edge_x.min(edge_z) * 0.88);
             }
             // Interpolated opacity keeps the contact shadow soft at every
             // camera distance, within the existing receiver/edge constraints.
             let height_gap = (entity.position[1] - height).max(0.0);
-            alpha *= (radius / 0.72).clamp(0.15, 1.0)
-                * (1.0 - height_gap * 0.28).clamp(0.35, 1.0);
+            alpha *= (radius / 0.72).clamp(0.15, 1.0) * (1.0 - height_gap * 0.28).clamp(0.35, 1.0);
             super::add_soft_support_shadow(
                 &mut shadows,
                 Vec3::new(entity.position[0], height + 0.011, entity.position[2]),
@@ -657,14 +638,7 @@ impl Renderer {
             };
             let distance = (label_position - camera_position).length().max(1.0);
             let font_size = (190.0 / distance).clamp(12.0, 18.0);
-            super::ui::add_world_label(
-                vertices,
-                &self.ui_frame,
-                x,
-                y,
-                name,
-                font_size,
-            );
+            super::ui::add_world_label(vertices, &self.ui_frame, x, y, name, font_size);
         };
 
         if self.scene.camera[2] > 0.75 {
@@ -694,11 +668,7 @@ fn project_world_label_to_ui(
     surface_size: (f32, f32),
     ui_size: (f32, f32),
 ) -> Option<(f32, f32)> {
-    if surface_size.0 <= 0.0
-        || surface_size.1 <= 0.0
-        || ui_size.0 <= 0.0
-        || ui_size.1 <= 0.0
-    {
+    if surface_size.0 <= 0.0 || surface_size.1 <= 0.0 || ui_size.0 <= 0.0 || ui_size.1 <= 0.0 {
         return None;
     }
     let clip = view_projection * position.extend(1.0);
@@ -723,16 +693,14 @@ fn project_world_label_to_ui(
     ))
 }
 
-fn support_receiver(
-    _world: &super::RenderWorld,
-    entity: RenderEntity,
-) -> Option<(f32, f32)> {
+fn support_receiver(_world: &super::RenderWorld, entity: RenderEntity) -> Option<(f32, f32)> {
     match entity.support {
         crate::types::CharacterSupport::Grounded { height } if height.is_finite() => {
             Some((height, 0.18))
         }
         crate::types::CharacterSupport::Unknown
-            if entity.position[1].is_finite() && entity.position[1].abs() <= 0.08 => {
+            if entity.position[1].is_finite() && entity.position[1].abs() <= 0.08 =>
+        {
             // Legacy remotes do not report support. The ground fallback is
             // intentionally faint and is omitted at any raised height.
             Some((0.0, 0.08))
@@ -823,11 +791,20 @@ mod tests {
     fn support_shadow_fallback_is_conservative() {
         let mut entity = RenderEntity::default();
         entity.support = crate::types::CharacterSupport::Grounded { height: 2.0 };
-        assert_eq!(support_receiver(&crate::renderer::RenderWorld::default(), entity), Some((2.0, 0.18)));
+        assert_eq!(
+            support_receiver(&crate::renderer::RenderWorld::default(), entity),
+            Some((2.0, 0.18))
+        );
         entity.support = crate::types::CharacterSupport::Airborne;
-        assert_eq!(support_receiver(&crate::renderer::RenderWorld::default(), entity), None);
+        assert_eq!(
+            support_receiver(&crate::renderer::RenderWorld::default(), entity),
+            None
+        );
         entity.support = crate::types::CharacterSupport::Unknown;
         entity.position[1] = 2.0;
-        assert_eq!(support_receiver(&crate::renderer::RenderWorld::default(), entity), None);
+        assert_eq!(
+            support_receiver(&crate::renderer::RenderWorld::default(), entity),
+            None
+        );
     }
 }

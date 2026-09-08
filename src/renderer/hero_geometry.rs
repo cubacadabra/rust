@@ -128,13 +128,13 @@ fn surface(shape: Shape, t: f32, angle: f32) -> Vec3 {
         // Sample the skull at the actual hairline height. Raising the old
         // cap's vertices without changing their radii exposed skin at temples.
         let front = (-sin).max(0.0);
-        let bottom = 0.13 + 0.56 * front.powi(2)
+        let bottom = 0.13
+            + 0.56 * front.powi(2)
             + 0.19 * cos.abs().powi(6)
             + 0.025 * (angle * 5.0 + 0.4).sin() * (1.0 - front).powi(2);
         let height = bottom + (1.0 - bottom) * t;
         let (rx, rz) = profile(HEAD, height);
-        let comb = 0.006 * (angle * 7.0 + t * 3.0).cos()
-            * (t * std::f32::consts::PI).sin();
+        let comb = 0.006 * (angle * 7.0 + t * 3.0).cos() * (t * std::f32::consts::PI).sin();
         return Vec3::new(
             (rx + comb) * signed_power(cos, 0.70),
             height - 0.5,
@@ -382,15 +382,9 @@ mod tests {
                         .all(|i| (*i as usize) < mesh.vertices.len())
                 );
                 assert!(mesh.bounds_min.cmpge(Vec3::splat(-0.51)).all());
-                let maximum_extent = if shape == Shape::HairLock {
-                    0.55
-                } else {
-                    0.51
-                };
+                let maximum_extent = if shape == Shape::HairLock { 0.55 } else { 0.51 };
                 assert!(
-                    mesh.bounds_max
-                        .cmple(Vec3::splat(maximum_extent))
-                        .all(),
+                    mesh.bounds_max.cmple(Vec3::splat(maximum_extent)).all(),
                     "{shape:?}: {:?}",
                     mesh.bounds_max
                 );

@@ -1,15 +1,15 @@
 //! Deterministic presentation review: simulate at 60 Hz, save at 30 Hz.
+use super::super::character::{Feature, Part};
+use super::super::hero_character::{self, Study};
+use super::super::hero_geometry;
 use super::*;
 use crate::character::{
-    body_recipe, foot_is_planted, BodyId, CharacterPresentationState, JointId, OutfitId,
+    BodyId, CharacterPresentationState, JointId, OutfitId, body_recipe, foot_is_planted,
 };
 use crate::types::{
     CharacterEmote, CharacterEntityKey, CharacterEntityKind, CharacterMotionEvent,
     CharacterMotionSample, CharacterMotionSource, CharacterSupport,
 };
-use super::super::character::{Feature, Part};
-use super::super::hero_character::{self, Study};
-use super::super::hero_geometry;
 use glam::{Mat4, Quat, Vec2, Vec3};
 
 pub(super) const CAMERA_YAW: f32 = 2.75;
@@ -145,11 +145,7 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
             let mut state = CharacterPresentationState::new(initial.key, body);
             let mut output = state.evaluate(initial, body, false);
             for step in 1..=tick {
-                output = state.evaluate(
-                    sample_at_support(step, slot, support_height),
-                    body,
-                    false,
-                );
+                output = state.evaluate(sample_at_support(step, slot, support_height), body, false);
             }
             let motion = sample_at_support(tick, slot, support_height);
             let axis = Vec3::new(CAMERA_YAW.cos(), 0.0, -CAMERA_YAW.sin());
@@ -161,18 +157,14 @@ fn actors_with_mode(time: f32, mode: MotionCaptureMode) -> Vec<RenderEntity> {
             };
             let mut secondary = output.secondary;
             if body.is_person() {
-                secondary.left_foot_target = secondary
-                    .left_foot_target
-                    .map(|target| target + lineup);
-                secondary.right_foot_target = secondary
-                    .right_foot_target
-                    .map(|target| target + lineup);
-                secondary.left_ankle_target = secondary
-                    .left_ankle_target
-                    .map(|target| target + lineup);
-                secondary.right_ankle_target = secondary
-                    .right_ankle_target
-                    .map(|target| target + lineup);
+                secondary.left_foot_target =
+                    secondary.left_foot_target.map(|target| target + lineup);
+                secondary.right_foot_target =
+                    secondary.right_foot_target.map(|target| target + lineup);
+                secondary.left_ankle_target =
+                    secondary.left_ankle_target.map(|target| target + lineup);
+                secondary.right_ankle_target =
+                    secondary.right_ankle_target.map(|target| target + lineup);
             }
             RenderEntity {
                 position: root.to_array(),
@@ -287,8 +279,16 @@ pub(super) fn measure_contact_diagnostic(raised: bool) -> ContactDiagnostic {
         let person = moving_actors(time, raised)[0];
         let phase = person.walk_cycle;
         for part in &soles {
-            let index = if part.anchor.joint == JointId::LeftFoot { 0 } else { 1 };
-            let offset = if index == 0 { 0.0 } else { std::f32::consts::PI };
+            let index = if part.anchor.joint == JointId::LeftFoot {
+                0
+            } else {
+                1
+            };
+            let offset = if index == 0 {
+                0.0
+            } else {
+                std::f32::consts::PI
+            };
             if !foot_is_planted(phase + offset) {
                 first_contact[index] = None;
                 continue;

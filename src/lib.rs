@@ -1,6 +1,6 @@
 mod character;
-mod engine;
 mod effects;
+mod engine;
 mod ffi;
 mod game_package;
 mod math;
@@ -16,10 +16,10 @@ pub mod dev_showcase {
     pub use crate::character::catalog::StyleExamplesValidationReport;
     pub use crate::renderer::capture::{
         CaptureAvatar, CaptureConfig, CapturePalette, CaptureQuality, CaptureReport,
-        HeroCaptureSet, Phase8RolloutReport, capture_phase0_baseline, capture_phase2_shape_proof,
-        capture_phase4_motion, capture_phase4_motion_with_mode, capture_phase5_outfits, capture_phase6_report,
-        capture_phase8_rollout, MotionCaptureMode,
-        capture_phase9_hero, capture_phase9_hero_with_set,
+        HeroCaptureSet, MotionCaptureMode, Phase8RolloutReport, capture_phase0_baseline,
+        capture_phase2_shape_proof, capture_phase4_motion, capture_phase4_motion_with_mode,
+        capture_phase5_outfits, capture_phase6_report, capture_phase8_rollout, capture_phase9_hero,
+        capture_phase9_hero_with_set,
     };
     pub use crate::renderer::validation::capture_phase3;
 

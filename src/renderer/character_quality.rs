@@ -5,7 +5,7 @@
 //! select another immutable catalog entry without changing simulation or
 //! appearance identity.
 
-use super::{character, RenderEntity};
+use super::{RenderEntity, character};
 use crate::character::{BodyId, OutfitId};
 use glam::{Mat4, Vec3};
 
