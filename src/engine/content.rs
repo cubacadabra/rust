@@ -6,6 +6,18 @@ use crate::game_package::{AvatarDefinition, GamePackageDefinition};
 use crate::scripting::GameScript;
 
 impl Engine {
+    pub fn load_package_source(&mut self, source: &str) -> bool {
+        self.package_buffer.clear();
+        self.package_buffer.extend_from_slice(source.as_bytes());
+        self.load_package_buffer()
+    }
+
+    pub fn load_script_source(&mut self, source: &str) -> bool {
+        self.script_buffer.clear();
+        self.script_buffer.extend_from_slice(source.as_bytes());
+        self.load_script_buffer()
+    }
+
     pub(crate) fn apply_package_default_appearance(&mut self, package: &GamePackageDefinition) {
         if self.player_appearance_persistent {
             return;

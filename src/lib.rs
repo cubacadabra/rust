@@ -47,3 +47,59 @@ mod web_renderer;
 mod world;
 
 pub use engine::Engine;
+
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
+pub mod native {
+    use crate::Engine;
+    use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+
+    /// The shared renderer presented by a native desktop host.
+    pub struct Renderer {
+        inner: crate::renderer::Renderer,
+    }
+
+    impl Renderer {
+        /// Creates a renderer for a live native window. The host must keep the
+        /// underlying window alive until this renderer is dropped.
+        pub fn new(
+            display_handle: RawDisplayHandle,
+            window_handle: RawWindowHandle,
+            width: f32,
+            height: f32,
+        ) -> Option<Self> {
+            crate::renderer::Renderer::new_from_window_handles(
+                display_handle,
+                window_handle,
+                width,
+                height,
+            )
+            .map(|inner| Self { inner })
+        }
+
+        pub fn resize(&mut self, width: f32, height: f32) {
+            self.inner.resize(width, height);
+        }
+
+        pub fn sync(&mut self, engine: &Engine) {
+            self.inner.sync_engine(engine);
+        }
+
+        pub fn draw(&mut self) {
+            self.inner.draw();
+        }
+
+        pub fn set_package_image_atlas(
+            &mut self,
+            width: u32,
+            height: u32,
+            pixels: &[u8],
+            regions: std::collections::BTreeMap<String, [f32; 4]>,
+        ) -> bool {
+            self.inner
+                .set_package_image_atlas(width, height, pixels, regions)
+        }
+    }
+}

@@ -1,6 +1,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
 use std::io::Cursor;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 #[cfg(target_os = "android")]
 use std::ptr::NonNull;
 #[cfg(target_os = "android")]
@@ -341,6 +343,58 @@ impl Renderer {
         #[cfg(target_os = "android")]
         android_log("Android renderer resources initialized");
         Some(renderer)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub fn new_from_window_handles(
+        display_handle: RawDisplayHandle,
+        window_handle: RawWindowHandle,
+        width: f32,
+        height: f32,
+    ) -> Option<Self> {
+        if width <= 0.0 || height <= 0.0 {
+            return None;
+        }
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let surface = unsafe {
+            instance
+                .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                    raw_display_handle: Some(display_handle),
+                    raw_window_handle: window_handle,
+                })
+                .ok()?
+        };
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        }))
+        .or_else(|_| {
+            pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: true,
+            }))
+        })
+        .ok()?;
+        let limits = required_limits(&adapter);
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("cubacadabra desktop game device"),
+            required_features: wgpu::Features::empty(),
+            required_limits: limits,
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            memory_hints: wgpu::MemoryHints::Performance,
+            trace: wgpu::Trace::Off,
+        }))
+        .ok()?;
+
+        Some(Self::from_parts(
+            surface, adapter, device, queue, width, height, false,
+        ))
     }
 
     #[cfg(target_arch = "wasm32")]

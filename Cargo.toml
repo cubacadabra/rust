@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 default = ["metal"]
 metal = ["wgpu/metal"]
 android-backends = ["wgpu/vulkan", "wgpu/gles"]
+desktop-backends = ["wgpu/dx12", "wgpu/vulkan", "wgpu/gles"]
 web-renderer = []
 dev-showcase = []
 
