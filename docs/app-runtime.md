@@ -8,8 +8,8 @@ Studio uses ordinary Rust types and methods; JSON, C and WASM are outer adapters
 
 All account-username entry points now use the shared model:
 
-- iOS: Account → Username and My Cube → Basics, owned by GameViewModel.
-- Android: ProfileUsernameScreen, owned by the existing GameViewModel.
+- iOS: Account → Username and My Cube → Basics, owned by AppViewModel.
+- Android: ProfileUsernameScreen, owned by AppViewModel and its AppUiState.
 - Web: My Cube → Basics, owned by one runtime for the signed-in document.
 
 Rust owns normalization/validation, dirty/save eligibility, in-flight state,
@@ -23,11 +23,49 @@ preserves its existing behavior and does not claim all naming rules are identica
 The server remains authoritative for authentication, moderation, uniqueness and
 age requirements; client validation is not a security boundary.
 
+## Native host ownership
+
+The iOS shell and Android Activity own sibling `AppViewModel` and
+`GameViewModel` instances. Account views observe the app model directly;
+`GameUiState` no longer contains authentication, profile, or app-runtime state.
+
+- AppViewModel owns native authentication/session restoration, the profile,
+  the Rust app handle and its HTTP effect tasks.
+- GameViewModel owns package loading, engines/renderers, the world socket,
+  gameplay state and the separate in-world name editor.
+- The shell passes a read-only account/session projection to gameplay:
+  session ID, account ID, native access token, accepted username and body ID.
+  Credentials stay host-side, outside Rust snapshots. A newly created engine
+  reapplies the latest projection.
+
+Account restoration and profile editing do not wait for a game package or
+renderer. Account UI remains available if package loading fails. Changing or
+recreating a game cannot cancel an app save. Account changes invalidate pending
+game loads/selections; a late guest load cannot overwrite a later selection.
+Explicit sign-out clears the app session and credentials before any game work.
+
+A world socket reporting a guest session requests app-level revalidation; it
+does not clear app-owned authentication itself. Foreground refresh of an
+unchanged account updates credentials without replacing the Rust session or
+discarding a draft/pending save. Responses from a refresh that raced profile
+work preserve the accepted local profile. Authentication jobs are canceled and
+generation-fenced on sign-out/replacement so late responses cannot sign the old
+account back in.
+
+This is a bounded ownership fix, not a migration of every non-game feature.
+Birthday/avatar orchestration is still native (now app-owned); safety still uses
+the existing game-side player/moderation integration, and catalog services stay
+native. Android's existing auth/bridge helpers retain their current source
+package. Move these only when their actual shared feature slice warrants it;
+there are no placeholder repositories, use cases or entitlement systems.
+
 ## Contract and lifecycle
 
 Create one `AppModel::default()` / native handle / `WebApp` per host lifetime,
 initially signed out. Dispatch `replace_session` with account ID and username
-when restoring/signing in, and null values when signing out. Every replacement
+on initial restoration/sign-in, and null values when signing out. Native
+same-account refresh replaces only when the accepted username changed; an
+unchanged refresh preserves the current session and draft. Every replacement
 increments the session ID and invalidates queued/in-flight work, even for the
 same account. Effect IDs are never reused within that model.
 
@@ -111,12 +149,19 @@ cargo test --workspace
 cargo clippy -p cubacadabra-app --all-targets -- -D warnings
 sh scripts/build_web_renderer.sh --release
 
-# In ios_app/ — tests the production Swift decoder and C adapter on macOS
+# In ios_app/ — production Swift/C bridge plus app-only host lifecycle on macOS
 sh scripts/check_app_contract.sh
 
 # In web/ — tests the actual generated WASM plus host lifecycle/projection
 npm run check:app
 ```
+
+The Swift lifecycle probe compiles the production AppViewModel, profile methods
+and Rust bridge with fake native authentication/HTTP services, without a game
+engine. It covers app-only startup, idempotent startup, refresh during edits and
+saves, stale refresh completion, field-specific profile merging, logout/account
+replacement, and late profile/auth responses. It does not exercise native SDKs
+or real transport.
 
 The iOS app build and Vite production build have also been checked. Android's
 Rust crate cross-checks for both targets, but its Kotlin/JNI/APK build and device
@@ -125,7 +170,10 @@ tests were run/added. No simulator was launched and no live account was changed.
 
 Before widening the migration, verify on devices: save/taken/expired-session
 feedback, edit while saving, leave/reopen the editor, sign out while saving,
-and sign into another account. On web also check avatar-only saves and partial
+and sign into another account. For the host split, also verify cold restored
+sign-in with game assets unavailable, entering/changing games after a profile
+edit, foreground refresh during a save, and logout/login during a package load.
+On web also check avatar-only saves and partial
 username-success/avatar-failure.
 
 This slice establishes a tested shared source of decisions, not a demonstrated
