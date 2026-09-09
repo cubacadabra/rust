@@ -1,6 +1,11 @@
 mod profile;
 mod username;
 
+#[cfg(not(target_arch = "wasm32"))]
+mod ffi;
+#[cfg(target_arch = "wasm32")]
+mod web;
+
 use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +19,9 @@ pub use username::{
 };
 
 use profile::ProfileState;
+
+#[cfg(target_arch = "wasm32")]
+pub use web::WebApp;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

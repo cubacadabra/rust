@@ -48,7 +48,12 @@ profile screens: ASCII letters, numbers, `_`, and `-`. The separate in-world
 name editor currently permits spaces and is not silently changed by this
 slice.
 
-Next integrations should add thin C and WASM adapters for this API, migrate one
-profile screen end to end, then use the same action/snapshot/effect pattern for
-morph selection. Catalog, safety, age-gate, and settings state can follow once
-that host boundary has been proven.
+The crate exposes the same model through a native C ABI and a `WebApp`
+`wasm-bindgen` wrapper. The iOS account username screen is the first end-to-end
+host integration: SwiftUI renders the snapshot and the existing native
+authentication service performs `SaveUsername` effects.
+
+Next, migrate the corresponding web and Android profile screens to prove that
+the serialized contract stays equally thin on all three hosts. Morph selection
+should then use the same action/snapshot/effect pattern. Catalog, safety,
+age-gate, and settings state can follow once those host boundaries are proven.

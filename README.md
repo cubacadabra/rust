@@ -70,10 +70,12 @@ cargo check
 ## Build for iOS
 
 Xcode invokes `ios_app/scripts/build_rust_engine.sh` as a build phase. It
-compiles `cubacadabra-client` for the selected device or simulator architecture and
-produces a native static library under Xcode's derived data. The Swift app
-creates a client session through `include/cubacadabra_client.h`; its borrowed
-engine pointer continues to use the lower-level engine/rendering ABI.
+compiles `cubacadabra-client` and `cubacadabra-app` for the selected device or
+simulator architecture and produces native static libraries under Xcode's
+derived data. The Swift app creates a client session through
+`include/cubacadabra_client.h` and application state through
+`include/cubacadabra_app.h`; the client's borrowed engine pointer continues to
+use the lower-level engine/rendering ABI.
 
 The native lifecycle is: create one client from a manifest and script, submit
 transport events and input, dispatch client actions, advance/read the engine,
