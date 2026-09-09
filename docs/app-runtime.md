@@ -4,13 +4,15 @@
 `cubacadabra-client` (active game sessions) and `cubacadabra-engine` (simulation).
 Studio uses ordinary Rust types and methods; JSON, C and WASM are outer adapters.
 
-## Implemented slice: account usernames
+## Implemented slice: account usernames and morphs
 
 All account-username entry points now use the shared model:
 
 - iOS: Account → Username and My Cube → Basics, owned by AppViewModel.
 - Android: ProfileUsernameScreen, owned by AppViewModel and its AppUiState.
 - Web: My Cube → Basics, owned by one runtime for the signed-in document.
+- Morph/avatar saves use the same Rust action/snapshot/effect contract on all
+  three hosts; the image cards remain native UI assets.
 
 Rust owns normalization/validation, dirty/save eligibility, in-flight state,
 feedback, request method/path/body, and response parsing. Hosts own text fields,
@@ -62,8 +64,8 @@ there are no placeholder repositories, use cases or entitlement systems.
 ## Contract and lifecycle
 
 Create one `AppModel::default()` / native handle / `WebApp` per host lifetime,
-initially signed out. Dispatch `replace_session` with account ID and username
-on initial restoration/sign-in, and null values when signing out. Native
+initially signed out. Dispatch `replace_session` with account ID, username,
+and body ID on initial restoration/sign-in, and null values when signing out. Native
 same-account refresh replaces only when the accepted username changed; an
 unchanged refresh preserves the current session and draft. Every replacement
 increments the session ID and invalidates queued/in-flight work, even for the
@@ -80,6 +82,7 @@ let mut app = AppModel::default();
 app.dispatch(AppAction::ReplaceSession {
     account_id: Some("account-1".into()),
     username: Some("Ada".into()),
+    body_id: Some("cuba:person.v1".into()),
 });
 app.dispatch(AppAction::UsernameChanged { value: "  Grace_7  ".into() });
 app.dispatch(AppAction::SaveUsername {});
@@ -101,13 +104,13 @@ A network failure dispatches `http_failed`. A successful username response must
 contain the current account ID and submitted username. Unrecognized/malformed
 responses are retryable errors. An HTTP 401 is unauthorized even without JSON.
 
-Hosts project only the accepted snapshot's username, merging that field into
-their existing user. Birthday/avatar responses merge only their own fields,
-so a concurrent response cannot roll back an accepted name. Native unrelated
-profile updates also check the captured session ID before applying results.
-Web's combined Basics form keeps its avatar orchestration in JavaScript for now:
-unchanged usernames need no HTTP request, and avatar failure preserves username
-success.
+Hosts project only accepted snapshot fields into their existing user. Birthday
+responses merge only their own field, so a concurrent response cannot roll back
+an accepted name or morph. Native unrelated profile updates also check the
+captured session ID before applying results.
+The app runtime also owns the allowed body IDs, morph draft, save eligibility,
+pending request, response identity/body checks, and user-facing save feedback.
+Hosts no longer issue a direct avatar request or duplicate its error mapping.
 
 Host cancellation is best-effort. Invalidating an effect prevents stale local
 updates; it cannot undo a request the server has already processed. Reload/
@@ -177,7 +180,7 @@ On web also check avatar-only saves and partial
 username-success/avatar-failure.
 
 This slice establishes a tested shared source of decisions, not a demonstrated
-net line-count saving. The next bounded candidate is morph selection, using
-these same adapters without adding feature-specific ABI functions. Catalog,
-safety and age-gate migrations should wait until this boundary is proven in
-device use.
+net line-count saving. Catalog and safety are the next evaluation points, not
+automatic migrations: move them only if they share meaningful decision logic,
+pending work, and stale-response rules. Native-only lists and moderation UI
+should remain native.

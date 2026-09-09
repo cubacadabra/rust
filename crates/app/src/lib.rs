@@ -8,13 +8,14 @@ mod web;
 
 use profile::ProfileState;
 pub use profile::{
-    FeedbackKind, ProfileSnapshot, UsernameFeedback, UsernameFeedbackCode, UsernameSaveError,
+    is_valid_body_id, BodyFeedback, BodySaveError, FeedbackKind, ProfileSnapshot, UsernameFeedback,
+    UsernameFeedbackCode, UsernameSaveError, DEFAULT_BODY_ID, PLAYER_BODY_IDS,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 pub use username::{
-    USERNAME_MAX_CHARACTERS, USERNAME_MIN_CHARACTERS, UsernameValidationError,
-    validate_account_username,
+    validate_account_username, UsernameValidationError, USERNAME_MAX_CHARACTERS,
+    USERNAME_MIN_CHARACTERS,
 };
 #[cfg(target_arch = "wasm32")]
 pub use web::WebApp;
@@ -30,12 +31,19 @@ pub enum AppAction {
     ReplaceSession {
         account_id: Option<String>,
         username: Option<String>,
+        #[serde(default)]
+        body_id: Option<String>,
     },
     BeginUsernameEdit {},
     UsernameChanged {
         value: String,
     },
     SaveUsername {},
+    BeginBodyEdit {},
+    BodyChanged {
+        body_id: String,
+    },
+    SaveBody {},
     HttpCompleted {
         effect_id: EffectId,
         status: u16,
@@ -82,7 +90,7 @@ impl Default for AppModel {
         Self {
             account_id: None,
             session_id: 0,
-            profile: ProfileState::new(None),
+            profile: ProfileState::new(None, None),
             effects: VecDeque::new(),
             next_effect_id: 1,
         }
@@ -95,13 +103,20 @@ impl AppModel {
             AppAction::ReplaceSession {
                 account_id,
                 username,
+                body_id,
             } => {
                 self.account_id = account_id.filter(|id| !id.is_empty());
                 self.session_id = self
                     .session_id
                     .checked_add(1)
                     .expect("session ID exhausted");
-                self.profile.replace(self.account_id.as_ref().and(username));
+                let body_id = self
+                    .account_id
+                    .as_ref()
+                    .and(body_id)
+                    .or_else(|| self.account_id.as_ref().map(|_| DEFAULT_BODY_ID.to_owned()));
+                self.profile
+                    .replace(self.account_id.as_ref().and(username), body_id);
                 self.effects.clear();
             }
             AppAction::BeginUsernameEdit {} => self.profile.begin_username_edit(),
@@ -124,6 +139,25 @@ impl AppModel {
                     }
                 }
             }
+            AppAction::BeginBodyEdit {} => self.profile.begin_body_edit(),
+            AppAction::BodyChanged { body_id } => {
+                if self.account_id.is_some() {
+                    self.profile.change_body(body_id);
+                }
+            }
+            AppAction::SaveBody {} => {
+                if let Some(account_id) = self.account_id.clone() {
+                    let effect_id = EffectId(self.next_effect_id);
+                    if let Some(body_id) = self.profile.request_body_save(effect_id) {
+                        self.next_effect_id = self
+                            .next_effect_id
+                            .checked_add(1)
+                            .expect("effect ID exhausted");
+                        self.effects
+                            .push_back(http::body_request(effect_id, account_id, body_id));
+                    }
+                }
+            }
             AppAction::HttpCompleted {
                 effect_id,
                 status,
@@ -134,11 +168,23 @@ impl AppModel {
                         Ok(username) => self.profile.username_saved(effect_id, username),
                         Err(error) => self.profile.username_save_failed(effect_id, error),
                     }
+                } else if self.profile.is_body_pending(effect_id) {
+                    let expected = self.profile.pending_body_id(effect_id).unwrap_or_default();
+                    match http::body_response(status, &body, self.account_id.as_deref(), expected) {
+                        Ok(body_id) => self.profile.body_saved(effect_id, body_id),
+                        Err(error) => self.profile.body_save_failed(effect_id, error),
+                    }
                 }
             }
-            AppAction::HttpFailed { effect_id } => self
-                .profile
-                .username_save_failed(effect_id, UsernameSaveError::Unavailable),
+            AppAction::HttpFailed { effect_id } => {
+                if self.profile.is_pending(effect_id) {
+                    self.profile
+                        .username_save_failed(effect_id, UsernameSaveError::Unavailable)
+                } else if self.profile.is_body_pending(effect_id) {
+                    self.profile
+                        .body_save_failed(effect_id, BodySaveError::Unavailable)
+                }
+            }
         }
     }
 
