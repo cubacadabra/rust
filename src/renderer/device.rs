@@ -1,8 +1,11 @@
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    not(any(target_os = "android", target_os = "ios"))
+))]
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 #[cfg(not(target_arch = "wasm32"))]
 use std::ffi::c_void;
 use std::io::Cursor;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 #[cfg(target_os = "android")]
 use std::ptr::NonNull;
 #[cfg(target_os = "android")]
@@ -345,7 +348,10 @@ impl Renderer {
         Some(renderer)
     }
 
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        not(any(target_os = "android", target_os = "ios"))
+    ))]
     pub fn new_from_window_handles(
         display_handle: RawDisplayHandle,
         window_handle: RawWindowHandle,
