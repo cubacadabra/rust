@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::UsernameValidationError;
-use crate::{AppEffect, EffectId, validate_account_username};
+use crate::{EffectId, validate_account_username};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -131,7 +131,21 @@ impl ProfileState {
         self.username_feedback = None;
     }
 
-    pub(crate) fn request_username_save(&mut self, effect_id: EffectId) -> Option<AppEffect> {
+    pub(crate) fn begin_username_edit(&mut self) {
+        // Navigation never cancels a save. An idle editor gets a fresh draft.
+        if self.pending_username_save.is_none() {
+            self.username_draft = self.username.clone().unwrap_or_default();
+            self.username_feedback = None;
+        }
+    }
+
+    pub(crate) fn is_pending(&self, effect_id: EffectId) -> bool {
+        self.pending_username_save
+            .as_ref()
+            .is_some_and(|pending| pending.effect_id == effect_id)
+    }
+
+    pub(crate) fn request_username_save(&mut self, effect_id: EffectId) -> Option<String> {
         if self.pending_username_save.is_some() {
             return None;
         }
@@ -150,39 +164,33 @@ impl ProfileState {
             effect_id,
             username: username.clone(),
         });
-        Some(AppEffect::SaveUsername {
-            effect_id,
-            username,
-        })
+        Some(username)
     }
 
     pub(crate) fn username_saved(&mut self, effect_id: EffectId, username: String) {
         let Some(pending) = self.take_matching_save(effect_id) else {
             return;
         };
-        let Ok(username) = validate_account_username(&username) else {
-            self.username_feedback = Some(UsernameFeedback::save_failed(
-                UsernameSaveError::InvalidResponse,
-            ));
-            return;
-        };
         let draft_matches_submission = validate_account_username(&self.username_draft)
             .is_ok_and(|draft| draft == pending.username);
+        if validate_account_username(&username).is_err() || username != pending.username {
+            self.username_feedback = draft_matches_submission
+                .then(|| UsernameFeedback::save_failed(UsernameSaveError::InvalidResponse));
+            return;
+        }
         self.username = Some(username.clone());
         if draft_matches_submission {
             self.username_draft = username;
         }
-        self.username_feedback = Some(UsernameFeedback::saved());
+        self.username_feedback = draft_matches_submission.then(UsernameFeedback::saved);
     }
 
     pub(crate) fn username_save_failed(&mut self, effect_id: EffectId, error: UsernameSaveError) {
-        if self.take_matching_save(effect_id).is_some() {
-            self.username_feedback = Some(UsernameFeedback::save_failed(error));
+        if let Some(pending) = self.take_matching_save(effect_id) {
+            self.username_feedback = validate_account_username(&self.username_draft)
+                .is_ok_and(|draft| draft == pending.username)
+                .then(|| UsernameFeedback::save_failed(error));
         }
-    }
-
-    pub(crate) fn clear_username_feedback(&mut self) {
-        self.username_feedback = None;
     }
 
     pub(crate) fn snapshot(&self) -> ProfileSnapshot {

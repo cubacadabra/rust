@@ -56,3 +56,15 @@ $cargo_command build \
   --out-dir "$output_dir" \
   --out-name cubacadabra_renderer
 echo "Built $output_dir/cubacadabra_renderer.js ($profile)"
+
+# Account pages load this small module independently of the game renderer.
+app_output_dir="$web_dir/public/wasm/app"
+mkdir -p "$app_output_dir"
+$cargo_command build \
+  --manifest-path "$crate_dir/crates/app/Cargo.toml" \
+  --target wasm32-unknown-unknown \
+  $cargo_profile_args
+"$wasm_bindgen_command" \
+  "$target_dir/wasm32-unknown-unknown/$profile/cubacadabra_app.wasm" \
+  --target web --no-typescript --out-dir "$app_output_dir" --out-name cubacadabra_app
+echo "Built $app_output_dir/cubacadabra_app.js ($profile)"

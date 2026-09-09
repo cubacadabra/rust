@@ -1,0 +1,172 @@
+[
+  {
+    "name": "normalized save and duplicate submission",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true}},"effects":[]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\",\"username\":\"Grace\",\"body_id\":\"old\"}}"},"expected":{"profile":{"username":"Grace","username_draft":"Grace","username_is_saving":false,"username_is_dirty":false,"username_feedback":{"kind":"success","code":{"type":"saved"}}}},"effects":[]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\",\"username\":\"Wrong\",\"body_id\":\"old\"}}"},"expected":{"profile":{"username":"Grace"}},"effects":[]}
+    ]
+  },
+  {
+    "name": "invalid and unchanged drafts",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_feedback":null}},"effects":[]},
+      {"action":{"type":"username_changed","value":"a b"},"expected":{"profile":{"username_can_save":false,"username_validation_error":"invalid_characters"}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_feedback":{"kind":"error","code":{"type":"validation","error":"invalid_characters"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "signed out cannot edit or save",
+    "steps": [
+      {"action":{"type":"username_changed","value":"Grace"},"expected":{"account_id":null,"profile":{"username_draft":"","username_can_save":false}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":false}},"effects":[]}
+    ]
+  },
+  {
+    "name": "logout and same account sign in discard old work",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"replace_session","account_id":null,"username":null},"expected":{"profile":{"username":null,"username_is_saving":false}},"effects":[]},
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"session_id":3},"effects":[]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\",\"username\":\"Grace\",\"body_id\":\"old\"}}"},"expected":{"profile":{"username":"Ada","username_feedback":null}},"effects":[]}
+    ]
+  },
+  {
+    "name": "old response cannot finish replacement account save",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"replace_session","account_id":"b","username":"Lin"},"expected":{"account_id":"b"},"effects":[]},
+      {"action":{"type":"username_changed","value":"Grace"},"expected":{},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true}},"effects":[{"type":"http_request","effect_id":2,"account_id":"b","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\",\"username\":\"Grace\",\"body_id\":\"old\"}}"},"expected":{"profile":{"username":"Lin","username_is_saving":true}},"effects":[]},
+      {"action":{"type":"http_completed","effect_id":2,"status":200,"body":"{\"user\":{\"id\":\"b\",\"username\":\"Grace\",\"body_id\":\"old\"}}"},"expected":{"profile":{"username":"Grace","username_is_saving":false}},"effects":[]}
+    ]
+  },
+  {
+    "name": "navigation keeps pending save but idle edits reset",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"begin_username_edit"},"expected":{"profile":{"username_draft":"  Grace  ","username_is_saving":true}},"effects":[]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\",\"username\":\"Grace\",\"body_id\":\"old\"}}"},"expected":{},"effects":[]},
+      {"action":{"type":"username_changed","value":"New"},"expected":{},"effects":[]},
+      {"action":{"type":"begin_username_edit"},"expected":{"profile":{"username_draft":"Grace","username_feedback":null}},"effects":[]}
+    ]
+  },
+  {
+    "name": "new draft survives older success without misleading saved feedback",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"username_changed","value":"Lin"},"expected":{},"effects":[]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\",\"username\":\"Grace\",\"body_id\":\"old\"}}"},"expected":{"profile":{"username":"Grace","username_draft":"Lin","username_can_save":true,"username_feedback":null}},"effects":[]}
+    ]
+  },
+  {
+    "name": "legacy world name is preserved until valid account edit",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada Lovelace"},"expected":{"profile":{"username":"Ada Lovelace","username_is_dirty":false,"username_can_save":false}},"effects":[]}
+    ]
+  },
+  {
+    "name": "network failure is retryable",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_failed","effect_id":1},"expected":{"profile":{"username":"Ada","username_draft":"  Grace  ","username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"unavailable"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "taken",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":409,"body":"{\"error\":\"username_taken\"}"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"taken"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "age gate",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":403,"body":"{\"error\":\"age_required\"}"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"age_required"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "expired non JSON",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":401,"body":"<html/>"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"unauthorized"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "unknown failure",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":500,"body":"bad"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"unavailable"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "malformed success",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"bad"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"invalid_response"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "wrong account",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"b\",\"username\":\"Grace\"}}"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"invalid_response"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "wrong name",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\",\"username\":\"Other\"}}"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"invalid_response"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "missing name",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"http_completed","effect_id":1,"status":200,"body":"{\"user\":{\"id\":\"a\"}}"},"expected":{"profile":{"username":"Ada","username_is_saving":false,"username_can_save":true,"username_feedback":{"code":{"type":"save_failed","error":"invalid_response"}}}},"effects":[]}
+    ]
+  },
+  {
+    "name": "older failure does not decorate a newer draft",
+    "steps": [
+      {"action":{"type":"replace_session","account_id":"a","username":"Ada"},"expected":{"account_id":"a","session_id":1,"profile":{"username":"Ada","username_draft":"Ada","username_can_save":false}},"effects":[]},
+      {"action":{"type":"username_changed","value":"  Grace  "},"expected":{"profile":{"username_can_save":true}},"effects":[]},
+      {"action":{"type":"save_username"},"expected":{"profile":{"username_is_saving":true,"username_can_save":false}},"effects":[{"type":"http_request","effect_id":1,"account_id":"a","method":"POST","path":"auth/username","body":"{\"username\":\"Grace\"}"}]},
+      {"action":{"type":"username_changed","value":"Lin"},"expected":{},"effects":[]},
+      {"action":{"type":"http_failed","effect_id":1},"expected":{"profile":{"username_draft":"Lin","username_feedback":null,"username_can_save":true}},"effects":[]}
+    ]
+  }
+]
