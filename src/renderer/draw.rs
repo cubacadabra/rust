@@ -12,7 +12,41 @@ use super::{
 };
 
 impl Renderer {
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn studio_overlay_format(&self) -> wgpu::TextureFormat {
+        super::targets::SCENE_FORMAT
+    }
+
     pub fn draw(&mut self) {
+        let Some((frame, mut encoder, view)) = self.encode_frame() else {
+            return;
+        };
+        self.presenter.draw(&mut encoder, &self.targets, &view);
+        self.queue.submit(Some(encoder.finish()));
+        frame.present();
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn draw_with_overlay<F>(&mut self, overlay: F)
+    where
+        F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+    {
+        let Some((frame, mut encoder, view)) = self.encode_frame() else {
+            return;
+        };
+        overlay(&self.device, &self.queue, &mut encoder, &self.targets.color);
+        self.presenter.draw(&mut encoder, &self.targets, &view);
+        self.queue.submit(Some(encoder.finish()));
+        frame.present();
+    }
+
+    fn encode_frame(
+        &mut self,
+    ) -> Option<(
+        wgpu::SurfaceTexture,
+        wgpu::CommandEncoder,
+        wgpu::TextureView,
+    )> {
         let player = Vec3::from_array(self.scene.player.position);
         let [yaw, pitch, distance] = self.scene.camera;
         let body = self.scene.player.body;
@@ -181,7 +215,7 @@ impl Renderer {
                     );
                 }
                 self.resize(self.width, self.height);
-                return;
+                return None;
             }
             wgpu::CurrentSurfaceTexture::Timeout
             | wgpu::CurrentSurfaceTexture::Occluded
@@ -194,7 +228,7 @@ impl Renderer {
                         "Android surface frame unavailable (timeout, occluded, or validation)",
                     );
                 }
-                return;
+                return None;
             }
         };
         let view = frame
@@ -283,14 +317,22 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            #[cfg(feature = "studio-ui")]
+            if let Some([x, y, width, height]) = self.studio_viewport {
+                pass.set_viewport(x, y, width, height, 0.0, 1.0);
+                pass.set_scissor_rect(
+                    x.max(0.0) as u32,
+                    y.max(0.0) as u32,
+                    width.max(1.0) as u32,
+                    height.max(1.0) as u32,
+                );
+            }
             pass.set_pipeline(&self.ui_pipeline);
             pass.set_bind_group(0, &self.ui_texture_bind_group, &[]);
             pass.set_vertex_buffer(0, self.ui_vertex_buffer.slice(..));
             pass.draw(0..ui_vertices.len() as u32, 0..1);
         }
-        self.presenter.draw(&mut encoder, &self.targets, &view);
-        self.queue.submit(Some(encoder.finish()));
-        frame.present();
+        Some((frame, encoder, view))
     }
 
     /// Keep the 3D world in its normal landscape composition when a window
@@ -298,19 +340,29 @@ impl Renderer {
     /// controls can adapt to the actual window dimensions.
     fn world_viewport(&self) -> (f32, f32, f32, f32) {
         const LANDSCAPE_ASPECT: f32 = 16.0 / 9.0;
-        let width = self.width.max(1.0);
-        let height = self.height.max(1.0);
+        #[cfg(feature = "studio-ui")]
+        let (x, y, width, height) = self.output_viewport();
+        #[cfg(not(feature = "studio-ui"))]
+        let (x, y, width, height) = (0.0, 0.0, self.width.max(1.0), self.height.max(1.0));
         let aspect = width / height;
         if aspect >= 1.25 {
-            return (0.0, 0.0, width, height);
+            return (x, y, width, height);
         }
         let viewport_height = (width / LANDSCAPE_ASPECT).min(height);
         (
-            0.0,
-            (height - viewport_height) * 0.5,
+            x,
+            y + (height - viewport_height) * 0.5,
             width,
             viewport_height,
         )
+    }
+
+    #[cfg(feature = "studio-ui")]
+    fn output_viewport(&self) -> (f32, f32, f32, f32) {
+        if let Some([x, y, width, height]) = self.studio_viewport {
+            return (x, y, width, height);
+        }
+        (0.0, 0.0, self.width.max(1.0), self.height.max(1.0))
     }
 
     fn build_static_vertices(&self) -> Vec<Vertex> {
@@ -667,11 +719,15 @@ impl Renderer {
         let mut add = |entity: RenderEntity, name: &str| {
             let label_position = Vec3::from_array(entity.position)
                 + Vec3::new(0.0, super::character::world_label_height(entity.body), 0.0);
+            #[cfg(feature = "studio-ui")]
+            let output_viewport = self.output_viewport();
+            #[cfg(not(feature = "studio-ui"))]
+            let output_viewport = (0.0, 0.0, self.width, self.height);
             let Some((x, y)) = project_world_label_to_ui(
                 label_position,
                 view_projection,
                 world_viewport,
-                (self.width, self.height),
+                output_viewport,
                 (self.ui_frame.viewport.width, self.ui_frame.viewport.height),
             ) else {
                 return;
@@ -705,10 +761,11 @@ fn project_world_label_to_ui(
     position: Vec3,
     view_projection: Mat4,
     world_viewport: (f32, f32, f32, f32),
-    surface_size: (f32, f32),
+    output_viewport: (f32, f32, f32, f32),
     ui_size: (f32, f32),
 ) -> Option<(f32, f32)> {
-    if surface_size.0 <= 0.0 || surface_size.1 <= 0.0 || ui_size.0 <= 0.0 || ui_size.1 <= 0.0 {
+    if output_viewport.2 <= 0.0 || output_viewport.3 <= 0.0 || ui_size.0 <= 0.0 || ui_size.1 <= 0.0
+    {
         return None;
     }
     let clip = view_projection * position.extend(1.0);
@@ -728,8 +785,8 @@ fn project_world_label_to_ui(
     let surface_x = world_viewport.0 + (ndc.x + 1.0) * 0.5 * world_viewport.2;
     let surface_y = world_viewport.1 + (1.0 - (ndc.y + 1.0) * 0.5) * world_viewport.3;
     Some((
-        surface_x * ui_size.0 / surface_size.0,
-        surface_y * ui_size.1 / surface_size.1,
+        (surface_x - output_viewport.0) * ui_size.0 / output_viewport.2,
+        (surface_y - output_viewport.1) * ui_size.1 / output_viewport.3,
     ))
 }
 
@@ -788,7 +845,7 @@ mod tests {
             Vec3::ZERO,
             Mat4::IDENTITY,
             viewport,
-            (2_000.0, 1_000.0),
+            viewport,
             (1_000.0, 500.0),
         );
         assert_eq!(center, Some((500.0, 250.0)));
@@ -797,10 +854,19 @@ mod tests {
                 Vec3::new(1.01, 0.0, 0.0),
                 Mat4::IDENTITY,
                 viewport,
-                (2_000.0, 1_000.0),
+                viewport,
                 (1_000.0, 500.0),
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn world_labels_are_local_to_an_embedded_output_viewport() {
+        let output = (240.0, 80.0, 1_000.0, 600.0);
+        assert_eq!(
+            project_world_label_to_ui(Vec3::ZERO, Mat4::IDENTITY, output, output, (1_000.0, 600.0),),
+            Some((500.0, 300.0))
         );
     }
 

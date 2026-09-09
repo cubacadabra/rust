@@ -610,7 +610,23 @@ impl Renderer {
             active_world: usize::MAX,
             worlds: Vec::new(),
             ui_frame: Default::default(),
+            #[cfg(feature = "studio-ui")]
+            studio_viewport: None,
         }
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn set_studio_viewport(&mut self, viewport: Option<[f32; 4]>) {
+        self.studio_viewport = viewport.filter(|[x, y, width, height]| {
+            x.is_finite()
+                && y.is_finite()
+                && width.is_finite()
+                && height.is_finite()
+                && *x >= 0.0
+                && *y >= 0.0
+                && *width > 0.0
+                && *height > 0.0
+        });
     }
 
     pub(crate) fn set_package_image(

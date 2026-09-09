@@ -14,6 +14,7 @@ metal = ["wgpu/metal"]
 android-backends = ["wgpu/vulkan", "wgpu/gles"]
 desktop-backends = ["wgpu/dx12", "wgpu/vulkan", "wgpu/gles"]
 studio-network = []
+studio-ui = []
 web-renderer = []
 dev-showcase = []
 

@@ -91,6 +91,29 @@ pub mod native {
             self.inner.draw();
         }
 
+        #[cfg(feature = "studio-ui")]
+        pub fn draw_with_overlay<F>(&mut self, overlay: F)
+        where
+            F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+        {
+            self.inner.draw_with_overlay(overlay);
+        }
+
+        #[cfg(feature = "studio-ui")]
+        pub fn set_studio_viewport(&mut self, viewport: Option<[f32; 4]>) {
+            self.inner.set_studio_viewport(viewport);
+        }
+
+        #[cfg(feature = "studio-ui")]
+        pub fn device(&self) -> &wgpu::Device {
+            &self.inner.device
+        }
+
+        #[cfg(feature = "studio-ui")]
+        pub fn studio_overlay_format(&self) -> wgpu::TextureFormat {
+            self.inner.studio_overlay_format()
+        }
+
         pub fn set_package_image_atlas(
             &mut self,
             width: u32,

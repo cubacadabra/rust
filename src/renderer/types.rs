@@ -351,6 +351,8 @@ pub struct Renderer {
     pub(super) active_world: usize,
     pub(super) worlds: Vec<RenderWorld>,
     pub(super) ui_frame: UiFrame,
+    #[cfg(feature = "studio-ui")]
+    pub(super) studio_viewport: Option<[f32; 4]>,
 }
 
 fn default_player_style() -> AvatarStyle {
