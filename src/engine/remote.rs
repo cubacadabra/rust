@@ -43,7 +43,7 @@ impl Engine {
         self.write_snapshot();
     }
 
-    pub(crate) fn reset_remote_session(&mut self) {
+    pub fn reset_remote_session(&mut self) {
         self.remote_players.clear();
         self.remote_packet_sequence = 0;
         self.remote_world_id = None;
@@ -278,7 +278,7 @@ impl Engine {
         true
     }
 
-    pub(crate) fn apply_remote_update_json(&mut self, source: &str) -> bool {
+    pub fn apply_remote_update_json(&mut self, source: &str) -> bool {
         if source.len() > identity::MAX_REMOTE_UPDATE_BYTES {
             self.remote_update_status = STATUS_INVALID;
             return false;
@@ -407,16 +407,6 @@ impl Engine {
         };
         self.write_snapshot();
         true
-    }
-
-    #[cfg(feature = "studio-network")]
-    pub fn studio_reset_remote_session(&mut self) {
-        self.reset_remote_session();
-    }
-
-    #[cfg(feature = "studio-network")]
-    pub fn studio_apply_remote_update_json(&mut self, source: &str) -> bool {
-        self.apply_remote_update_json(source)
     }
 
     fn apply_remote_appearance(

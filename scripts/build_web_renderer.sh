@@ -45,12 +45,12 @@ fi
 
 mkdir -p "$output_dir"
 $cargo_command build \
-  --manifest-path "$crate_dir/Cargo.toml" \
+  --manifest-path "$crate_dir/crates/client/Cargo.toml" \
   --target wasm32-unknown-unknown \
   $cargo_profile_args \
   --features web-renderer
 "$wasm_bindgen_command" \
-  "$target_dir/wasm32-unknown-unknown/$profile/cubacadabra_engine.wasm" \
+  "$target_dir/wasm32-unknown-unknown/$profile/cubacadabra_client.wasm" \
   --target web \
   --no-typescript \
   --out-dir "$output_dir" \

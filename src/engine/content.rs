@@ -114,15 +114,10 @@ impl Engine {
         self.script.is_some()
     }
 
-    pub(crate) fn receive_network_message_json(&mut self, source: &str) -> bool {
+    pub fn receive_network_message_json(&mut self, source: &str) -> bool {
         self.script
             .as_ref()
             .is_some_and(|script| script.enqueue_network_message(source))
-    }
-
-    #[cfg(feature = "studio-network")]
-    pub fn studio_receive_network_message_json(&mut self, source: &str) -> bool {
-        self.receive_network_message_json(source)
     }
 
     pub(crate) fn prepare_network_receive_buffer(&mut self, length: usize) -> *mut u8 {
@@ -162,8 +157,7 @@ impl Engine {
         &self.network_message_buffer
     }
 
-    #[cfg(feature = "studio-network")]
-    pub fn studio_poll_network_message(&mut self) -> Option<String> {
+    pub fn poll_network_message_json(&mut self) -> Option<String> {
         if !self.poll_network_message() {
             return None;
         }

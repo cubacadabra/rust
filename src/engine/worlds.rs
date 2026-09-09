@@ -170,7 +170,6 @@ impl Engine {
         true
     }
 
-    #[cfg(feature = "studio-network")]
     pub fn start_world_by_id(&mut self, world_id: &str) -> bool {
         self.world_ids
             .iter()

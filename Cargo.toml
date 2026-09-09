@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "crates/client"]
+resolver = "3"
+
 [package]
 name = "cubacadabra-engine"
 version = "0.3.0"
@@ -13,7 +17,6 @@ default = ["metal"]
 metal = ["wgpu/metal"]
 android-backends = ["wgpu/vulkan", "wgpu/gles"]
 desktop-backends = ["wgpu/dx12", "wgpu/vulkan", "wgpu/gles"]
-studio-network = []
 studio-ui = []
 web-renderer = []
 dev-showcase = []

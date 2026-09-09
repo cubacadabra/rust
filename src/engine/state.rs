@@ -237,13 +237,8 @@ impl Engine {
         self.launch_event_id
     }
 
-    pub(crate) fn player_respawn_event_id(&self) -> u32 {
+    pub fn player_respawn_event_id(&self) -> u32 {
         self.player_respawn_event_id
-    }
-
-    #[cfg(feature = "studio-network")]
-    pub fn studio_player_respawn_event_id(&self) -> u32 {
-        self.player_respawn_event_id()
     }
 
     pub(crate) fn last_launch_pad(&self) -> usize {
@@ -258,7 +253,6 @@ impl Engine {
         self.active_world
     }
 
-    #[cfg(feature = "studio-network")]
     pub fn active_world_id(&self) -> Option<&str> {
         self.world_ids.get(self.active_world).map(String::as_str)
     }

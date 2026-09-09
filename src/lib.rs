@@ -44,6 +44,8 @@ mod types;
 mod ui;
 #[cfg(all(target_arch = "wasm32", feature = "web-renderer"))]
 mod web_renderer;
+#[cfg(all(target_arch = "wasm32", feature = "web-renderer"))]
+pub use web_renderer::WebRenderer;
 mod world;
 
 pub use engine::Engine;

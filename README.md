@@ -1,24 +1,35 @@
-# Cubacadabra engine
+# cubacadabra Rust workspace
 
-This crate is the platform-neutral runtime shared by the browser and iOS
-clients. It owns simulation, movement, collision, world and launch-pad
-behavior, the native Luau host, and the shared `wgpu` primitive renderer.
+This workspace is the platform-neutral runtime shared by Studio, iOS,
+Android, and the browser. It owns simulation, movement, collision, world and
+launch-pad behavior, Luau, rendering, and the engine-facing multiplayer client
+session.
+
+It has two crates:
+
+- `cubacadabra-engine` (the root package) owns deterministic game/runtime state.
+- `cubacadabra-client` (`crates/client`) owns package startup, multiplayer
+  protocol decoding, remote-player projection, launch/world routing, and the
+  Luau network outbox. It exposes Rust types to Studio, C to iOS/Android, and a
+  `wasm-bindgen` class to the browser.
 
 The repositories are separate by responsibility:
 
 ```text
-first-game  -> declarative world manifest and portable Luau rules
-rust        -> this runtime and C/WASM entry points
-web         -> vanilla-JavaScript browser client and WASM renderer binding
-ios_app     -> Swift client and native static-library adapter
-backend     -> multiplayer Worker and world WebSockets
+game packages -> declarative world manifests and portable Luau rules
+rust          -> engine + shared client session + C/WASM adapters
+studio        -> direct Rust host and native socket/window integration
+ios_app       -> Swift UI, Apple services, socket, and C adapter
+android_app   -> Kotlin UI, Android services, socket, and JNI adapter
+web           -> JavaScript UI, browser services, socket, and WASM adapter
+backend       -> multiplayer Worker and world WebSockets
 ```
 
-The runtime does not fetch the game package or open the multiplayer socket.
-Each client loads `first-game`, passes its manifest and script into Rust, sends
-input to the engine, and presents the resulting frame. When starting here,
-read [web/README.md](../web/README.md) next for the browser integration, then
-[ios_app/README.md](../ios_app/README.md) for the native integration.
+Rust deliberately does not fetch packages or open sockets. Each host provides
+manifest/script text and transports the `SetWorld` and `SendText` actions
+returned by `ClientSession`; every received socket text frame is passed back to
+that session. See [docs/client-runtime.md](docs/client-runtime.md) for the
+boundary and integration contract.
 
 ## Build the browser renderer
 
@@ -32,15 +43,15 @@ npm install
 npm run build:renderer
 ```
 
-The script adds the `wasm32-unknown-unknown` target when needed, builds this
-crate with the `web-renderer` feature, and writes generated files to
+The script adds the `wasm32-unknown-unknown` target when needed, builds the
+client crate with the `web-renderer` feature, and writes generated files to
 `web/public/wasm/renderer/`. These are local build artifacts; the Rust source
 and `scripts/build_web_renderer.sh` remain the source of truth. `npm run dev`
 and `npm run build` in `web/` invoke this command automatically and use a
 debug WASM build. The deployment helper uses `npm run build:release` so only
 deployed builds use the optimized release WASM.
 
-For engine-only Rust checks:
+For workspace checks:
 
 ```sh
 cargo test
@@ -50,15 +61,15 @@ cargo check
 ## Build for iOS
 
 Xcode invokes `ios_app/scripts/build_rust_engine.sh` as a build phase. It
-compiles this crate for the selected device or simulator architecture and
+compiles `cubacadabra-client` for the selected device or simulator architecture and
 produces a native static library under Xcode's derived data. The Swift app
-calls the functions declared in
-`include/cubacadabra_engine.h` through the C-compatible ABI.
+creates a client session through `include/cubacadabra_client.h`; its borrowed
+engine pointer continues to use the lower-level engine/rendering ABI.
 
-The native lifecycle is: create one engine, load the package and script, submit
-input, advance it, read the frame snapshot, sync/draw the renderer, and destroy
-the engine. The core data model does not depend on browser or native surface
-types.
+The native lifecycle is: create one client from a manifest and script, submit
+transport events and input, dispatch client actions, advance/read the engine,
+sync/draw the renderer, and destroy the client. The engine pointer is owned by
+the client and must not be destroyed separately.
 
 ## Run modes
 
@@ -114,6 +125,7 @@ spells, treasures, doors, and checkpoints remain entirely in Luau.
 ## Source layout
 
 - `engine.rs` — simulation lifecycle, camera state, and frame snapshot
+- `crates/client` — shared package/session/protocol facade and C/WASM adapters
 - `renderer.rs` — shared `wgpu` primitive renderer
 - `player.rs` — locomotion, gravity, and collision resolution
 - `npc.rs` — agent spawning, roaming, separation, and assembly behavior
