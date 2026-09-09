@@ -3,21 +3,24 @@
 This workspace is the platform-neutral runtime shared by Studio, iOS,
 Android, and the browser. It owns simulation, movement, collision, world and
 launch-pad behavior, Luau, rendering, and the engine-facing multiplayer client
-session.
+session and native-presented application state.
 
-It has two crates:
+It has three crates:
 
 - `cubacadabra-engine` (the root package) owns deterministic game/runtime state.
 - `cubacadabra-client` (`crates/client`) owns package startup, multiplayer
   protocol decoding, remote-player projection, launch/world routing, and the
   Luau network outbox. It exposes Rust types to Studio, C to iOS/Android, and a
   `wasm-bindgen` class to the browser.
+- `cubacadabra-app` (`crates/app`) owns semantic product state outside active
+  gameplay. Its first slice centralizes account username validation and save
+  state while SwiftUI, Compose, and the DOM remain native.
 
 The repositories are separate by responsibility:
 
 ```text
 game packages -> declarative world manifests and portable Luau rules
-rust          -> engine + shared client session + C/WASM adapters
+rust          -> engine + shared client/app state + C/WASM adapters
 studio        -> direct Rust host and native socket/window integration
 ios_app       -> Swift UI, Apple services, socket, and C adapter
 android_app   -> Kotlin UI, Android services, socket, and JNI adapter
@@ -30,6 +33,12 @@ manifest/script text and transports the `SetWorld` and `SendText` actions
 returned by `ClientSession`; every received socket text frame is passed back to
 that session. See [docs/client-runtime.md](docs/client-runtime.md) for the
 boundary and integration contract.
+
+The app crate follows the same host-driven boundary for product features: a
+host dispatches typed actions, renders a serializable snapshot, performs queued
+effects with its native services, and returns typed results. See
+[docs/app-runtime.md](docs/app-runtime.md) for the current username/profile
+slice and migration order.
 
 ## Build the browser renderer
 
@@ -126,6 +135,7 @@ spells, treasures, doors, and checkpoints remain entirely in Luau.
 
 - `engine.rs` — simulation lifecycle, camera state, and frame snapshot
 - `crates/client` — shared package/session/protocol facade and C/WASM adapters
+- `crates/app` — shared non-game application state, snapshots, and host effects
 - `renderer.rs` — shared `wgpu` primitive renderer
 - `player.rs` — locomotion, gravity, and collision resolution
 - `npc.rs` — agent spawning, roaming, separation, and assembly behavior
