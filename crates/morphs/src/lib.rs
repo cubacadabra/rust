@@ -11,6 +11,7 @@ mod diagnostic;
 mod id;
 mod legacy;
 mod loadout;
+mod pack;
 mod resolve;
 
 pub use capability::{CapabilityId, CapabilitySet};
@@ -25,5 +26,9 @@ pub use legacy::{LegacyAppearance, migrate_v1_appearance};
 pub use loadout::{
     MAX_LOADOUT_BYTES, MAX_PARAMETERS, MAX_PARTS, MORPH_LOADOUT_VERSION, MorphLoadout,
     MorphParameterValue, parse_loadout,
+};
+pub use pack::{
+    MAX_MORPH_PACK_BYTES, MORPH_PACK_MAGIC, MORPH_PACK_SCHEMA_VERSION, MorphPack,
+    MorphPackAttachment, MorphPackLod, decode_morph_pack,
 };
 pub use resolve::{ResolvedMorphLoadout, resolve_loadout, resolve_preset};

@@ -19,6 +19,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Complete Phase 1 catalog resolution and fit/conflict resolution.
 - [ ] Build the rigid Blender accessory vertical slice.
 - [x] Add a checked-in three LOD rigid accessory fixture and deterministic `.morphpack` compiler.
+- [x] Add a bounded shared-runtime `.morphpack` decoder and validation CLI.
 - [x] Add Studio-side publish flow for validated rigid accessory packs.
 - [x] Generate a deterministic PNG thumbnail from the shaded preview mesh.
 - [x] Add the Morphs workspace shell MVP with catalog library, search, and inspector.
@@ -72,6 +73,8 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added resumable `.morph.draft.json` save/reopen for incomplete imports. Drafts preserve the current asset, attachment, partial LOD mapping, and known triangle counts; strict `.morph.json` export and `.morphpack` publishing still require validated distinct LOD nodes.
 - 2026-09-10 verification: Studio has 17 passing tests and the authoring crate has 9 passing tests after the draft persistence change; `git diff --check` passes.
 - 2026-09-10 verification: Studio has 15 passing tests, the authoring crate has 9 passing tests, the three LOD fixture passes `morph_validate`, Studio `cargo check` passes, and both repositories pass `git diff --check`. Shared runtime renderer registration remains next.
+- 2026-09-10: Added a bounded, renderer-neutral `.morphpack` decoder to `cubacadabra-morphs`. It owns the shared magic/schema/resource limits, validates the embedded asset and rigid attachment, bounds vertex/index allocations, rejects malformed floats, invalid indices, mismatched triangle counts, unsupported color flags, and trailing bytes, and returns deterministic diagnostics. Studio authoring now reuses the shared pack constants and exposes `morph_pack_validate` for local pack checks.
+- 2026-09-10 verification: `cubacadabra-morphs` has 20 passing tests, Studio has 18 passing tests, the full Rust workspace has 143 passing engine tests, normal and Android-backend checks pass, and `/Users/aa/Downloads/test_top_hat.morph.morphpack` passes the shared decoder at 14,625 bytes with Near 248, Mid 124, and Far 48 triangles. The WASM check remains unavailable because `wasm32-unknown-unknown` is not installed locally. Shared runtime renderer registration remains next.
 
 ## Architecture and delivery plan
 
