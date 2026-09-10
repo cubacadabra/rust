@@ -67,4 +67,5 @@ $cargo_command build \
 "$wasm_bindgen_command" \
   "$target_dir/wasm32-unknown-unknown/$profile/cubacadabra_app.wasm" \
   --target web --no-typescript --out-dir "$app_output_dir" --out-name cubacadabra_app
+cp "$web_dir/src/app/load-app-runtime.js" "$app_output_dir/load-app-runtime.js"
 echo "Built $app_output_dir/cubacadabra_app.js ($profile)"
