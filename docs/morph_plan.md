@@ -18,6 +18,9 @@ Status: in progress; last updated September 10, 2026
 - [ ] Produce and review the Phase 0 PNG/JSON baseline artifacts.
 - [x] Complete Phase 1 catalog resolution and fit/conflict resolution.
 - [ ] Build the rigid Blender accessory vertical slice.
+- [x] Add a checked-in three LOD rigid accessory fixture and deterministic `.morphpack` compiler.
+- [x] Add Studio-side publish flow for validated rigid accessory packs.
+- [x] Generate a deterministic PNG thumbnail from the shaded preview mesh.
 - [x] Add the Morphs workspace shell MVP with catalog library, search, and inspector.
 - [x] Add the first Studio GLB import/preview loop with bounded mesh decoding and a native file picker.
 - [x] Add source-structure inspection for imported drafts, including node/mesh/material counts and LOD candidates.
@@ -26,6 +29,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Make the imported preview readable with a shaded surface pass and wireframe toggle.
 - [x] Add source/Near/Mid/Far preview selection for uniquely mapped GLB nodes.
 - [x] Apply imported PBR base color to the CPU shaded preview when available.
+- [x] Keep the Morphs preview and inspector headers collision-free at the compact Studio width.
 - [ ] Build the Morphs workspace MVP.
 
 ### Work log
@@ -59,6 +63,12 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10 verification: Studio has 14 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and both repositories pass `git diff --check`. Local `rustfmt` and `clippy` components remain unavailable in the installed Rust toolchain.
 - 2026-09-10: The CPU preview now reads a valid first-primitive PBR `baseColorFactor` from each decoded GLB mesh and uses it for shaded rendering, with the Studio accent color as a safe fallback.
 - 2026-09-10 verification: Studio has 14 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and both repositories pass `git diff --check`. Local `rustfmt` and `clippy` components remain unavailable in the installed Rust toolchain.
+- 2026-09-10: Fixed compact Morphs header collisions by replacing inspector text actions with tooltip-backed icon controls and giving the Source/Near/Mid/Far selector its own painted row and layout space.
+- 2026-09-10 verification: Studio has 14 passing tests, Studio `cargo check` passes, and both repositories pass `git diff --check`. Local `rustfmt` and `clippy` components remain unavailable in the installed Rust toolchain.
+- 2026-09-10: Added a checked-in `TopHat_Near` / `TopHat_Mid` / `TopHat_Far` GLB fixture with a matching sidecar and a small fixture generator. The authoring crate now compiles validated LOD meshes plus manifest metadata into a deterministic bounded `.morphpack` envelope.
+- 2026-09-10: Added the Studio `Publish .morphpack` action. It reruns sidecar and GLB validation, writes the pack through a native save dialog, and reports the published asset ID and byte size inline.
+- 2026-09-10: Added deterministic PNG thumbnail generation from the current bounded shaded preview, using imported base color when available and the same CPU mesh data as pack compilation.
+- 2026-09-10 verification: Studio has 15 passing tests, the authoring crate has 9 passing tests, the three LOD fixture passes `morph_validate`, Studio `cargo check` passes, and both repositories pass `git diff --check`. Shared runtime renderer registration remains next.
 
 ## Architecture and delivery plan
 
