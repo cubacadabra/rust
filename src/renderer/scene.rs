@@ -7,6 +7,7 @@ use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefiniti
 use crate::types::{CharacterEntityKind, CharacterMotionSample};
 #[cfg(target_os = "ios")]
 use crate::ui::UiFrame;
+use cubacadabra_morphs::MorphAssetId;
 use std::collections::HashSet;
 
 #[cfg(target_os = "ios")]
@@ -89,6 +90,7 @@ impl Renderer {
         self.scene.agents.clear();
         self.scene.remote_players.clear();
         self.scene.remote_names.clear();
+        self.scene.morph_assets.clear();
         self.scene.player_style =
             style_from_appearance(engine.player_appearance(), self.scene.player_style);
         let reduced_effects = engine.reduced_effects();
@@ -120,6 +122,17 @@ impl Renderer {
                     .unwrap_or(self.scene.player_style),
             };
             let body = style.body;
+            if let Some(asset_id) = match sample.key.kind {
+                CharacterEntityKind::LocalPlayer => {
+                    morph_asset_for_appearance(engine.player_appearance())
+                }
+                CharacterEntityKind::RemotePlayer => engine
+                    .remote_appearance(sample.key)
+                    .and_then(morph_asset_for_appearance),
+                CharacterEntityKind::LocalNpc => None,
+            } {
+                self.scene.morph_assets.insert(sample.key, asset_id);
+            }
             let reduced_effects = self.scene.reduced_effects;
             let presentation = self
                 .scene
@@ -163,6 +176,9 @@ impl Renderer {
             .presentation
             .retain(|key, _| active_keys.contains(key));
         self.scene.lods.retain(|key, _| active_keys.contains(key));
+        self.scene
+            .morph_assets
+            .retain(|key, _| active_keys.contains(key));
         self.scene.pad_seconds.clear();
         self.scene
             .pad_seconds
@@ -207,6 +223,12 @@ impl Renderer {
         #[cfg(target_os = "ios")]
         log_ui_frame(&self.ui_frame);
     }
+}
+
+fn morph_asset_for_appearance(appearance: &CharacterAppearance) -> Option<MorphAssetId> {
+    appearance
+        .equipment_asset(crate::character::definition::EquipmentSlot::Hat)
+        .and_then(|asset_id| MorphAssetId::parse(asset_id).ok())
 }
 
 fn display_name(value: &str, fallback: &str) -> String {

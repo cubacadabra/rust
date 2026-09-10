@@ -284,6 +284,10 @@ pub(super) struct Scene {
     pub(super) build_blocks: Vec<BuildBlock>,
     pub(super) presentation: std::collections::HashMap<crate::types::CharacterEntityKey, crate::character::CharacterPresentationState>,
     pub(super) lods: std::collections::HashMap<crate::types::CharacterEntityKey, crate::renderer::character_quality::CharacterLod>,
+    pub(super) morph_assets: std::collections::HashMap<
+        crate::types::CharacterEntityKey,
+        cubacadabra_morphs::MorphAssetId,
+    >,
     pub(super) reduced_effects: bool,
     pub(super) interaction_states: Vec<crate::types::InteractionRenderState>,
     pub(super) effect_states: std::collections::BTreeMap<String, String>,
@@ -307,6 +311,7 @@ impl Default for Scene {
             build_blocks: Vec::new(),
             presentation: std::collections::HashMap::new(),
             lods: std::collections::HashMap::new(),
+            morph_assets: std::collections::HashMap::new(),
             reduced_effects: false,
             interaction_states: Vec::new(),
             effect_states: std::collections::BTreeMap::new(),

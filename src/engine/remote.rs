@@ -95,7 +95,7 @@ impl Engine {
         self.apply_local_appearance_json(&source)
     }
 
-    pub(crate) fn set_local_appearance_json(&mut self, source: &str) -> u8 {
+    pub fn set_local_appearance_json(&mut self, source: &str) -> u8 {
         if source.len() > identity::MAX_APPEARANCE_BYTES || !source.is_ascii() {
             self.appearance_status = STATUS_INVALID;
             return self.appearance_status;
@@ -141,7 +141,7 @@ impl Engine {
         true
     }
 
-    pub(crate) fn appearance_revision(&self) -> u32 {
+    pub fn appearance_revision(&self) -> u32 {
         self.player_appearance.revision
     }
 

@@ -1,5 +1,5 @@
-//! Fixed, renderer-owned catalog. All bundled bodies are compiled and
-//! uploaded before first use; changing colors/worlds cannot grow this cache.
+//! Renderer-owned character resources. Bundled bodies remain a fixed catalog;
+//! authored rigid morphs use a separate bounded registry.
 use super::{
     AvatarStyle, RenderEntity,
     character::{self, Feature, Part},
@@ -7,10 +7,9 @@ use super::{
     character_quality::{self, CharacterLod},
     rounded_geometry::RoundedMeshCache,
 };
-use crate::character::{BodyId, BodyRecipe, OutfitId, body_recipe};
+use crate::character::{BodyId, BodyRecipe, JointId, OutfitId, body_recipe};
 use cubacadabra_morphs::{
-    MorphAssetDefinition, MorphAssetId, MorphDiagnostic, MorphPack, MorphPackAttachment,
-    MorphPackLod,
+    MorphAssetId, MorphDiagnostic, MorphPack, MorphPackAttachment, MorphPackLod,
 };
 use glam::{Mat4, Quat, Vec3};
 use std::collections::BTreeMap;
@@ -137,11 +136,17 @@ struct Mesh {
 }
 
 struct RegisteredMorph {
-    _asset: MorphAssetDefinition,
-    _attachment: MorphPackAttachment,
-    _base_colors: [Option<[f32; 4]>; 3],
-    _lods: [Mesh; 3],
+    attachment: MorphPackAttachment,
+    base_colors: [Option<[f32; 4]>; 3],
+    lods: [Mesh; 3],
     bytes: usize,
+}
+
+struct MorphDraw {
+    asset_id: MorphAssetId,
+    lod: usize,
+    start: usize,
+    count: usize,
 }
 
 /// GPU resources for compiled rigid morphs. This registry is intentionally
@@ -150,13 +155,26 @@ struct RegisteredMorph {
 struct MorphRegistry {
     assets: BTreeMap<MorphAssetId, RegisteredMorph>,
     resident_bytes: usize,
+    batches: BTreeMap<(MorphAssetId, usize), Vec<CharacterInstance>>,
+    instances: Vec<CharacterInstance>,
+    draws: Vec<MorphDraw>,
+    buffer: wgpu::Buffer,
 }
 
 impl MorphRegistry {
-    fn new() -> Self {
+    fn new(device: &wgpu::Device) -> Self {
         Self {
             assets: BTreeMap::new(),
             resident_bytes: 0,
+            batches: BTreeMap::new(),
+            instances: Vec::with_capacity(MAX_CHARACTERS * 16),
+            draws: Vec::with_capacity(MAX_CHARACTERS),
+            buffer: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("reusable morph instances"),
+                size: (MAX_CHARACTERS * 16 * size_of::<CharacterInstance>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
         }
     }
 
@@ -206,18 +224,99 @@ impl MorphRegistry {
             .try_into()
             .map_err(|_| vec![morph_error("MORPH_GPU_INVALID_LOD_COUNT", "lods")])?;
         let [near, mid, far] = lods;
+        self.batches.retain(|(asset_id, _), _| asset_id != &id);
         self.assets.insert(
             id,
             RegisteredMorph {
-                _asset: pack.asset,
-                _attachment: pack.attachment,
-                _base_colors: base_colors,
-                _lods: [near, mid, far],
+                attachment: pack.attachment,
+                base_colors,
+                lods: [near, mid, far],
                 bytes,
             },
         );
         self.resident_bytes = new_resident_bytes;
         Ok(())
+    }
+
+    fn begin(&mut self) {
+        self.instances.clear();
+        self.draws.clear();
+        for batch in self.batches.values_mut() {
+            batch.clear();
+        }
+    }
+
+    fn add_instance(
+        &mut self,
+        asset_id: &MorphAssetId,
+        lod: CharacterLod,
+        root: Mat4,
+        joints: [Mat4; 15],
+    ) {
+        let existing_instances = self.batches.values().map(Vec::len).sum::<usize>();
+        if existing_instances >= MAX_CHARACTERS * 16 {
+            return;
+        }
+        let Some(asset) = self.assets.get(asset_id) else {
+            return;
+        };
+        let Some(joint) = morph_joint(&asset.attachment.joint) else {
+            return;
+        };
+        let attachment = Mat4::from_scale_rotation_translation(
+            Vec3::from_array(asset.attachment.scale),
+            Quat::from_array(asset.attachment.rotation),
+            Vec3::from_array(asset.attachment.translation),
+        );
+        let tint = asset.base_colors[lod.index()].unwrap_or([0.7, 0.7, 0.7, 1.0]);
+        self.batches
+            .entry((asset_id.clone(), lod.index()))
+            .or_default()
+            .push(CharacterInstance::new(
+                root * joints[joint.index()] * attachment,
+                tint,
+                Material::Toy,
+            ));
+    }
+
+    fn upload(&mut self, queue: &wgpu::Queue) {
+        self.instances.clear();
+        self.draws.clear();
+        for ((asset_id, lod), batch) in &self.batches {
+            if batch.is_empty() {
+                continue;
+            }
+            let start = self.instances.len();
+            self.instances.extend_from_slice(batch);
+            self.draws.push(MorphDraw {
+                asset_id: asset_id.clone(),
+                lod: *lod,
+                start,
+                count: batch.len(),
+            });
+        }
+        if !self.instances.is_empty() {
+            queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&self.instances));
+        }
+    }
+
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline) {
+        if self.draws.is_empty() {
+            return;
+        }
+        pass.set_pipeline(pipeline);
+        for draw in &self.draws {
+            let Some(asset) = self.assets.get(&draw.asset_id) else {
+                continue;
+            };
+            let mesh = &asset.lods[draw.lod];
+            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+            let start = (draw.start * size_of::<CharacterInstance>()) as u64;
+            let end = start + (draw.count * size_of::<CharacterInstance>()) as u64;
+            pass.set_vertex_buffer(1, self.buffer.slice(start..end));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..mesh.index_count, 0, 0..draw.count as u32);
+        }
     }
 }
 
@@ -234,10 +333,13 @@ fn upload_morph_lod(
     lod: MorphPackLod,
 ) -> Result<Mesh, Vec<MorphDiagnostic>> {
     let mut normals = vec![Vec3::ZERO; lod.vertices.len()];
-    for triangle in lod.indices.chunks_exact(3) {
-        let a = Vec3::from_array(lod.vertices[triangle[0] as usize]);
-        let b = Vec3::from_array(lod.vertices[triangle[1] as usize]);
-        let c = Vec3::from_array(lod.vertices[triangle[2] as usize]);
+    for triangle in lod.indices.chunks(3) {
+        let [ia, ib, ic] = triangle else {
+            continue;
+        };
+        let a = Vec3::from_array(lod.vertices[*ia as usize]);
+        let b = Vec3::from_array(lod.vertices[*ib as usize]);
+        let c = Vec3::from_array(lod.vertices[*ic as usize]);
         let normal = (b - a).cross(c - a);
         normals[triangle[0] as usize] += normal;
         normals[triangle[1] as usize] += normal;
@@ -281,6 +383,28 @@ fn morph_error(code: &str, path: &str) -> MorphDiagnostic {
         message: "compiled morph exceeds the renderer resource limit".to_owned(),
     }
 }
+
+fn morph_joint(name: &str) -> Option<JointId> {
+    Some(match name {
+        "root" => JointId::Root,
+        "torso" => JointId::Torso,
+        "head" => JointId::Head,
+        "left-upper-arm" => JointId::LeftUpperArm,
+        "left-lower-arm" => JointId::LeftLowerArm,
+        "left-hand" => JointId::LeftHand,
+        "right-upper-arm" => JointId::RightUpperArm,
+        "right-lower-arm" => JointId::RightLowerArm,
+        "right-hand" => JointId::RightHand,
+        "left-upper-leg" => JointId::LeftUpperLeg,
+        "left-lower-leg" => JointId::LeftLowerLeg,
+        "left-foot" => JointId::LeftFoot,
+        "right-upper-leg" => JointId::RightUpperLeg,
+        "right-lower-leg" => JointId::RightLowerLeg,
+        "right-foot" => JointId::RightFoot,
+        _ => return None,
+    })
+}
+
 struct CompiledBody {
     body: BodyId,
     outfit: OutfitId,
@@ -482,7 +606,7 @@ impl CharacterRenderer {
             head_only: false,
             bodies,
             meshes,
-            morphs: MorphRegistry::new(),
+            morphs: MorphRegistry::new(device),
             batches,
             instances: Vec::with_capacity(MAX_CHARACTERS * MAX_PARTS),
             buffer,
@@ -502,6 +626,7 @@ impl CharacterRenderer {
     }
 
     pub fn begin(&mut self) {
+        self.morphs.begin();
         self.instances.clear();
         for batch in &mut self.batches {
             batch.instances.clear();
@@ -530,9 +655,11 @@ impl CharacterRenderer {
             CharacterLod::Mid,
             0,
             false,
+            None,
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_with_quality(
         &mut self,
         entity: RenderEntity,
@@ -541,6 +668,7 @@ impl CharacterRenderer {
         lod: CharacterLod,
         effect_rank: usize,
         reduced_effects: bool,
+        morph_asset: Option<&MorphAssetId>,
     ) {
         if self.stats.characters >= MAX_CHARACTERS
             || !entity.camera_fade.is_finite()
@@ -598,6 +726,9 @@ impl CharacterRenderer {
             Quat::from_rotation_y(entity.yaw),
             Vec3::from_array(entity.position),
         );
+        if let Some(morph_asset) = morph_asset {
+            self.morphs.add_instance(morph_asset, lod, root, joints);
+        }
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
             #[cfg(feature = "dev-showcase")]
@@ -806,6 +937,7 @@ impl CharacterRenderer {
         if !self.instances.is_empty() {
             queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&self.instances));
         }
+        self.morphs.upload(queue);
     }
 
     #[cfg(feature = "dev-showcase")]
@@ -846,6 +978,9 @@ impl CharacterRenderer {
             pass.set_vertex_buffer(1, self.buffer.slice(start..end));
             pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..mesh.index_count, 0, 0..batch.instances.len() as u32);
+        }
+        if kind == CharacterPass::Opaque {
+            self.morphs.draw(pass, &self.opaque);
         }
     }
 }

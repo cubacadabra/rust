@@ -108,7 +108,16 @@ impl Renderer {
                 return;
             };
             lods.insert(entity.key, lod);
-            characters.add_with_quality(entity, style, character_ink, lod, rank, reduced_effects);
+            let morph_asset = self.scene.morph_assets.get(&entity.key);
+            characters.add_with_quality(
+                entity,
+                style,
+                character_ink,
+                lod,
+                rank,
+                reduced_effects,
+                morph_asset,
+            );
         };
         if magic_mode {
             // Local player first gives deterministic priority if a development

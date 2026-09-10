@@ -265,8 +265,15 @@ impl HeadlessContext {
                 } else {
                     CharacterLod::Mid
                 };
-                self.characters
-                    .add_with_quality(entity, style, palette.ink, lod, rank, false);
+                self.characters.add_with_quality(
+                    entity,
+                    style,
+                    palette.ink,
+                    lod,
+                    rank,
+                    false,
+                    None,
+                );
             }
             if matches!(
                 scenario,

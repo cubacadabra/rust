@@ -21,6 +21,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Add a checked-in three LOD rigid accessory fixture and deterministic `.morphpack` compiler.
 - [x] Add a bounded shared-runtime `.morphpack` decoder and validation CLI.
 - [x] Add an additive engine renderer registry for bounded rigid morph-pack GPU resources.
+- [x] Select registered rigid morphs from V1-compatible equipment loadouts, attach them to the animated rig, and draw the matching Near/Mid/Far mesh.
 - [x] Add Studio-side publish flow for validated rigid accessory packs.
 - [x] Generate a deterministic PNG thumbnail from the shaded preview mesh.
 - [x] Add the Morphs workspace shell MVP with catalog library, search, and inspector.
@@ -33,7 +34,8 @@ Status: in progress; last updated September 10, 2026
 - [x] Add source/Near/Mid/Far preview selection for uniquely mapped GLB nodes.
 - [x] Apply imported PBR base color to the CPU shaded preview when available.
 - [x] Keep the Morphs preview and inspector headers collision-free at the compact Studio width.
-- [ ] Build the Morphs workspace MVP.
+- [x] Build the Morphs workspace MVP.
+- [ ] Add package-host asset discovery and automatic pack registration for deployed iOS, Android, and web sessions.
 
 ### Work log
 
@@ -75,9 +77,10 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10 verification: Studio has 17 passing tests and the authoring crate has 9 passing tests after the draft persistence change; `git diff --check` passes.
 - 2026-09-10 verification: Studio has 15 passing tests, the authoring crate has 9 passing tests, the three LOD fixture passes `morph_validate`, Studio `cargo check` passes, and both repositories pass `git diff --check`. Shared runtime renderer registration remains next.
 - 2026-09-10: Added a bounded, renderer-neutral `.morphpack` decoder to `cubacadabra-morphs`. It owns the shared magic/schema/resource limits, validates the embedded asset and rigid attachment, bounds vertex/index allocations, rejects malformed floats, invalid indices, mismatched triangle counts, unsupported color flags, and trailing bytes, and returns deterministic diagnostics. Studio authoring now reuses the shared pack constants and exposes `morph_pack_validate` for local pack checks.
-- 2026-09-10 verification: `cubacadabra-morphs` has 20 passing tests, Studio has 18 passing tests, the full Rust workspace has 143 passing engine tests, normal and Android-backend checks pass, and `/Users/aa/Downloads/test_top_hat.morph.morphpack` passes the shared decoder at 14,625 bytes with Near 248, Mid 124, and Far 48 triangles. The WASM check remains unavailable because `wasm32-unknown-unknown` is not installed locally. Shared runtime renderer registration remains next.
-- 2026-09-10: Added an additive engine-side morph registry. Native, WebRenderer, and C FFI entry points now decode a compiled pack once and upload its three immutable LOD meshes, with generated normals, replacement-by-asset-ID, a 32-pack limit, and a 16 MiB GPU residency cap. The existing V1 character batches and per-frame draw path remain unchanged until loadout attachment is wired.
-- 2026-09-10 verification: the full Rust workspace has 143 passing engine tests, Studio has 18 passing tests, normal and Android-backend checks pass, and formatting/diff checks pass. The Web/WASM check remains unavailable because `wasm32-unknown-unknown` is not installed locally. Next is selecting registered morph resources from resolved loadouts and drawing them at the attachment joint.
+- 2026-09-10 verification: `cubacadabra-morphs` has 20 passing tests, Studio has 18 passing tests, the full Rust workspace has 143 passing engine tests, normal and Android-backend checks pass, and `/Users/aa/Downloads/test_top_hat.morph.morphpack` passes the shared decoder at 14,625 bytes with Near 248, Mid 124, and Far 48 triangles. The WASM check remains unavailable because `wasm32-unknown-unknown` is not installed locally.
+- 2026-09-10: Added an additive engine-side morph registry. Native, WebRenderer, and C FFI entry points now decode a compiled pack once and upload its three immutable LOD meshes, with generated normals, replacement-by-asset-ID, a 32-pack limit, and a 16 MiB GPU residency cap.
+- 2026-09-10: Completed the live rigid-accessory vertical slice. Studio now registers a validated pack immediately after publish, applies its asset ID to the local V1-compatible hat slot, and the shared renderer resolves that ID per character, applies the authored attachment transform after the animated joint matrix, and batches the matching Near/Mid/Far GPU mesh with the existing opaque character pass. An explicit `Load .morphpack` action also exercises an existing compiled pack directly.
+- 2026-09-10 verification: the shared engine tests (143), Studio tests (18), morph crate tests (20), authoring crate tests (9), normal engine check, Android-backend check, Studio check, formatting checks, and the supplied 14,625-byte top-hat pack validation pass. The Web/WASM check remains unavailable because the `wasm32-unknown-unknown` target is not installed locally. Deployed non-desktop hosts still need to discover package-declared pack files and call the already-exposed registration APIs.
 
 ## Architecture and delivery plan
 
