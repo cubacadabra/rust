@@ -43,7 +43,8 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added the first usable Studio import loop. The Studio-only authoring crate now decodes bounded POSITION/index data from the first GLB primitive; the Morphs inspector opens a native GLB picker and the center panel renders a CPU wireframe with source, vertex, index, and triangle counts. Import errors stay inline and do not enter the engine/runtime path.
 - 2026-09-10 verification: the authoring crate has 7 passing tests and passes strict Clippy; Studio builds, its 11 tests pass, and the release binary builds. `test_top_hat.glb` is ready to inspect in the GUI; it will preview despite lacking the distinct near/mid/far LOD nodes required for publish validation. Strict Studio Clippy still reports pre-existing warnings in `main.rs`/`network.rs`; the new preview code is clean.
 - 2026-09-10: Added raw-GLB source inspection for the Morphs draft review. Imported files now expose node, mesh, material, aggregate triangle, and heuristic Near/Mid/Far LOD-candidate data in the inspector, with an explicit preview-only warning when the source is not publish-ready.
-- 2026-09-10 verification: the authoring crate has 8 passing tests and passes strict Clippy; Studio has 11 passing tests, formatting and diff checks pass. The next slice is explicit sidecar/attachment mapping and then shaded/material preview.
+- 2026-09-10: Added editable in-memory draft mapping controls for the imported source. Artists can enter an attachment joint and three LOD node names, then validate that joints are safe, nodes exist in the GLB, and LOD mappings are distinct.
+- 2026-09-10 verification: the authoring crate has 8 passing tests and passes strict Clippy; Studio has 11 passing tests, formatting and diff checks pass. The next slice is sidecar export/persistence and then shaded/material preview.
 
 ## Architecture and delivery plan
 
