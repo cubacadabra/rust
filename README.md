@@ -67,6 +67,18 @@ cargo test
 cargo check
 ```
 
+## Git hooks
+
+Enable the repository's pre-commit hook once per checkout:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+When a commit includes Rust source, the hook runs `cargo fmt --all -- --check`
+and blocks the commit until the workspace is formatted. Run `cargo fmt --all`
+and stage the result to fix a formatting failure.
+
 ## Build for iOS
 
 Xcode invokes `ios_app/scripts/build_rust_engine.sh` as a build phase. It

@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -eu
+
+# Keep non-Rust commits fast and avoid running rustfmt when no Rust source is
+# being committed. The check covers the whole workspace so every staged Rust
+# file is validated with the same rustfmt configuration.
+if ! git diff --cached --name-only --diff-filter=ACMR -- '*.rs' | grep -q .; then
+    exit 0
+fi
+
+printf '%s\n' 'Checking staged Rust files with cargo fmt...'
+
+if ! cargo fmt --all -- --check; then
+    printf '%s\n' '' 'Rust formatting is required before committing.' \
+        'Run "cargo fmt --all" and stage the formatted files, then commit again.' >&2
+    exit 1
+fi
