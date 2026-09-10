@@ -4,7 +4,7 @@
 `cubacadabra-client` (active game sessions) and `cubacadabra-engine` (simulation).
 Studio uses ordinary Rust types and methods; JSON, C and WASM are outer adapters.
 
-## Implemented slice: account profile saves
+## Implemented slices: account profile and cube catalog
 
 All account-username entry points now use the shared model:
 
@@ -16,6 +16,12 @@ All account-username entry points now use the shared model:
 - Birthday saves use the same Rust action/snapshot/effect contract on iOS and
   web; Android accepts and projects the same snapshot fields for parity even
   though its current account UI does not edit birthdays.
+- The cube catalog now uses the same Rust action/snapshot/effect
+  contract on web, iOS, and Android. Rust owns page-size bounds, response
+  decoding, cube-id/path validation, duplicate filtering, loading state, and
+  retryable feedback; each host only renders entries and chooses its approved
+  package origin for the current build. Catalog loading is public, so its
+  shared effect can run for a guest without attaching account credentials.
 
 Rust owns normalization/validation, dirty/save eligibility, in-flight state,
 feedback, request method/path/body, and response parsing. Hosts own text fields,
@@ -58,8 +64,8 @@ generation-fenced on sign-out/replacement so late responses cannot sign the old
 account back in.
 
 This is a bounded ownership fix, not a migration of every non-game feature.
-Safety still uses the existing game-side player/moderation integration, and
-catalog services stay native. Android's existing auth/bridge helpers retain
+Safety still uses the existing game-side player/moderation integration.
+Android's existing auth/bridge helpers retain
 their current source package. Move these only when their actual shared feature
 slice warrants it; there are no placeholder repositories, use cases or
 entitlement systems.
@@ -185,8 +191,13 @@ edit, foreground refresh during a save, and logout/login during a package load.
 On web also check birthday and avatar-only saves and partial
 username-success/avatar-failure.
 
-This slice establishes a tested shared source of decisions, not a demonstrated
-net line-count saving. Catalog and safety are the next evaluation points, not
-automatic migrations: move them only if they share meaningful decision logic,
-pending work, and stale-response rules. Native-only lists and moderation UI
-should remain native.
+This establishes a tested shared source of decisions, not a promise that every
+feature belongs in Rust. The catalog was a good fit because all three clients
+needed the same endpoint, validation, loading, and stale-response behavior.
+Safety remains the next evaluation point: move only its shared moderation
+decision/state slice, while keeping native-only lists, dialogs, and platform
+presentation native.
+
+The web game-package deep-link resolver still performs its own paginated catalog
+lookup because it needs pagination metadata to locate an arbitrary game. That
+is a separate follow-up from the menu catalog state migrated here.

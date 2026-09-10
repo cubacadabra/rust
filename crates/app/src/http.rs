@@ -8,7 +8,7 @@ pub(crate) fn username_request(
 ) -> AppEffect {
     AppEffect::HttpRequest {
         effect_id,
-        account_id,
+        account_id: Some(account_id),
         method: "POST".into(),
         path: "auth/username".into(),
         body: serde_json::json!({ "username": username }).to_string(),
@@ -52,7 +52,7 @@ pub(crate) fn username_response(
 pub(crate) fn body_request(effect_id: EffectId, account_id: String, body_id: String) -> AppEffect {
     AppEffect::HttpRequest {
         effect_id,
-        account_id,
+        account_id: Some(account_id),
         method: "POST".into(),
         path: "auth/avatar".into(),
         body: serde_json::json!({ "body_id": body_id }).to_string(),
@@ -97,6 +97,20 @@ pub(crate) fn body_response(
     Ok(response.user.body_id)
 }
 
+pub(crate) fn catalog_request(
+    effect_id: EffectId,
+    account_id: Option<String>,
+    page_size: u16,
+) -> AppEffect {
+    AppEffect::HttpRequest {
+        effect_id,
+        account_id,
+        method: "GET".into(),
+        path: format!("cubes?page=1&page_size={page_size}"),
+        body: String::new(),
+    }
+}
+
 pub(crate) fn birthday_request(
     effect_id: EffectId,
     account_id: String,
@@ -104,7 +118,7 @@ pub(crate) fn birthday_request(
 ) -> AppEffect {
     AppEffect::HttpRequest {
         effect_id,
-        account_id,
+        account_id: Some(account_id),
         method: "POST".into(),
         path: "auth/birthday".into(),
         body: serde_json::json!({ "dob": date_of_birth }).to_string(),

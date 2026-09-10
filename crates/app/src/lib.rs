@@ -1,3 +1,4 @@
+mod catalog;
 #[cfg(not(target_arch = "wasm32"))]
 mod ffi;
 mod http;
@@ -6,6 +7,8 @@ mod username;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
+use catalog::CatalogState;
+pub use catalog::{CatalogEntry, CatalogFeedback, CatalogFeedbackKind, CatalogSnapshot};
 use profile::ProfileState;
 pub use profile::{
     is_valid_body_id, is_valid_date_of_birth, BirthdayFeedback, BirthdaySaveError, BodyFeedback,
@@ -50,6 +53,10 @@ pub enum AppAction {
     SaveBirthday {
         date_of_birth: String,
     },
+    LoadCatalog {
+        #[serde(default = "default_catalog_page_size")]
+        page_size: u16,
+    },
     HttpCompleted {
         effect_id: EffectId,
         status: u16,
@@ -63,10 +70,11 @@ pub enum AppAction {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppEffect {
-    /// Relative to the host's configured API origin. Credentials never enter Rust.
+    /// Relative to the host's configured API origin. `None` marks a public
+    /// request; credentials never enter Rust.
     HttpRequest {
         effect_id: EffectId,
-        account_id: String,
+        account_id: Option<String>,
         method: String,
         path: String,
         body: String,
@@ -79,6 +87,7 @@ pub struct AppSnapshot {
     pub session_id: u32,
     pub account_id: Option<String>,
     pub profile: ProfileSnapshot,
+    pub catalog: CatalogSnapshot,
 }
 
 /// One model per host session, not per screen. Hosts render snapshots, execute
@@ -87,6 +96,7 @@ pub struct AppModel {
     account_id: Option<String>,
     session_id: u32,
     profile: ProfileState,
+    catalog: CatalogState,
     effects: VecDeque<AppEffect>,
     next_effect_id: u32,
 }
@@ -97,6 +107,7 @@ impl Default for AppModel {
             account_id: None,
             session_id: 0,
             profile: ProfileState::new(None, None, None),
+            catalog: CatalogState::default(),
             effects: VecDeque::new(),
             next_effect_id: 1,
         }
@@ -127,6 +138,7 @@ impl AppModel {
                     body_id,
                     date_of_birth,
                 );
+                self.catalog.replace();
                 self.effects.clear();
             }
             AppAction::BeginUsernameEdit {} => self.profile.begin_username_edit(),
@@ -186,6 +198,20 @@ impl AppModel {
                     }
                 }
             }
+            AppAction::LoadCatalog { page_size } => {
+                let effect_id = EffectId(self.next_effect_id);
+                if let Some(page_size) = self.catalog.request_load(effect_id, page_size) {
+                    self.next_effect_id = self
+                        .next_effect_id
+                        .checked_add(1)
+                        .expect("effect ID exhausted");
+                    self.effects.push_back(http::catalog_request(
+                        effect_id,
+                        self.account_id.clone(),
+                        page_size,
+                    ));
+                }
+            }
             AppAction::HttpCompleted {
                 effect_id,
                 status,
@@ -216,6 +242,11 @@ impl AppModel {
                         Ok(date_of_birth) => self.profile.birthday_saved(effect_id, date_of_birth),
                         Err(error) => self.profile.birthday_save_failed(effect_id, error),
                     }
+                } else if self.catalog.is_pending(effect_id) {
+                    match catalog::response(status, &body) {
+                        Ok(entries) => self.catalog.loaded(effect_id, entries),
+                        Err((code, message)) => self.catalog.failed(effect_id, code, message),
+                    }
                 }
             }
             AppAction::HttpFailed { effect_id } => {
@@ -228,6 +259,12 @@ impl AppModel {
                 } else if self.profile.is_birthday_pending(effect_id) {
                     self.profile
                         .birthday_save_failed(effect_id, BirthdaySaveError::Unavailable)
+                } else if self.catalog.is_pending(effect_id) {
+                    self.catalog.failed(
+                        effect_id,
+                        "unavailable",
+                        "We couldn’t load the cubes. Please try again.",
+                    )
                 }
             }
         }
@@ -248,6 +285,7 @@ impl AppModel {
             session_id: self.session_id,
             account_id: self.account_id.clone(),
             profile,
+            catalog: self.catalog.snapshot(),
         }
     }
 
@@ -257,6 +295,10 @@ impl AppModel {
     pub fn take_effects(&mut self) -> Vec<AppEffect> {
         self.effects.drain(..).collect()
     }
+}
+
+fn default_catalog_page_size() -> u16 {
+    catalog::DEFAULT_CATALOG_PAGE_SIZE
 }
 
 #[cfg(test)]
