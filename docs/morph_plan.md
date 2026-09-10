@@ -21,6 +21,8 @@ Status: in progress; last updated September 10, 2026
 - [x] Add the Morphs workspace shell MVP with catalog library, search, and inspector.
 - [x] Add the first Studio GLB import/preview loop with bounded mesh decoding and a native file picker.
 - [x] Add source-structure inspection for imported drafts, including node/mesh/material counts and LOD candidates.
+- [x] Add draft `.morph.json` sidecar export from the Studio mapping controls.
+- [x] Make the imported preview readable with a shaded surface pass and wireframe toggle.
 - [ ] Build the Morphs workspace MVP.
 
 ### Work log
@@ -45,6 +47,9 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added raw-GLB source inspection for the Morphs draft review. Imported files now expose node, mesh, material, aggregate triangle, and heuristic Near/Mid/Far LOD-candidate data in the inspector, with an explicit preview-only warning when the source is not publish-ready.
 - 2026-09-10: Added editable in-memory draft mapping controls for the imported source. Artists can enter an attachment joint and three LOD node names, then validate that joints are safe, nodes exist in the GLB, and LOD mappings are distinct.
 - 2026-09-10 verification: the authoring crate has 8 passing tests and passes strict Clippy; Studio has 11 passing tests, formatting and diff checks pass. The next slice is sidecar export/persistence and then shaded/material preview.
+- 2026-09-10: Added draft `.morph.json` export from the Studio mapping controls. A raw import receives a bounded in-memory headwear draft identity derived from its filename, and the exporter writes that asset, a safe relative GLB filename, rigid head attachment, mapped Near/Mid/Far nodes, and bounded triangle counts through the same sidecar validator used by the CLI.
+- 2026-09-10: Improved the raw GLB preview with depth-offset projection, a CPU shaded surface pass, and a wireframe toggle so imported meshes remain readable while topology is inspected.
+- 2026-09-10 verification: Studio has 12 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and `git diff --check` passes. Local `rustfmt` and `clippy` components are unavailable in the installed Rust toolchain.
 
 ## Architecture and delivery plan
 
