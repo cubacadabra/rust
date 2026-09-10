@@ -4,7 +4,7 @@
 `cubacadabra-client` (active game sessions) and `cubacadabra-engine` (simulation).
 Studio uses ordinary Rust types and methods; JSON, C and WASM are outer adapters.
 
-## Implemented slice: account usernames and morphs
+## Implemented slice: account profile saves
 
 All account-username entry points now use the shared model:
 
@@ -13,12 +13,15 @@ All account-username entry points now use the shared model:
 - Web: My Cube → Basics, owned by one runtime for the signed-in document.
 - Morph/avatar saves use the same Rust action/snapshot/effect contract on all
   three hosts; the image cards remain native UI assets.
+- Birthday saves use the same Rust action/snapshot/effect contract on iOS and
+  web; Android accepts and projects the same snapshot fields for parity even
+  though its current account UI does not edit birthdays.
 
 Rust owns normalization/validation, dirty/save eligibility, in-flight state,
 feedback, request method/path/body, and response parsing. Hosts own text fields,
-navigation/focus, HTTP transport, credentials, and projection into their existing
-profile/socket/engine state. This does not move layout, platform SDKs, or an
-async HTTP runtime into Rust.
+date pickers, navigation/focus, HTTP transport, credentials, and projection into
+their existing profile/socket/engine state. This does not move layout, platform
+SDKs, or an async HTTP runtime into Rust.
 
 The separate in-world websocket name editor still permits spaces. This slice
 preserves its existing behavior and does not claim all naming rules are identical.
@@ -55,11 +58,11 @@ generation-fenced on sign-out/replacement so late responses cannot sign the old
 account back in.
 
 This is a bounded ownership fix, not a migration of every non-game feature.
-Birthday/avatar orchestration is still native (now app-owned); safety still uses
-the existing game-side player/moderation integration, and catalog services stay
-native. Android's existing auth/bridge helpers retain their current source
-package. Move these only when their actual shared feature slice warrants it;
-there are no placeholder repositories, use cases or entitlement systems.
+Safety still uses the existing game-side player/moderation integration, and
+catalog services stay native. Android's existing auth/bridge helpers retain
+their current source package. Move these only when their actual shared feature
+slice warrants it; there are no placeholder repositories, use cases or
+entitlement systems.
 
 ## Contract and lifecycle
 
@@ -83,6 +86,7 @@ app.dispatch(AppAction::ReplaceSession {
     account_id: Some("account-1".into()),
     username: Some("Ada".into()),
     body_id: Some("cuba:person.v1".into()),
+    date_of_birth: Some("2000-01-01".into()),
 });
 app.dispatch(AppAction::UsernameChanged { value: "  Grace_7  ".into() });
 app.dispatch(AppAction::SaveUsername {});
@@ -108,9 +112,11 @@ Hosts project only accepted snapshot fields into their existing user. Birthday
 responses merge only their own field, so a concurrent response cannot roll back
 an accepted name or morph. Native unrelated profile updates also check the
 captured session ID before applying results.
-The app runtime also owns the allowed body IDs, morph draft, save eligibility,
-pending request, response identity/body checks, and user-facing save feedback.
-Hosts no longer issue a direct avatar request or duplicate its error mapping.
+The app runtime also owns the allowed body IDs, morph draft, birthday date
+validation, save eligibility, pending requests, response identity/body checks,
+and user-facing save feedback. Hosts no longer issue direct username, avatar,
+or birthday requests or duplicate their response/error mapping. Sign-in,
+refresh, token storage, and public package/catalog downloads remain host-owned.
 
 Host cancellation is best-effort. Invalidating an effect prevents stale local
 updates; it cannot undo a request the server has already processed. Reload/
@@ -176,7 +182,7 @@ feedback, edit while saving, leave/reopen the editor, sign out while saving,
 and sign into another account. For the host split, also verify cold restored
 sign-in with game assets unavailable, entering/changing games after a profile
 edit, foreground refresh during a save, and logout/login during a package load.
-On web also check avatar-only saves and partial
+On web also check birthday and avatar-only saves and partial
 username-success/avatar-failure.
 
 This slice establishes a tested shared source of decisions, not a demonstrated

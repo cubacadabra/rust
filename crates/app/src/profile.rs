@@ -11,6 +11,37 @@ pub fn is_valid_body_id(value: &str) -> bool {
     PLAYER_BODY_IDS.contains(&value)
 }
 
+pub fn is_valid_date_of_birth(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    if !bytes
+        .iter()
+        .enumerate()
+        .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit())
+    {
+        return false;
+    }
+    let year = value[0..4].parse::<u16>().ok();
+    let month = value[5..7].parse::<u8>().ok();
+    let day = value[8..10].parse::<u8>().ok();
+    let (Some(year), Some(month), Some(day)) = (year, month, day) else {
+        return false;
+    };
+    if !(1900..=2100).contains(&year) || !(1..=12).contains(&month) {
+        return false;
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days_in_month = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    (1..=days_in_month).contains(&day)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UsernameSaveError {
@@ -29,6 +60,45 @@ pub enum BodySaveError {
     Unauthorized,
     Unavailable,
     InvalidResponse,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BirthdaySaveError {
+    InvalidDateOfBirth,
+    Unauthorized,
+    Unavailable,
+    InvalidResponse,
+}
+
+impl BirthdaySaveError {
+    pub fn from_server_code(code: &str) -> Self {
+        match code {
+            "invalid_date_of_birth" => Self::InvalidDateOfBirth,
+            "not_authenticated" | "unauthorized" => Self::Unauthorized,
+            _ => Self::Unavailable,
+        }
+    }
+
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::InvalidDateOfBirth => "invalid_date_of_birth",
+            Self::Unauthorized => "unauthorized",
+            Self::Unavailable => "unavailable",
+            Self::InvalidResponse => "invalid_response",
+        }
+    }
+
+    pub const fn message(self) -> &'static str {
+        match self {
+            Self::InvalidDateOfBirth => {
+                "That date is not valid. Check the year, month, and day, then try again."
+            }
+            Self::Unauthorized => "Your sign-in has expired. Please sign in again.",
+            Self::Unavailable | Self::InvalidResponse => {
+                "We couldn’t save your birthday. Please try again."
+            }
+        }
+    }
 }
 
 impl BodySaveError {
@@ -105,6 +175,13 @@ pub struct BodyFeedback {
     pub message: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BirthdayFeedback {
+    pub kind: FeedbackKind,
+    pub code: String,
+    pub message: String,
+}
+
 impl UsernameFeedback {
     fn validation(error: UsernameValidationError) -> Self {
         Self {
@@ -145,6 +222,9 @@ pub struct ProfileSnapshot {
     pub body_can_save: bool,
     pub body_is_saving: bool,
     pub body_feedback: Option<BodyFeedback>,
+    pub date_of_birth: Option<String>,
+    pub birthday_is_saving: bool,
+    pub birthday_feedback: Option<BirthdayFeedback>,
 }
 
 #[derive(Debug)]
@@ -160,6 +240,12 @@ struct PendingBodySave {
 }
 
 #[derive(Debug)]
+struct PendingBirthdaySave {
+    effect_id: EffectId,
+    date_of_birth: String,
+}
+
+#[derive(Debug)]
 pub(crate) struct ProfileState {
     username: Option<String>,
     username_draft: String,
@@ -169,12 +255,20 @@ pub(crate) struct ProfileState {
     body_draft: String,
     pending_body_save: Option<PendingBodySave>,
     body_feedback: Option<BodyFeedback>,
+    date_of_birth: Option<String>,
+    pending_birthday_save: Option<PendingBirthdaySave>,
+    birthday_feedback: Option<BirthdayFeedback>,
 }
 
 impl ProfileState {
-    pub(crate) fn new(username: Option<String>, body_id: Option<String>) -> Self {
+    pub(crate) fn new(
+        username: Option<String>,
+        body_id: Option<String>,
+        date_of_birth: Option<String>,
+    ) -> Self {
         let username = clean_current_username(username);
         let body_id = clean_body_id(body_id);
+        let date_of_birth = clean_date_of_birth(date_of_birth);
         Self {
             username_draft: username.clone().unwrap_or_default(),
             username,
@@ -186,11 +280,19 @@ impl ProfileState {
             body_id,
             pending_body_save: None,
             body_feedback: None,
+            date_of_birth,
+            pending_birthday_save: None,
+            birthday_feedback: None,
         }
     }
 
-    pub(crate) fn replace(&mut self, username: Option<String>, body_id: Option<String>) {
-        *self = Self::new(username, body_id);
+    pub(crate) fn replace(
+        &mut self,
+        username: Option<String>,
+        body_id: Option<String>,
+        date_of_birth: Option<String>,
+    ) {
+        *self = Self::new(username, body_id, date_of_birth);
     }
 
     pub(crate) fn change_username(&mut self, value: String) {
@@ -346,6 +448,76 @@ impl ProfileState {
         }
     }
 
+    pub(crate) fn request_birthday_save(
+        &mut self,
+        effect_id: EffectId,
+        date_of_birth: String,
+    ) -> Option<String> {
+        if self.pending_birthday_save.is_some() {
+            return None;
+        }
+        if !is_valid_date_of_birth(&date_of_birth) {
+            self.birthday_feedback = Some(BirthdayFeedback {
+                kind: FeedbackKind::Error,
+                code: BirthdaySaveError::InvalidDateOfBirth.code().to_owned(),
+                message: BirthdaySaveError::InvalidDateOfBirth.message().to_owned(),
+            });
+            return None;
+        }
+        if self.date_of_birth.as_deref() == Some(date_of_birth.as_str()) {
+            return None;
+        }
+        self.birthday_feedback = None;
+        self.pending_birthday_save = Some(PendingBirthdaySave {
+            effect_id,
+            date_of_birth: date_of_birth.clone(),
+        });
+        Some(date_of_birth)
+    }
+
+    pub(crate) fn is_birthday_pending(&self, effect_id: EffectId) -> bool {
+        self.pending_birthday_save
+            .as_ref()
+            .is_some_and(|pending| pending.effect_id == effect_id)
+    }
+
+    pub(crate) fn pending_birthday_date_of_birth(&self, effect_id: EffectId) -> Option<&str> {
+        self.pending_birthday_save
+            .as_ref()
+            .filter(|pending| pending.effect_id == effect_id)
+            .map(|pending| pending.date_of_birth.as_str())
+    }
+
+    pub(crate) fn birthday_saved(&mut self, effect_id: EffectId, date_of_birth: String) {
+        let Some(pending) = self.take_matching_birthday_save(effect_id) else {
+            return;
+        };
+        if !is_valid_date_of_birth(&date_of_birth) || date_of_birth != pending.date_of_birth {
+            self.birthday_feedback = Some(BirthdayFeedback {
+                kind: FeedbackKind::Error,
+                code: BirthdaySaveError::InvalidResponse.code().to_owned(),
+                message: BirthdaySaveError::InvalidResponse.message().to_owned(),
+            });
+            return;
+        }
+        self.date_of_birth = Some(date_of_birth);
+        self.birthday_feedback = Some(BirthdayFeedback {
+            kind: FeedbackKind::Success,
+            code: "saved".to_owned(),
+            message: "Birthday saved.".to_owned(),
+        });
+    }
+
+    pub(crate) fn birthday_save_failed(&mut self, effect_id: EffectId, error: BirthdaySaveError) {
+        if self.take_matching_birthday_save(effect_id).is_some() {
+            self.birthday_feedback = Some(BirthdayFeedback {
+                kind: FeedbackKind::Error,
+                code: error.code().to_owned(),
+                message: error.message().to_owned(),
+            });
+        }
+    }
+
     pub(crate) fn snapshot(&self) -> ProfileSnapshot {
         let validation = validate_account_username(&self.username_draft);
         let normalized = validation.as_ref().ok();
@@ -370,6 +542,9 @@ impl ProfileState {
                 && self.body_id.as_deref() != Some(self.body_draft.as_str()),
             body_is_saving: self.pending_body_save.is_some(),
             body_feedback: self.body_feedback.clone(),
+            date_of_birth: self.date_of_birth.clone(),
+            birthday_is_saving: self.pending_birthday_save.is_some(),
+            birthday_feedback: self.birthday_feedback.clone(),
         }
     }
 
@@ -394,6 +569,17 @@ impl ProfileState {
         }
         self.pending_body_save.take()
     }
+
+    fn take_matching_birthday_save(&mut self, effect_id: EffectId) -> Option<PendingBirthdaySave> {
+        if self
+            .pending_birthday_save
+            .as_ref()
+            .is_none_or(|pending| pending.effect_id != effect_id)
+        {
+            return None;
+        }
+        self.pending_birthday_save.take()
+    }
 }
 
 fn clean_current_username(username: Option<String>) -> Option<String> {
@@ -405,4 +591,8 @@ fn clean_current_username(username: Option<String>) -> Option<String> {
 
 fn clean_body_id(body_id: Option<String>) -> Option<String> {
     body_id.filter(|body_id| is_valid_body_id(body_id))
+}
+
+fn clean_date_of_birth(date_of_birth: Option<String>) -> Option<String> {
+    date_of_birth.filter(|date_of_birth| is_valid_date_of_birth(date_of_birth))
 }

@@ -40,6 +40,7 @@ fn replacement_drops_undelivered_effects() {
         account_id: Some("a".into()),
         username: None,
         body_id: None,
+        date_of_birth: None,
     });
     app.dispatch(AppAction::UsernameChanged {
         value: "Grace".into(),
@@ -49,6 +50,7 @@ fn replacement_drops_undelivered_effects() {
         account_id: None,
         username: None,
         body_id: None,
+        date_of_birth: None,
     });
     assert!(app.take_effects().is_empty());
 }
@@ -60,6 +62,7 @@ fn body_save_uses_shared_validation_and_preserves_newer_draft() {
         account_id: Some("a".into()),
         username: Some("Ada".into()),
         body_id: Some("cuba:person.v1".into()),
+        date_of_birth: None,
     });
     app.dispatch(AppAction::BeginBodyEdit {});
     assert_eq!(
@@ -85,4 +88,63 @@ fn body_save_uses_shared_validation_and_preserves_newer_draft() {
     assert_eq!(profile.body_draft, "cuba:person-nb.v1");
     assert!(profile.body_can_save);
     assert!(profile.body_feedback.is_none());
+}
+
+#[test]
+fn birthday_save_uses_shared_validation_and_response_contract() {
+    let mut app = AppModel::default();
+    app.dispatch(AppAction::ReplaceSession {
+        account_id: Some("a".into()),
+        username: Some("Ada".into()),
+        body_id: None,
+        date_of_birth: None,
+    });
+    app.dispatch(AppAction::SaveBirthday {
+        date_of_birth: "2001-02-29".into(),
+    });
+    assert_eq!(
+        app.snapshot()
+            .profile
+            .birthday_feedback
+            .as_ref()
+            .unwrap()
+            .code,
+        "invalid_date_of_birth"
+    );
+    assert!(app.poll_effect().is_none());
+
+    app.dispatch(AppAction::SaveBirthday {
+        date_of_birth: "2000-02-29".into(),
+    });
+    let effect = app.poll_effect().expect("birthday request");
+    let effect_id = match effect {
+        AppEffect::HttpRequest {
+            effect_id,
+            path,
+            body,
+            ..
+        } => {
+            assert_eq!(path, "auth/birthday");
+            assert_eq!(body, r#"{"dob":"2000-02-29"}"#);
+            effect_id
+        }
+    };
+    app.dispatch(AppAction::HttpCompleted {
+        effect_id,
+        status: 200,
+        body: r#"{"user":{"id":"a","dob":"2000-02-29"},"age":25}"#.into(),
+    });
+    assert_eq!(
+        app.snapshot().profile.date_of_birth.as_deref(),
+        Some("2000-02-29")
+    );
+    assert_eq!(
+        app.snapshot()
+            .profile
+            .birthday_feedback
+            .as_ref()
+            .unwrap()
+            .code,
+        "saved"
+    );
 }

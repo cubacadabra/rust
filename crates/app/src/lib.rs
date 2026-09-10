@@ -8,8 +8,9 @@ mod web;
 
 use profile::ProfileState;
 pub use profile::{
-    is_valid_body_id, BodyFeedback, BodySaveError, FeedbackKind, ProfileSnapshot, UsernameFeedback,
-    UsernameFeedbackCode, UsernameSaveError, DEFAULT_BODY_ID, PLAYER_BODY_IDS,
+    is_valid_body_id, is_valid_date_of_birth, BirthdayFeedback, BirthdaySaveError, BodyFeedback,
+    BodySaveError, FeedbackKind, ProfileSnapshot, UsernameFeedback, UsernameFeedbackCode,
+    UsernameSaveError, DEFAULT_BODY_ID, PLAYER_BODY_IDS,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -33,6 +34,8 @@ pub enum AppAction {
         username: Option<String>,
         #[serde(default)]
         body_id: Option<String>,
+        #[serde(default)]
+        date_of_birth: Option<String>,
     },
     BeginUsernameEdit {},
     UsernameChanged {
@@ -44,6 +47,9 @@ pub enum AppAction {
         body_id: String,
     },
     SaveBody {},
+    SaveBirthday {
+        date_of_birth: String,
+    },
     HttpCompleted {
         effect_id: EffectId,
         status: u16,
@@ -90,7 +96,7 @@ impl Default for AppModel {
         Self {
             account_id: None,
             session_id: 0,
-            profile: ProfileState::new(None, None),
+            profile: ProfileState::new(None, None, None),
             effects: VecDeque::new(),
             next_effect_id: 1,
         }
@@ -104,6 +110,7 @@ impl AppModel {
                 account_id,
                 username,
                 body_id,
+                date_of_birth,
             } => {
                 self.account_id = account_id.filter(|id| !id.is_empty());
                 self.session_id = self
@@ -115,8 +122,11 @@ impl AppModel {
                     .as_ref()
                     .and(body_id)
                     .or_else(|| self.account_id.as_ref().map(|_| DEFAULT_BODY_ID.to_owned()));
-                self.profile
-                    .replace(self.account_id.as_ref().and(username), body_id);
+                self.profile.replace(
+                    self.account_id.as_ref().and(username),
+                    body_id,
+                    date_of_birth,
+                );
                 self.effects.clear();
             }
             AppAction::BeginUsernameEdit {} => self.profile.begin_username_edit(),
@@ -158,6 +168,24 @@ impl AppModel {
                     }
                 }
             }
+            AppAction::SaveBirthday { date_of_birth } => {
+                if let Some(account_id) = self.account_id.clone() {
+                    let effect_id = EffectId(self.next_effect_id);
+                    if let Some(date_of_birth) =
+                        self.profile.request_birthday_save(effect_id, date_of_birth)
+                    {
+                        self.next_effect_id = self
+                            .next_effect_id
+                            .checked_add(1)
+                            .expect("effect ID exhausted");
+                        self.effects.push_back(http::birthday_request(
+                            effect_id,
+                            account_id,
+                            date_of_birth,
+                        ));
+                    }
+                }
+            }
             AppAction::HttpCompleted {
                 effect_id,
                 status,
@@ -174,6 +202,20 @@ impl AppModel {
                         Ok(body_id) => self.profile.body_saved(effect_id, body_id),
                         Err(error) => self.profile.body_save_failed(effect_id, error),
                     }
+                } else if self.profile.is_birthday_pending(effect_id) {
+                    let expected = self
+                        .profile
+                        .pending_birthday_date_of_birth(effect_id)
+                        .unwrap_or_default();
+                    match http::birthday_response(
+                        status,
+                        &body,
+                        self.account_id.as_deref(),
+                        expected,
+                    ) {
+                        Ok(date_of_birth) => self.profile.birthday_saved(effect_id, date_of_birth),
+                        Err(error) => self.profile.birthday_save_failed(effect_id, error),
+                    }
                 }
             }
             AppAction::HttpFailed { effect_id } => {
@@ -183,6 +225,9 @@ impl AppModel {
                 } else if self.profile.is_body_pending(effect_id) {
                     self.profile
                         .body_save_failed(effect_id, BodySaveError::Unavailable)
+                } else if self.profile.is_birthday_pending(effect_id) {
+                    self.profile
+                        .birthday_save_failed(effect_id, BirthdaySaveError::Unavailable)
                 }
             }
         }
