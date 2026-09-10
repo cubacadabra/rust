@@ -234,15 +234,6 @@ pub(crate) struct CharacterAppearance {
     pub(crate) revision: u32,
 }
 
-impl CharacterAppearance {
-    pub(crate) fn equipment_asset(&self, slot: EquipmentSlot) -> Option<&str> {
-        self.equipment
-            .iter()
-            .find(|item| item.slot == slot)
-            .map(|item| item.asset_id.as_str())
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum AppearanceIssue {
     UnsupportedVersion(u16),

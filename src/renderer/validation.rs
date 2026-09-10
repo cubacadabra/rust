@@ -129,6 +129,7 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
             resource: globals_buffer.as_entire_binding(),
         }],
     });
+    let world_texture_layout = super::device::world_texture_bind_group_layout(&device);
     let (ui, atlas) = super::device::ui_resources(&device, &queue);
     let timer = features.contains(wgpu::Features::TIMESTAMP_QUERY).then(|| {
         device.create_query_set(&wgpu::QuerySetDescriptor {
@@ -146,6 +147,7 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
     let context = Context {
         device: &device,
         queue: &queue,
+        world_texture_layout: &world_texture_layout,
         globals_buffer,
         globals,
         ui,
@@ -364,6 +366,7 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
 struct Context<'a> {
     device: &'a wgpu::Device,
     queue: &'a wgpu::Queue,
+    world_texture_layout: &'a wgpu::BindGroupLayout,
     globals_buffer: wgpu::Buffer,
     globals: wgpu::BindGroup,
     ui: wgpu::RenderPipeline,
@@ -493,8 +496,20 @@ impl TestScene {
             height,
             viewport,
             globals,
-            world: super::device::world_pipeline(device, layout, samples, false),
-            translucent: super::device::world_pipeline(device, layout, samples, true),
+            world: super::device::world_pipeline(
+                device,
+                layout,
+                ctx.world_texture_layout,
+                samples,
+                false,
+            ),
+            translucent: super::device::world_pipeline(
+                device,
+                layout,
+                ctx.world_texture_layout,
+                samples,
+                true,
+            ),
             world_buffer,
             opaque_count,
             world_count,

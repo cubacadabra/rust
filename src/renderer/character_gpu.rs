@@ -655,7 +655,7 @@ impl CharacterRenderer {
             CharacterLod::Mid,
             0,
             false,
-            None,
+            &[],
         );
     }
 
@@ -668,7 +668,7 @@ impl CharacterRenderer {
         lod: CharacterLod,
         effect_rank: usize,
         reduced_effects: bool,
-        morph_asset: Option<&MorphAssetId>,
+        morph_assets: &[MorphAssetId],
     ) {
         if self.stats.characters >= MAX_CHARACTERS
             || !entity.camera_fade.is_finite()
@@ -726,7 +726,7 @@ impl CharacterRenderer {
             Quat::from_rotation_y(entity.yaw),
             Vec3::from_array(entity.position),
         );
-        if let Some(morph_asset) = morph_asset {
+        for morph_asset in morph_assets.iter().take(16) {
             self.morphs.add_instance(morph_asset, lod, root, joints);
         }
         let mut effect_count = 0;

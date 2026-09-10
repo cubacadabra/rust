@@ -1110,6 +1110,7 @@ pub(super) fn add_character_with_outfit(
                 color: part.tint.color(style, face_color),
                 tex_coords: v.uv,
                 image_invert: 0.0,
+                texture_bounds: [0.0, 0.0, 1.0, 1.0],
             });
         }
     }

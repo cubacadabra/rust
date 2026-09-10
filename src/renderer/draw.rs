@@ -108,7 +108,12 @@ impl Renderer {
                 return;
             };
             lods.insert(entity.key, lod);
-            let morph_asset = self.scene.morph_assets.get(&entity.key);
+            let morph_assets = self
+                .scene
+                .morph_assets
+                .get(&entity.key)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
             characters.add_with_quality(
                 entity,
                 style,
@@ -116,7 +121,7 @@ impl Renderer {
                 lod,
                 rank,
                 reduced_effects,
-                morph_asset,
+                morph_assets,
             );
         };
         if magic_mode {

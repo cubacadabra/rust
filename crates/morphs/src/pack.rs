@@ -139,12 +139,12 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
         manifest.asset.lod.far,
     ];
     for (index, (level, lod)) in ["near", "mid", "far"].into_iter().zip(&lods).enumerate() {
-        if lod.triangle_count != declared[index] {
+        if lod.triangle_count > declared[index] {
             return Err(vec![error(
-                "MORPH_PACK_TRIANGLE_COUNT_MISMATCH",
+                "MORPH_PACK_TRIANGLE_BUDGET_EXCEEDED",
                 &format!("asset.lod.{level}"),
                 format!(
-                    "asset declares {}, pack payload contains {}",
+                    "asset budget is {}, pack payload contains {}",
                     declared[index], lod.triangle_count
                 ),
             )]);
@@ -264,7 +264,7 @@ fn read_lod(cursor: &mut Cursor<'_>, level: &str) -> Result<MorphPackLod, Vec<Mo
     })?;
     if index_count % 3 != 0 || index_count / 3 != triangle_count_usize {
         return Err(vec![error(
-            "MORPH_PACK_TRIANGLE_COUNT_MISMATCH",
+            "MORPH_PACK_TRIANGLE_BUDGET_EXCEEDED",
             &format!("lods.{level}"),
             format!(
                 "triangle count {triangle_count} does not match {index_count} triangle-list indices"

@@ -286,7 +286,7 @@ pub(super) struct Scene {
     pub(super) lods: std::collections::HashMap<crate::types::CharacterEntityKey, crate::renderer::character_quality::CharacterLod>,
     pub(super) morph_assets: std::collections::HashMap<
         crate::types::CharacterEntityKey,
-        cubacadabra_morphs::MorphAssetId,
+        Vec<cubacadabra_morphs::MorphAssetId>,
     >,
     pub(super) reduced_effects: bool,
     pub(super) interaction_states: Vec<crate::types::InteractionRenderState>,

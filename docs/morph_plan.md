@@ -35,7 +35,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Apply imported PBR base color to the CPU shaded preview when available.
 - [x] Keep the Morphs preview and inspector headers collision-free at the compact Studio width.
 - [x] Build the Morphs workspace MVP.
-- [ ] Add package-host asset discovery and automatic pack registration for deployed iOS, Android, and web sessions.
+- [x] Add package-host asset discovery and automatic pack registration for deployed iOS, Android, and web sessions.
 
 ### Work log
 
@@ -83,6 +83,29 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10 verification: the shared engine tests (143), Studio tests (18), morph crate tests (20), authoring crate tests (9), normal engine check, Android-backend check, Studio check, formatting checks, and the supplied 14,625-byte top-hat pack validation pass. The Web/WASM check remains unavailable because the `wasm32-unknown-unknown` target is not installed locally. Deployed non-desktop hosts still need to discover package-declared pack files and call the already-exposed registration APIs.
 - 2026-09-10: Reviewed the first live Blender-to-game result and fixed attachment calibration end to end. Studio now preserves translation, rotation, and scale through draft save, sidecar export/reimport, pack compilation, and runtime loading; shows source and runtime dimensions; previews the transformed mesh against a standard person-head reference; offers a deterministic `Fit to person head` action; and blocks obviously implausible headwear widths. Strict GLB publishing now requires applied Blender node transforms, one primitive per LOD, and triangle-list geometry, matching what the pack compiler actually consumes.
 - 2026-09-10: Recalibrated the supplied top hat from a 3.00-unit identity-scale brim to a 1.35-unit runtime brim (`0.451` uniform scale, `0.657` head-local Y offset) and rebuilt `/Users/aa/Downloads/test_top_hat.morph.morphpack`.
+- 2026-09-10: Added a second Blender-free rigid proof asset at `/Users/aa/Downloads/headphones.glb`, with Near/Mid/Far nodes and a matching sidecar/pack. The runtime compositor now retains all bounded V1 equipment entries, allowing the headphones to coexist with the top hat through separate slots.
+- 2026-09-10: Removed duplicate triangle-count authority from published sidecars. `asset.lod` is now the budget; legacy `geometry.triangleCounts` is accepted only for compatibility and rejected when it disagrees.
+- 2026-09-10: Added package-host morph discovery and registration for web, iOS, and Android. Hosts validate bounded `.morphpack` paths, load packs before the first draw, and register them through the existing renderer APIs. The Rust `dev-showcase` validation fixtures were also repaired so baseline capture work can resume.
+- 2026-09-10 verification: the generated headphones asset validates at Near 84 / Mid 60 / Far 36 triangles and its compiled pack validates at 4,504 bytes. Rust (143 engine tests), Studio (19 tests), morph authoring (10 tests), and portable morphs (21 tests) pass; Android Gradle and iOS Simulator builds pass; the web app contract check passes. The browser WASM rebuild remains unavailable because the installed toolchain cannot provide `core` for `wasm32-unknown-unknown`.
+
+Deployed game packages declare compiled morphs under `assets.morphPacks`; the key is the published asset ID and the path must stay inside `assets/`:
+
+```json
+{
+  "assets": {
+    "morphPacks": {
+      "cuba:headwear/test-top-hat.v1": {
+        "path": "assets/morphs/test_top_hat.morphpack"
+      },
+      "cuba:headwear/headphones.v1": {
+        "path": "assets/morphs/headphones.morphpack"
+      }
+    }
+  }
+}
+```
+
+Hosts load these files before the first draw and pass only the bounded compiled format to the renderer. The renderer enforces its 32-pack and 16 MiB residency limits; hosts enforce the same package limits before upload.
 - 2026-09-10 verification: Studio has 19 passing tests, morph authoring has 10 passing tests, the portable morph crate has 21 passing tests, the shared engine has 143 passing tests, Android-feature compilation passes, both repositories pass formatting and diff checks, and the rebuilt 14,633-byte pack passes the shared decoder with Near 248, Mid 124, and Far 48 triangles.
 
 ## Architecture and delivery plan

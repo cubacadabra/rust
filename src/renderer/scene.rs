@@ -122,16 +122,18 @@ impl Renderer {
                     .unwrap_or(self.scene.player_style),
             };
             let body = style.body;
-            if let Some(asset_id) = match sample.key.kind {
+            let morph_assets = match sample.key.kind {
                 CharacterEntityKind::LocalPlayer => {
-                    morph_asset_for_appearance(engine.player_appearance())
+                    morph_assets_for_appearance(engine.player_appearance())
                 }
                 CharacterEntityKind::RemotePlayer => engine
                     .remote_appearance(sample.key)
-                    .and_then(morph_asset_for_appearance),
-                CharacterEntityKind::LocalNpc => None,
-            } {
-                self.scene.morph_assets.insert(sample.key, asset_id);
+                    .map(morph_assets_for_appearance)
+                    .unwrap_or_default(),
+                CharacterEntityKind::LocalNpc => Vec::new(),
+            };
+            if !morph_assets.is_empty() {
+                self.scene.morph_assets.insert(sample.key, morph_assets);
             }
             let reduced_effects = self.scene.reduced_effects;
             let presentation = self
@@ -225,10 +227,12 @@ impl Renderer {
     }
 }
 
-fn morph_asset_for_appearance(appearance: &CharacterAppearance) -> Option<MorphAssetId> {
+fn morph_assets_for_appearance(appearance: &CharacterAppearance) -> Vec<MorphAssetId> {
     appearance
-        .equipment_asset(crate::character::definition::EquipmentSlot::Hat)
-        .and_then(|asset_id| MorphAssetId::parse(asset_id).ok())
+        .equipment
+        .iter()
+        .filter_map(|item| MorphAssetId::parse(&item.asset_id).ok())
+        .collect()
 }
 
 fn display_name(value: &str, fallback: &str) -> String {
@@ -524,4 +528,38 @@ fn parse_hex_color(value: &str) -> Option<[f32; 4]> {
         return None;
     }
     u32::from_str_radix(value, 16).ok().map(super::color)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::character::definition::{EquipmentItem, EquipmentSlot};
+    use crate::character::{BodyId, FacePreset};
+
+    #[test]
+    fn appearance_keeps_multiple_registered_equipment_assets() {
+        let appearance = CharacterAppearance {
+            version: 1,
+            body: BodyId::Person,
+            face: FacePreset::Happy,
+            outfit: OutfitId::EverydayHoodie,
+            equipment: vec![
+                EquipmentItem {
+                    slot: EquipmentSlot::Hat,
+                    asset_id: "cuba:headwear/test-top-hat.v1".to_owned(),
+                },
+                EquipmentItem {
+                    slot: EquipmentSlot::EarAccessory,
+                    asset_id: "cuba:headwear/headphones.v1".to_owned(),
+                },
+            ],
+            colors: CharacterColors::default(),
+            revision: 1,
+        };
+
+        let assets = morph_assets_for_appearance(&appearance);
+        assert_eq!(assets.len(), 2);
+        assert_eq!(assets[0].as_str(), "cuba:headwear/test-top-hat.v1");
+        assert_eq!(assets[1].as_str(), "cuba:headwear/headphones.v1");
+    }
 }
