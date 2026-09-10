@@ -30,6 +30,8 @@ pub struct CatalogFeedback {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CatalogSnapshot {
     pub entries: Vec<CatalogEntry>,
+    pub page: u16,
+    pub has_next_page: bool,
     pub is_loading: bool,
     pub feedback: Option<CatalogFeedback>,
 }
@@ -37,11 +39,14 @@ pub struct CatalogSnapshot {
 #[derive(Debug)]
 pub(crate) struct PendingCatalogLoad {
     effect_id: EffectId,
+    page: u16,
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct CatalogState {
     entries: Vec<CatalogEntry>,
+    page: u16,
+    has_next_page: bool,
     pending_load: Option<PendingCatalogLoad>,
     feedback: Option<CatalogFeedback>,
 }
@@ -51,14 +56,24 @@ impl CatalogState {
         *self = Self::default();
     }
 
-    pub(crate) fn request_load(&mut self, effect_id: EffectId, page_size: u16) -> Option<u16> {
+    pub(crate) fn request_load(
+        &mut self,
+        effect_id: EffectId,
+        page: u16,
+        page_size: u16,
+    ) -> Option<(u16, u16)> {
         if self.pending_load.is_some() {
             return None;
         }
         let page_size = page_size.clamp(1, MAX_CATALOG_PAGE_SIZE);
+        let page = page.max(1);
+        if page == 1 {
+            self.entries.clear();
+            self.has_next_page = false;
+        }
         self.feedback = None;
-        self.pending_load = Some(PendingCatalogLoad { effect_id });
-        Some(page_size)
+        self.pending_load = Some(PendingCatalogLoad { effect_id, page });
+        Some((page, page_size))
     }
 
     pub(crate) fn is_pending(&self, effect_id: EffectId) -> bool {
@@ -67,15 +82,44 @@ impl CatalogState {
             .is_some_and(|pending| pending.effect_id == effect_id)
     }
 
-    pub(crate) fn loaded(&mut self, effect_id: EffectId, entries: Vec<CatalogEntry>) {
-        if self.take_matching(effect_id) {
-            self.entries = entries;
-            self.feedback = None;
+    pub(crate) fn loaded(
+        &mut self,
+        effect_id: EffectId,
+        page: u16,
+        entries: Vec<CatalogEntry>,
+        has_next_page: bool,
+    ) {
+        let Some(expected_page) = self.take_matching(effect_id) else {
+            return;
+        };
+        if expected_page != page {
+            self.feedback = Some(CatalogFeedback {
+                kind: CatalogFeedbackKind::Error,
+                code: "invalid_response".to_owned(),
+                message: "We couldn’t load the cubes. Please try again.".to_owned(),
+            });
+            return;
         }
+        if page == 1 {
+            self.entries = entries;
+        } else {
+            for entry in entries {
+                if !self
+                    .entries
+                    .iter()
+                    .any(|existing| existing.cube_id == entry.cube_id)
+                {
+                    self.entries.push(entry);
+                }
+            }
+        }
+        self.page = page;
+        self.has_next_page = has_next_page;
+        self.feedback = None;
     }
 
     pub(crate) fn failed(&mut self, effect_id: EffectId, code: &str, message: &str) {
-        if self.take_matching(effect_id) {
+        if self.take_matching(effect_id).is_some() {
             self.feedback = Some(CatalogFeedback {
                 kind: CatalogFeedbackKind::Error,
                 code: code.to_owned(),
@@ -87,27 +131,38 @@ impl CatalogState {
     pub(crate) fn snapshot(&self) -> CatalogSnapshot {
         CatalogSnapshot {
             entries: self.entries.clone(),
+            page: self.page,
+            has_next_page: self.has_next_page,
             is_loading: self.pending_load.is_some(),
             feedback: self.feedback.clone(),
         }
     }
 
-    fn take_matching(&mut self, effect_id: EffectId) -> bool {
-        if self
+    fn take_matching(&mut self, effect_id: EffectId) -> Option<u16> {
+        let page = self
             .pending_load
             .as_ref()
-            .is_none_or(|pending| pending.effect_id != effect_id)
-        {
-            return false;
-        }
+            .filter(|pending| pending.effect_id == effect_id)
+            .map(|pending| pending.page)?;
         self.pending_load = None;
-        true
+        Some(page)
     }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct CatalogPage {
+    pub entries: Vec<CatalogEntry>,
+    pub page: u16,
+    pub has_next_page: bool,
 }
 
 #[derive(Deserialize)]
 struct CatalogResponse {
     cubes: Vec<RawCatalogEntry>,
+    #[serde(default = "default_catalog_page")]
+    page: u16,
+    #[serde(default, rename = "hasNextPage")]
+    has_next_page: bool,
 }
 
 #[derive(Deserialize)]
@@ -131,7 +186,7 @@ struct RawCatalogEntry {
 pub(crate) fn response(
     status: u16,
     body: &str,
-) -> Result<Vec<CatalogEntry>, (&'static str, &'static str)> {
+) -> Result<CatalogPage, (&'static str, &'static str)> {
     if !(200..300).contains(&status) {
         return Err((
             "unavailable",
@@ -165,7 +220,15 @@ pub(crate) fn response(
             asset_base_url: cube.asset_base_url,
         });
     }
-    Ok(entries)
+    Ok(CatalogPage {
+        entries,
+        page: response.page.max(1),
+        has_next_page: response.has_next_page,
+    })
+}
+
+fn default_catalog_page() -> u16 {
+    1
 }
 
 fn is_valid_cube_id(value: &str) -> bool {

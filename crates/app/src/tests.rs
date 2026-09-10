@@ -158,7 +158,10 @@ fn catalog_load_uses_shared_request_and_response_contract() {
         body_id: None,
         date_of_birth: None,
     });
-    app.dispatch(AppAction::LoadCatalog { page_size: 20 });
+    app.dispatch(AppAction::LoadCatalog {
+        page: 1,
+        page_size: 20,
+    });
     assert!(app.snapshot().catalog.is_loading);
     let effect = app.poll_effect().expect("catalog request");
     let effect_id = match effect {
@@ -178,7 +181,7 @@ fn catalog_load_uses_shared_request_and_response_contract() {
     app.dispatch(AppAction::HttpCompleted {
         effect_id,
         status: 200,
-        body: r#"{"cubes":[
+        body: r#"{"page":1,"hasNextPage":true,"cubes":[
             {"id":1,"cubeId":"first-game","version":"0.3.0","displayName":"First Game","fileCount":2,"packagePath":"/cubes/first-game/0.3.0/"},
             {"id":2,"cubeId":"first-game","version":"0.2.0","displayName":"Old First Game","fileCount":2,"packagePath":"/cubes/first-game/0.2.0/"},
             {"id":3,"cubeId":"Bad_Name","version":"1","displayName":"Bad","fileCount":1,"packagePath":"/cubes/bad/1/"}
@@ -189,13 +192,41 @@ fn catalog_load_uses_shared_request_and_response_contract() {
     assert_eq!(catalog.entries.len(), 1);
     assert_eq!(catalog.entries[0].cube_id, "first-game");
     assert_eq!(catalog.entries[0].package_path, "/cubes/first-game/0.3.0/");
+    assert!(catalog.has_next_page);
     assert!(catalog.feedback.is_none());
+
+    app.dispatch(AppAction::LoadCatalog {
+        page: 2,
+        page_size: 20,
+    });
+    let effect_id = match app.poll_effect().expect("second catalog request") {
+        AppEffect::HttpRequest {
+            effect_id, path, ..
+        } => {
+            assert_eq!(path, "cubes?page=2&page_size=20");
+            effect_id
+        }
+    };
+    app.dispatch(AppAction::HttpCompleted {
+        effect_id,
+        status: 200,
+        body: r#"{"page":2,"hasNextPage":false,"cubes":[
+            {"id":4,"cubeId":"second-game","version":"1.0.0","displayName":"Second Game","fileCount":1,"packagePath":"/cubes/second/1/"}
+        ]}"#.into(),
+    });
+    let catalog = app.snapshot().catalog;
+    assert_eq!(catalog.page, 2);
+    assert!(!catalog.has_next_page);
+    assert_eq!(catalog.entries.len(), 2);
 }
 
 #[test]
 fn catalog_load_is_available_to_guest_hosts() {
     let mut app = AppModel::default();
-    app.dispatch(AppAction::LoadCatalog { page_size: 20 });
+    app.dispatch(AppAction::LoadCatalog {
+        page: 1,
+        page_size: 20,
+    });
     let effect = app.poll_effect().expect("guest catalog request");
     assert!(matches!(
         effect,

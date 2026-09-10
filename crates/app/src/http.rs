@@ -100,13 +100,14 @@ pub(crate) fn body_response(
 pub(crate) fn catalog_request(
     effect_id: EffectId,
     account_id: Option<String>,
+    page: u16,
     page_size: u16,
 ) -> AppEffect {
     AppEffect::HttpRequest {
         effect_id,
         account_id,
         method: "GET".into(),
-        path: format!("cubes?page=1&page_size={page_size}"),
+        path: format!("cubes?page={page}&page_size={page_size}"),
         body: String::new(),
     }
 }

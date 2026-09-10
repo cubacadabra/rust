@@ -54,6 +54,8 @@ pub enum AppAction {
         date_of_birth: String,
     },
     LoadCatalog {
+        #[serde(default = "default_catalog_page")]
+        page: u16,
         #[serde(default = "default_catalog_page_size")]
         page_size: u16,
     },
@@ -198,9 +200,11 @@ impl AppModel {
                     }
                 }
             }
-            AppAction::LoadCatalog { page_size } => {
+            AppAction::LoadCatalog { page, page_size } => {
                 let effect_id = EffectId(self.next_effect_id);
-                if let Some(page_size) = self.catalog.request_load(effect_id, page_size) {
+                if let Some((page, page_size)) =
+                    self.catalog.request_load(effect_id, page, page_size)
+                {
                     self.next_effect_id = self
                         .next_effect_id
                         .checked_add(1)
@@ -208,6 +212,7 @@ impl AppModel {
                     self.effects.push_back(http::catalog_request(
                         effect_id,
                         self.account_id.clone(),
+                        page,
                         page_size,
                     ));
                 }
@@ -244,7 +249,12 @@ impl AppModel {
                     }
                 } else if self.catalog.is_pending(effect_id) {
                     match catalog::response(status, &body) {
-                        Ok(entries) => self.catalog.loaded(effect_id, entries),
+                        Ok(page) => self.catalog.loaded(
+                            effect_id,
+                            page.page,
+                            page.entries,
+                            page.has_next_page,
+                        ),
                         Err((code, message)) => self.catalog.failed(effect_id, code, message),
                     }
                 }
@@ -299,6 +309,10 @@ impl AppModel {
 
 fn default_catalog_page_size() -> u16 {
     catalog::DEFAULT_CATALOG_PAGE_SIZE
+}
+
+fn default_catalog_page() -> u16 {
+    1
 }
 
 #[cfg(test)]

@@ -18,10 +18,11 @@ All account-username entry points now use the shared model:
   though its current account UI does not edit birthdays.
 - The cube catalog now uses the same Rust action/snapshot/effect
   contract on web, iOS, and Android. Rust owns page-size bounds, response
-  decoding, cube-id/path validation, duplicate filtering, loading state, and
-  retryable feedback; each host only renders entries and chooses its approved
-  package origin for the current build. Catalog loading is public, so its
-  shared effect can run for a guest without attaching account credentials.
+  decoding, pagination metadata, cube-id/path validation, duplicate filtering,
+  loading state, and retryable feedback; each host only renders entries and
+  chooses its approved package origin for the current build. Catalog loading
+  is public, so its shared effect can run for a guest without attaching
+  account credentials.
 
 Rust owns normalization/validation, dirty/save eligibility, in-flight state,
 feedback, request method/path/body, and response parsing. Hosts own text fields,
