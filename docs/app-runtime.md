@@ -4,7 +4,7 @@
 `cubacadabra-client` (active game sessions) and `cubacadabra-engine` (simulation).
 Studio uses ordinary Rust types and methods; JSON, C and WASM are outer adapters.
 
-## Implemented slices: account profile and cube catalog
+## Implemented slices: account profile, cube catalog, and blocked users
 
 All account-username entry points now use the shared model:
 
@@ -23,6 +23,11 @@ All account-username entry points now use the shared model:
   chooses its approved package origin for the current build. Catalog loading
   is public, so its shared effect can run for a guest without attaching
   account credentials.
+- Blocked-user loading, optimistic block/unblock state, rollback on failed
+  requests, user-ID normalization, and moderation error mapping now use the
+  same Rust action/snapshot/effect contract. Native gameplay models receive a
+  read-only blocked-ID projection so the engine can continue filtering remote
+  players without owning account safety state.
 
 Rust owns normalization/validation, dirty/save eligibility, in-flight state,
 feedback, request method/path/body, and response parsing. Hosts own text fields,
@@ -65,7 +70,8 @@ generation-fenced on sign-out/replacement so late responses cannot sign the old
 account back in.
 
 This is a bounded ownership fix, not a migration of every non-game feature.
-Safety still uses the existing game-side player/moderation integration.
+Reporting remains a host-specific moderation flow for now; the shared slice
+covers the blocked-user list and block/unblock mutations.
 Android's existing auth/bridge helpers retain
 their current source package. Move these only when their actual shared feature
 slice warrants it; there are no placeholder repositories, use cases or
@@ -195,9 +201,9 @@ username-success/avatar-failure.
 This establishes a tested shared source of decisions, not a promise that every
 feature belongs in Rust. The catalog was a good fit because all three clients
 needed the same endpoint, validation, loading, and stale-response behavior.
-Safety remains the next evaluation point: move only its shared moderation
-decision/state slice, while keeping native-only lists, dialogs, and platform
-presentation native.
+The blocked-user slice is the next evaluation checkpoint: if its host adapters
+remain thin in device testing, reporting can be evaluated as a separate shared
+effect rather than being pulled in automatically.
 
 The web game-package deep-link resolver still performs its own paginated catalog
 lookup because it needs pagination metadata to locate an arbitrary game. That

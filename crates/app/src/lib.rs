@@ -3,6 +3,7 @@ mod catalog;
 mod ffi;
 mod http;
 mod profile;
+mod safety;
 mod username;
 #[cfg(target_arch = "wasm32")]
 mod web;
@@ -11,15 +12,16 @@ use catalog::CatalogState;
 pub use catalog::{CatalogEntry, CatalogFeedback, CatalogFeedbackKind, CatalogSnapshot};
 use profile::ProfileState;
 pub use profile::{
-    is_valid_body_id, is_valid_date_of_birth, BirthdayFeedback, BirthdaySaveError, BodyFeedback,
-    BodySaveError, FeedbackKind, ProfileSnapshot, UsernameFeedback, UsernameFeedbackCode,
-    UsernameSaveError, DEFAULT_BODY_ID, PLAYER_BODY_IDS,
+    BirthdayFeedback, BirthdaySaveError, BodyFeedback, BodySaveError, DEFAULT_BODY_ID,
+    FeedbackKind, PLAYER_BODY_IDS, ProfileSnapshot, UsernameFeedback, UsernameFeedbackCode,
+    UsernameSaveError, is_valid_body_id, is_valid_date_of_birth,
 };
+pub use safety::{SafetyFeedback, SafetyFeedbackKind, SafetyPendingAction, SafetySnapshot};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 pub use username::{
-    validate_account_username, UsernameValidationError, USERNAME_MAX_CHARACTERS,
-    USERNAME_MIN_CHARACTERS,
+    USERNAME_MAX_CHARACTERS, USERNAME_MIN_CHARACTERS, UsernameValidationError,
+    validate_account_username,
 };
 #[cfg(target_arch = "wasm32")]
 pub use web::WebApp;
@@ -59,6 +61,13 @@ pub enum AppAction {
         #[serde(default = "default_catalog_page_size")]
         page_size: u16,
     },
+    LoadBlockedUsers {},
+    BlockUser {
+        user_id: String,
+    },
+    UnblockUser {
+        user_id: String,
+    },
     HttpCompleted {
         effect_id: EffectId,
         status: u16,
@@ -90,6 +99,7 @@ pub struct AppSnapshot {
     pub account_id: Option<String>,
     pub profile: ProfileSnapshot,
     pub catalog: CatalogSnapshot,
+    pub safety: SafetySnapshot,
 }
 
 /// One model per host session, not per screen. Hosts render snapshots, execute
@@ -99,6 +109,7 @@ pub struct AppModel {
     session_id: u32,
     profile: ProfileState,
     catalog: CatalogState,
+    safety: safety::SafetyState,
     effects: VecDeque<AppEffect>,
     next_effect_id: u32,
 }
@@ -110,6 +121,7 @@ impl Default for AppModel {
             session_id: 0,
             profile: ProfileState::new(None, None, None),
             catalog: CatalogState::default(),
+            safety: safety::SafetyState::default(),
             effects: VecDeque::new(),
             next_effect_id: 1,
         }
@@ -141,6 +153,7 @@ impl AppModel {
                     date_of_birth,
                 );
                 self.catalog.replace();
+                self.safety.replace();
                 self.effects.clear();
             }
             AppAction::BeginUsernameEdit {} => self.profile.begin_username_edit(),
@@ -217,6 +230,61 @@ impl AppModel {
                     ));
                 }
             }
+            AppAction::LoadBlockedUsers {} => {
+                if let Some(account_id) = self.account_id.clone() {
+                    let effect_id = EffectId(self.next_effect_id);
+                    if self.safety.request_load(effect_id) {
+                        self.next_effect_id = self
+                            .next_effect_id
+                            .checked_add(1)
+                            .expect("effect ID exhausted");
+                        self.effects
+                            .push_back(http::blocked_users_request(effect_id, account_id));
+                    }
+                }
+            }
+            AppAction::BlockUser { user_id } => {
+                if let Some(account_id) = self.account_id.clone() {
+                    let effect_id = EffectId(self.next_effect_id);
+                    if let Some(user_id) = safety::normalize_requested_user_id(&user_id) {
+                        if self.safety.request_block(effect_id, &user_id) {
+                            self.next_effect_id = self
+                                .next_effect_id
+                                .checked_add(1)
+                                .expect("effect ID exhausted");
+                            self.effects.push_back(http::block_user_request(
+                                effect_id, account_id, user_id,
+                            ));
+                        }
+                    } else {
+                        self.safety.invalid_request(
+                            "invalid_block_target",
+                            "That player could not be blocked.",
+                        );
+                    }
+                }
+            }
+            AppAction::UnblockUser { user_id } => {
+                if let Some(account_id) = self.account_id.clone() {
+                    let effect_id = EffectId(self.next_effect_id);
+                    if let Some(user_id) = safety::normalize_requested_user_id(&user_id) {
+                        if self.safety.request_unblock(effect_id, &user_id) {
+                            self.next_effect_id = self
+                                .next_effect_id
+                                .checked_add(1)
+                                .expect("effect ID exhausted");
+                            self.effects.push_back(http::unblock_user_request(
+                                effect_id, account_id, user_id,
+                            ));
+                        }
+                    } else {
+                        self.safety.invalid_request(
+                            "invalid_block_target",
+                            "That player could not be unblocked.",
+                        );
+                    }
+                }
+            }
             AppAction::HttpCompleted {
                 effect_id,
                 status,
@@ -257,6 +325,42 @@ impl AppModel {
                         ),
                         Err((code, message)) => self.catalog.failed(effect_id, code, message),
                     }
+                } else if self.safety.is_pending(effect_id) {
+                    match self.safety.pending_action(effect_id) {
+                        Some(safety::SafetyPendingAction::Load) => {
+                            match safety::blocked_users_response(status, &body) {
+                                Ok(ids) => self.safety.loaded(effect_id, ids),
+                                Err((code, message)) => {
+                                    self.safety.failed(effect_id, code, message)
+                                }
+                            }
+                        }
+                        Some(safety::SafetyPendingAction::Block) => {
+                            match safety::action_response(
+                                status,
+                                &body,
+                                "That player could not be blocked. Please try again.",
+                            ) {
+                                Ok(()) => self.safety.action_succeeded(effect_id),
+                                Err((code, message)) => {
+                                    self.safety.failed(effect_id, code, message)
+                                }
+                            }
+                        }
+                        Some(safety::SafetyPendingAction::Unblock) => {
+                            match safety::action_response(
+                                status,
+                                &body,
+                                "That player could not be unblocked. Please try again.",
+                            ) {
+                                Ok(()) => self.safety.action_succeeded(effect_id),
+                                Err((code, message)) => {
+                                    self.safety.failed(effect_id, code, message)
+                                }
+                            }
+                        }
+                        None => {}
+                    }
                 }
             }
             AppAction::HttpFailed { effect_id } => {
@@ -275,6 +379,23 @@ impl AppModel {
                         "unavailable",
                         "We couldn’t load the cubes. Please try again.",
                     )
+                } else if self.safety.is_pending(effect_id) {
+                    let (code, message) = match self.safety.pending_action(effect_id) {
+                        Some(safety::SafetyPendingAction::Load) => (
+                            "unavailable",
+                            "We couldn’t load your blocked users. Please try again.",
+                        ),
+                        Some(safety::SafetyPendingAction::Block) => (
+                            "unavailable",
+                            "That player could not be blocked. Please try again.",
+                        ),
+                        Some(safety::SafetyPendingAction::Unblock) => (
+                            "unavailable",
+                            "That player could not be unblocked. Please try again.",
+                        ),
+                        None => return,
+                    };
+                    self.safety.failed(effect_id, code, message);
                 }
             }
         }
@@ -296,6 +417,7 @@ impl AppModel {
             account_id: self.account_id.clone(),
             profile,
             catalog: self.catalog.snapshot(),
+            safety: self.safety.snapshot(),
         }
     }
 

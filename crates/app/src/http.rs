@@ -112,6 +112,68 @@ pub(crate) fn catalog_request(
     }
 }
 
+pub(crate) fn blocked_users_request(effect_id: EffectId, account_id: String) -> AppEffect {
+    AppEffect::HttpRequest {
+        effect_id,
+        account_id: Some(account_id),
+        method: "GET".into(),
+        path: "moderation/blocks".into(),
+        body: String::new(),
+    }
+}
+
+pub(crate) fn block_user_request(
+    effect_id: EffectId,
+    account_id: String,
+    user_id: String,
+) -> AppEffect {
+    AppEffect::HttpRequest {
+        effect_id,
+        account_id: Some(account_id),
+        method: "POST".into(),
+        path: "moderation/blocks".into(),
+        body: format!(
+            r#"{{"user_id":{}}}"#,
+            serde_json::to_string(&user_id).unwrap()
+        ),
+    }
+}
+
+pub(crate) fn unblock_user_request(
+    effect_id: EffectId,
+    account_id: String,
+    user_id: String,
+) -> AppEffect {
+    AppEffect::HttpRequest {
+        effect_id,
+        account_id: Some(account_id),
+        method: "DELETE".into(),
+        path: format!("moderation/blocks/{}", encode_path_segment(&user_id)),
+        body: String::new(),
+    }
+}
+
+fn encode_path_segment(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push('%');
+            encoded.push(hex_digit(byte >> 4));
+            encoded.push(hex_digit(byte & 0x0f));
+        }
+    }
+    encoded
+}
+
+fn hex_digit(value: u8) -> char {
+    match value {
+        0..=9 => (b'0' + value) as char,
+        _ => (b'A' + value - 10) as char,
+    }
+}
+
 pub(crate) fn birthday_request(
     effect_id: EffectId,
     account_id: String,

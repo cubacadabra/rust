@@ -239,3 +239,115 @@ fn catalog_load_is_available_to_guest_hosts() {
     ));
     assert!(app.snapshot().catalog.is_loading);
 }
+
+#[test]
+fn safety_load_block_and_unblock_share_request_and_rollback_contract() {
+    let mut app = AppModel::default();
+    app.dispatch(AppAction::ReplaceSession {
+        account_id: Some("account-1".into()),
+        username: Some("Ada".into()),
+        body_id: None,
+        date_of_birth: Some("2000-01-01".into()),
+    });
+
+    app.dispatch(AppAction::LoadBlockedUsers {});
+    let load_effect = match app.poll_effect().expect("blocked users request") {
+        AppEffect::HttpRequest {
+            effect_id,
+            account_id,
+            method,
+            path,
+            body,
+        } => {
+            assert_eq!(account_id.as_deref(), Some("account-1"));
+            assert_eq!(method, "GET");
+            assert_eq!(path, "moderation/blocks");
+            assert!(body.is_empty());
+            effect_id
+        }
+    };
+    app.dispatch(AppAction::HttpCompleted {
+        effect_id: load_effect,
+        status: 200,
+        body: r#"{"ok":true,"user_ids":["user-2"," user-1 ","user-2",""]}"#.into(),
+    });
+    assert_eq!(
+        app.snapshot().safety.blocked_user_ids,
+        vec!["user-2", "user-1"]
+    );
+
+    app.dispatch(AppAction::BlockUser {
+        user_id: "user-3".into(),
+    });
+    let block_effect = match app.poll_effect().expect("block request") {
+        AppEffect::HttpRequest {
+            effect_id,
+            method,
+            path,
+            body,
+            ..
+        } => {
+            assert_eq!(method, "POST");
+            assert_eq!(path, "moderation/blocks");
+            assert_eq!(body, r#"{"user_id":"user-3"}"#);
+            assert_eq!(
+                app.snapshot().safety.pending_user_id.as_deref(),
+                Some("user-3")
+            );
+            effect_id
+        }
+    };
+    app.dispatch(AppAction::HttpCompleted {
+        effect_id: block_effect,
+        status: 200,
+        body: r#"{"ok":true}"#.into(),
+    });
+    assert!(
+        app.snapshot()
+            .safety
+            .blocked_user_ids
+            .iter()
+            .any(|id| id == "user-3")
+    );
+
+    app.dispatch(AppAction::UnblockUser {
+        user_id: "user-3".into(),
+    });
+    let unblock_effect = match app.poll_effect().expect("unblock request") {
+        AppEffect::HttpRequest {
+            effect_id,
+            method,
+            path,
+            ..
+        } => {
+            assert_eq!(method, "DELETE");
+            assert_eq!(path, "moderation/blocks/user-3");
+            effect_id
+        }
+    };
+    assert!(
+        !app.snapshot()
+            .safety
+            .blocked_user_ids
+            .iter()
+            .any(|id| id == "user-3")
+    );
+    app.dispatch(AppAction::HttpFailed {
+        effect_id: unblock_effect,
+    });
+    assert!(
+        app.snapshot()
+            .safety
+            .blocked_user_ids
+            .iter()
+            .any(|id| id == "user-3")
+    );
+    assert_eq!(
+        app.snapshot()
+            .safety
+            .feedback
+            .as_ref()
+            .map(|feedback| feedback.code.as_str()),
+        Some("unavailable")
+    );
+}
