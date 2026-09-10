@@ -13,6 +13,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Add a Studio-side catalog inspection adapter using the shared crate, without depending on engine internals.
 - [x] Add the Studio-only `.morph.json` rigid-accessory source manifest and attachment validation contract.
 - [x] Add dependency-free GLB container/JSON inspection for declared rigid-accessory LODs and triangle budgets.
+- [x] Add a Studio authoring CLI for validating a sidecar against a GLB export.
 - [ ] Complete Phase 0 terminology and baseline capture inventory.
 - [ ] Complete Phase 1 catalog resolution and fit/conflict resolution.
 - [ ] Build the rigid Blender accessory vertical slice.
@@ -26,6 +27,8 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added the Studio-only authoring crate and metadata-only rigid accessory manifest validation. GLB vertex-buffer decoding and `.morphpack` compilation remain intentionally deferred until this sidecar contract is stable.
 - 2026-09-10 verification: the authoring crate has 5 passing tests and passes strict Clippy; Studio has 10 passing tests and `cubacadabra-morphs` has 14 passing tests. No new runtime or mobile/web dependencies were introduced.
 - 2026-09-10: Added a dependency-free GLB v2 boundary inspector to the Studio authoring crate. It validates the container, JSON nodes/meshes/accessors, declared near/mid/far node mapping, supported primitive modes, and manifest triangle budgets; it intentionally does not decode vertex buffers or publish a runtime pack yet.
+- 2026-09-10: Added `morph_validate <manifest.morph.json> <asset.glb>` for repeatable local artist checks. Running it against `~/Downloads/test_top_hat.glb` confirmed the export is GLB v2 with one `Cylinder` node/mesh and 248 triangles, but correctly rejected it because the required distinct near/mid/far LOD nodes are not present.
+- 2026-09-10 verification: the authoring crate now has 6 passing tests (including duplicate-LOD rejection), strict Clippy passes, the CLI returns exit code 1 with three actionable LOD-node diagnostics for the supplied top-hat export, and the full Rust workspace remains at 171 passing tests.
 
 ## Architecture and delivery plan
 
