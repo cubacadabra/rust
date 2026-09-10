@@ -26,6 +26,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Add source-structure inspection for imported drafts, including node/mesh/material counts and LOD candidates.
 - [x] Add draft `.morph.json` sidecar export from the Studio mapping controls.
 - [x] Reopen a `.morph.json` sidecar, restore its mappings, and revalidate its referenced GLB.
+- [x] Save and reopen incomplete Studio morph drafts without weakening publish validation.
 - [x] Make the imported preview readable with a shaded surface pass and wireframe toggle.
 - [x] Add source/Near/Mid/Far preview selection for uniquely mapped GLB nodes.
 - [x] Apply imported PBR base color to the CPU shaded preview when available.
@@ -68,6 +69,8 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added a checked-in `TopHat_Near` / `TopHat_Mid` / `TopHat_Far` GLB fixture with a matching sidecar and a small fixture generator. The authoring crate now compiles validated LOD meshes plus manifest metadata into a deterministic bounded `.morphpack` envelope.
 - 2026-09-10: Added the Studio `Publish .morphpack` action. It reruns sidecar and GLB validation, writes the pack through a native save dialog, and reports the published asset ID and byte size inline.
 - 2026-09-10: Added deterministic PNG thumbnail generation from the current bounded shaded preview, using imported base color when available and the same CPU mesh data as pack compilation.
+- 2026-09-10: Added resumable `.morph.draft.json` save/reopen for incomplete imports. Drafts preserve the current asset, attachment, partial LOD mapping, and known triangle counts; strict `.morph.json` export and `.morphpack` publishing still require validated distinct LOD nodes.
+- 2026-09-10 verification: Studio has 17 passing tests and the authoring crate has 9 passing tests after the draft persistence change; `git diff --check` passes.
 - 2026-09-10 verification: Studio has 15 passing tests, the authoring crate has 9 passing tests, the three LOD fixture passes `morph_validate`, Studio `cargo check` passes, and both repositories pass `git diff --check`. Shared runtime renderer registration remains next.
 
 ## Architecture and delivery plan
