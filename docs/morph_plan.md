@@ -24,6 +24,8 @@ Status: in progress; last updated September 10, 2026
 - [x] Add draft `.morph.json` sidecar export from the Studio mapping controls.
 - [x] Reopen a `.morph.json` sidecar, restore its mappings, and revalidate its referenced GLB.
 - [x] Make the imported preview readable with a shaded surface pass and wireframe toggle.
+- [x] Add source/Near/Mid/Far preview selection for uniquely mapped GLB nodes.
+- [x] Apply imported PBR base color to the CPU shaded preview when available.
 - [ ] Build the Morphs workspace MVP.
 
 ### Work log
@@ -52,6 +54,10 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Improved the raw GLB preview with depth-offset projection, a CPU shaded surface pass, and a wireframe toggle so imported meshes remain readable while topology is inspected.
 - 2026-09-10 verification: Studio has 12 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and `git diff --check` passes. Local `rustfmt` and `clippy` components are unavailable in the installed Rust toolchain.
 - 2026-09-10: Added sidecar reimport through a native `.morph.json` picker. Studio resolves the sidecar’s safe relative GLB path, validates the full source contract and exact mapped LOD counts, restores the draft asset and mapping fields, then replaces the preview atomically.
+- 2026-09-10 verification: Studio has 14 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and both repositories pass `git diff --check`. Local `rustfmt` and `clippy` components remain unavailable in the installed Rust toolchain.
+- 2026-09-10: Added bounded Near/Mid/Far preview decoding and selector controls. Raw imports use heuristic unique LOD candidates; sidecar imports use their explicit node mappings, with Source retained as the fallback when an export has no LOD meshes.
+- 2026-09-10 verification: Studio has 14 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and both repositories pass `git diff --check`. Local `rustfmt` and `clippy` components remain unavailable in the installed Rust toolchain.
+- 2026-09-10: The CPU preview now reads a valid first-primitive PBR `baseColorFactor` from each decoded GLB mesh and uses it for shaded rendering, with the Studio accent color as a safe fallback.
 - 2026-09-10 verification: Studio has 14 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and both repositories pass `git diff --check`. Local `rustfmt` and `clippy` components remain unavailable in the installed Rust toolchain.
 
 ## Architecture and delivery plan
