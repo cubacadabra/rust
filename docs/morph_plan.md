@@ -19,6 +19,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Complete Phase 1 catalog resolution and fit/conflict resolution.
 - [ ] Build the rigid Blender accessory vertical slice.
 - [x] Add the Morphs workspace shell MVP with catalog library, search, and inspector.
+- [x] Add the first Studio GLB import/preview loop with bounded mesh decoding and a native file picker.
 - [ ] Build the Morphs workspace MVP.
 
 ### Work log
@@ -38,6 +39,8 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10 verification: the complete workspace now passes 175 tests (10 app, 4 client, 143 engine, 18 morphs); normal engine and host Android-backend checks pass. The WASM check remains unavailable because `wasm32-unknown-unknown` is not installed locally.
 - 2026-09-10: Added the shared Morphs workspace shell entry. It loads the same catalog used by the resolver, provides searchable kind-grouped assets, and shows a compact identity/fit/capability inspector beside the existing preview surface. Import, reimport, diagnostics, and production rendering remain the next UI slices.
 - 2026-09-10 verification: Studio has 11 passing tests after the Morphs tab was added; the existing logo texture and shared platform menu boundaries remain unchanged.
+- 2026-09-10: Added the first usable Studio import loop. The Studio-only authoring crate now decodes bounded POSITION/index data from the first GLB primitive; the Morphs inspector opens a native GLB picker and the center panel renders a CPU wireframe with source, vertex, index, and triangle counts. Import errors stay inline and do not enter the engine/runtime path.
+- 2026-09-10 verification: the authoring crate has 7 passing tests and passes strict Clippy; Studio builds, its 11 tests pass, and the release binary builds. `test_top_hat.glb` is ready to inspect in the GUI; it will preview despite lacking the distinct near/mid/far LOD nodes required for publish validation. Strict Studio Clippy still reports pre-existing warnings in `main.rs`/`network.rs`; the new preview code is clean.
 
 ## Architecture and delivery plan
 
