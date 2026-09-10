@@ -11,6 +11,8 @@ Status: in progress; last updated September 10, 2026
 - [x] Make the engine consume shared morph asset-ID validation without changing V1 rendering behavior.
 - [x] Add the shared asset/catalog schema and seed the current compatibility catalog and person presets.
 - [x] Add a Studio-side catalog inspection adapter using the shared crate, without depending on engine internals.
+- [x] Add the Studio-only `.morph.json` rigid-accessory source manifest and attachment validation contract.
+- [x] Add dependency-free GLB container/JSON inspection for declared rigid-accessory LODs and triangle budgets.
 - [ ] Complete Phase 0 terminology and baseline capture inventory.
 - [ ] Complete Phase 1 catalog resolution and fit/conflict resolution.
 - [ ] Build the rigid Blender accessory vertical slice.
@@ -20,7 +22,10 @@ Status: in progress; last updated September 10, 2026
 
 - 2026-09-10: Started Phase 0/1 with the portable contract crate. The first engine integration deliberately replaces only the duplicate equipment asset-ID validator; animation, rendering, FFI, snapshots, and appearance fallback remain on the V1 path.
 - 2026-09-10 verification: `cubacadabra-morphs` has 14 passing unit tests and passes strict Clippy; all 171 normal Rust workspace tests and all 10 Studio tests pass; normal Metal, host Android-feature, and Studio checks pass. The WebAssembly target is not installed locally. The existing `dev-showcase` build is currently blocked outside the morph changes by stale renderer validation fixtures (`texture_bounds` and `world_pipeline` arguments), so new baseline captures have not yet been recorded.
-- 2026-09-10: Added `MorphCatalog`, asset metadata validation, compatibility fixture data, and the Studio inspection adapter. The catalog is metadata-only at this stage; GLB ingestion and compiled packs remain the next vertical slice.
+- 2026-09-10: Added `MorphCatalog`, asset metadata validation, compatibility fixture data, and the Studio inspection adapter. The catalog is metadata-only at this stage; GLB vertex-buffer ingestion and compiled packs remain the next vertical slice.
+- 2026-09-10: Added the Studio-only authoring crate and metadata-only rigid accessory manifest validation. GLB vertex-buffer decoding and `.morphpack` compilation remain intentionally deferred until this sidecar contract is stable.
+- 2026-09-10 verification: the authoring crate has 5 passing tests and passes strict Clippy; Studio has 10 passing tests and `cubacadabra-morphs` has 14 passing tests. No new runtime or mobile/web dependencies were introduced.
+- 2026-09-10: Added a dependency-free GLB v2 boundary inspector to the Studio authoring crate. It validates the container, JSON nodes/meshes/accessors, declared near/mid/far node mapping, supported primitive modes, and manifest triangle budgets; it intentionally does not decode vertex buffers or publish a runtime pack yet.
 
 ## Architecture and delivery plan
 

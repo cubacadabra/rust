@@ -78,6 +78,21 @@ pub struct MorphAssetDefinition {
     pub provenance: MorphProvenance,
 }
 
+impl MorphAssetDefinition {
+    /// Validate one definition without requiring the caller to construct a
+    /// complete catalog. Catalog-level reference checks remain the job of
+    /// `MorphCatalog::validate`.
+    pub fn validate(&self) -> Vec<MorphDiagnostic> {
+        MorphCatalog {
+            schema_version: MORPH_CATALOG_SCHEMA_VERSION,
+            content_version: "definition-validation".to_owned(),
+            assets: vec![self.clone()],
+            presets: Vec::new(),
+        }
+        .validate()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MorphPreset {
