@@ -393,12 +393,7 @@ pub(crate) fn resolve_appearance(input: AppearanceInput<'_>) -> AppearanceResolu
 }
 
 fn valid_asset_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 96
-        && value.is_ascii()
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'.' | b'-' | b'_' | b'/')
-        })
+    cubacadabra_morphs::MorphAssetId::parse(value).is_ok()
 }
 
 fn apply_color(target: &mut [f32; 4], value: Option<&String>) {

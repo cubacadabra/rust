@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/app", "crates/client"]
+members = [".", "crates/app", "crates/client", "crates/morphs"]
 resolver = "3"
 
 [package]
@@ -32,6 +32,7 @@ path = "src/bin/validate_character_assets.rs"
 required-features = ["dev-showcase"]
 
 [dependencies]
+cubacadabra-morphs = { path = "crates/morphs" }
 fontdue = "0.9"
 log = "0.4"
 png = "0.17"

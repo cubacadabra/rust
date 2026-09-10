@@ -1,3 +1,26 @@
+# Morph system plan
+
+Status: in progress; last updated September 10, 2026
+
+## Progress
+
+- [x] Record the target architecture and phased delivery plan.
+- [x] Scaffold the portable `cubacadabra-morphs` crate without renderer, filesystem, or platform dependencies.
+- [x] Add shared bounded asset IDs, published-ID rules, versioned capability IDs, and deterministic diagnostics.
+- [x] Add a bounded V2 `MorphLoadout` contract and explicit V1 appearance compatibility mapping.
+- [x] Make the engine consume shared morph asset-ID validation without changing V1 rendering behavior.
+- [ ] Complete Phase 0 terminology, asset schema, catalog schema, and baseline capture inventory.
+- [ ] Complete Phase 1 catalog resolution and make it inspectable by Studio.
+- [ ] Build the rigid Blender accessory vertical slice.
+- [ ] Build the Morphs workspace MVP.
+
+### Work log
+
+- 2026-09-10: Started Phase 0/1 with the portable contract crate. The first engine integration deliberately replaces only the duplicate equipment asset-ID validator; animation, rendering, FFI, snapshots, and appearance fallback remain on the V1 path.
+- 2026-09-10 verification: `cubacadabra-morphs` has 11 passing unit tests and passes strict Clippy; all 168 normal Rust workspace tests and all 8 Studio tests pass; normal Metal, host Android-feature, and Studio checks pass. The WebAssembly target is not installed locally. The existing `dev-showcase` build is currently blocked outside the morph changes by stale renderer validation fixtures (`texture_bounds` and `world_pipeline` arguments), so new baseline captures have not yet been recorded.
+
+## Architecture and delivery plan
+
 Yes: create a new portable cubacadabra-morphs crate, but do not move the whole renderer into it. The crate should own
   the morph vocabulary, schemas, resolution, compatibility, and validation. Blender importing and compilation should be
   Studio-only, while GPU rendering remains in the shared engine.
