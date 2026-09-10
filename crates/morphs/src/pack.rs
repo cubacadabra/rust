@@ -7,6 +7,7 @@ pub const MAX_MORPH_PACK_BYTES: usize = 64 * 1024 * 1024;
 const MAX_MORPH_PACK_MANIFEST_BYTES: usize = 256 * 1024;
 const MAX_MORPH_PACK_VERTICES: usize = 200_000;
 const MAX_MORPH_PACK_INDICES: usize = 600_000;
+const MAX_ATTACHED_VERTEX_ABS: f32 = 100.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MorphPack {
@@ -131,6 +132,7 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
             "pack must contain near, mid, and far LODs",
         )]
     })?;
+    validate_attached_bounds(&manifest.attachment, &lods)?;
     let declared = [
         manifest.asset.lod.near,
         manifest.asset.lod.mid,
@@ -158,6 +160,51 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
         },
         lods,
     })
+}
+
+fn validate_attached_bounds(
+    attachment: &MorphPackManifestAttachment,
+    lods: &[MorphPackLod; 3],
+) -> Result<(), Vec<MorphDiagnostic>> {
+    let [qx, qy, qz, qw] = attachment.rotation;
+    for (level, lod) in ["near", "mid", "far"].into_iter().zip(lods) {
+        for (index, vertex) in lod.vertices.iter().enumerate() {
+            let scaled = [
+                vertex[0] * attachment.scale[0],
+                vertex[1] * attachment.scale[1],
+                vertex[2] * attachment.scale[2],
+            ];
+            let cross = |a: [f32; 3], b: [f32; 3]| {
+                [
+                    a[1] * b[2] - a[2] * b[1],
+                    a[2] * b[0] - a[0] * b[2],
+                    a[0] * b[1] - a[1] * b[0],
+                ]
+            };
+            let q = [qx, qy, qz];
+            let twice_cross = cross(q, scaled).map(|value| value * 2.0);
+            let second_cross = cross(q, twice_cross);
+            let attached: [f32; 3] = std::array::from_fn(|axis| {
+                scaled[axis]
+                    + twice_cross[axis] * qw
+                    + second_cross[axis]
+                    + attachment.translation[axis]
+            });
+            if attached
+                .iter()
+                .any(|value| !value.is_finite() || value.abs() > MAX_ATTACHED_VERTEX_ABS)
+            {
+                return Err(vec![error(
+                    "MORPH_PACK_ATTACHED_BOUNDS",
+                    &format!("lods.{level}.vertices[{index}]"),
+                    format!(
+                        "attached vertex must remain finite and within +/-{MAX_ATTACHED_VERTEX_ABS} units"
+                    ),
+                )]);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn read_lod(cursor: &mut Cursor<'_>, level: &str) -> Result<MorphPackLod, Vec<MorphDiagnostic>> {
@@ -490,5 +537,25 @@ mod tests {
         bytes.push(0);
         let diagnostics = decode_morph_pack(&bytes).unwrap_err();
         assert_eq!(diagnostics[0].code, "MORPH_PACK_TRAILING_BYTES");
+    }
+
+    #[test]
+    fn rejects_geometry_that_becomes_unbounded_after_attachment() {
+        let attachment = MorphPackManifestAttachment {
+            mode: "rigid".to_owned(),
+            joint: "head".to_owned(),
+            translation: [0.0; 3],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            scale: [100.0; 3],
+        };
+        let lod = MorphPackLod {
+            triangle_count: 1,
+            vertices: vec![[2.0, 0.0, 0.0]],
+            indices: vec![0, 0, 0],
+            base_color: None,
+        };
+        let diagnostics =
+            validate_attached_bounds(&attachment, &[lod.clone(), lod.clone(), lod]).unwrap_err();
+        assert_eq!(diagnostics[0].code, "MORPH_PACK_ATTACHED_BOUNDS");
     }
 }

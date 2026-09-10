@@ -17,7 +17,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Record Phase 0 terminology and baseline capture inventory.
 - [ ] Produce and review the Phase 0 PNG/JSON baseline artifacts.
 - [x] Complete Phase 1 catalog resolution and fit/conflict resolution.
-- [ ] Build the rigid Blender accessory vertical slice.
+- [x] Build the rigid Blender accessory vertical slice.
 - [x] Add a checked-in three LOD rigid accessory fixture and deterministic `.morphpack` compiler.
 - [x] Add a bounded shared-runtime `.morphpack` decoder and validation CLI.
 - [x] Add an additive engine renderer registry for bounded rigid morph-pack GPU resources.
@@ -81,6 +81,9 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added an additive engine-side morph registry. Native, WebRenderer, and C FFI entry points now decode a compiled pack once and upload its three immutable LOD meshes, with generated normals, replacement-by-asset-ID, a 32-pack limit, and a 16 MiB GPU residency cap.
 - 2026-09-10: Completed the live rigid-accessory vertical slice. Studio now registers a validated pack immediately after publish, applies its asset ID to the local V1-compatible hat slot, and the shared renderer resolves that ID per character, applies the authored attachment transform after the animated joint matrix, and batches the matching Near/Mid/Far GPU mesh with the existing opaque character pass. An explicit `Load .morphpack` action also exercises an existing compiled pack directly.
 - 2026-09-10 verification: the shared engine tests (143), Studio tests (18), morph crate tests (20), authoring crate tests (9), normal engine check, Android-backend check, Studio check, formatting checks, and the supplied 14,625-byte top-hat pack validation pass. The Web/WASM check remains unavailable because the `wasm32-unknown-unknown` target is not installed locally. Deployed non-desktop hosts still need to discover package-declared pack files and call the already-exposed registration APIs.
+- 2026-09-10: Reviewed the first live Blender-to-game result and fixed attachment calibration end to end. Studio now preserves translation, rotation, and scale through draft save, sidecar export/reimport, pack compilation, and runtime loading; shows source and runtime dimensions; previews the transformed mesh against a standard person-head reference; offers a deterministic `Fit to person head` action; and blocks obviously implausible headwear widths. Strict GLB publishing now requires applied Blender node transforms, one primitive per LOD, and triangle-list geometry, matching what the pack compiler actually consumes.
+- 2026-09-10: Recalibrated the supplied top hat from a 3.00-unit identity-scale brim to a 1.35-unit runtime brim (`0.451` uniform scale, `0.657` head-local Y offset) and rebuilt `/Users/aa/Downloads/test_top_hat.morph.morphpack`.
+- 2026-09-10 verification: Studio has 19 passing tests, morph authoring has 10 passing tests, the portable morph crate has 21 passing tests, the shared engine has 143 passing tests, Android-feature compilation passes, both repositories pass formatting and diff checks, and the rebuilt 14,633-byte pack passes the shared decoder with Near 248, Mid 124, and Far 48 triangles.
 
 ## Architecture and delivery plan
 
@@ -344,6 +347,12 @@ Yes: create a new portable cubacadabra-morphs crate, but do not move the whole r
   - Coverage-region references.
   - Example hat, hair, garment, and tail.
   - Export checklist.
+
+  The rigid-accessory exchange convention is one Blender/GLB unit per engine world unit. Mapped LOD objects must have
+  Location, Rotation, and Scale applied on the object and its parent hierarchy, and contain exactly one triangle-list primitive. Geometry is authored in local
+  accessory coordinates; the sidecar attachment transform is then applied relative to its semantic joint. For the
+  standard person reference, the head is 1.10 × 0.92 × 0.78 units. Studio's headwear fit action targets a 1.35-unit brim
+  and places its lowest point just inside the top of that head; artists can then adjust the persisted offset and scale.
 
   The importer should reject or flag:
 
