@@ -75,9 +75,9 @@ Enable the repository's pre-commit hook once per checkout:
 git config core.hooksPath .githooks
 ```
 
-When a commit includes Rust source, the hook runs `cargo fmt --all -- --check`
-and blocks the commit until the workspace is formatted. Run `cargo fmt --all`
-and stage the result to fix a formatting failure.
+When a commit includes Rust source, the hook runs `cargo fmt --all` and
+auto-stages formatting changes for Rust files that were already staged. Files
+with separate unstaged changes must be staged or discarded before committing.
 
 ## Build for iOS
 

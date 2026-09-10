@@ -3,16 +3,41 @@
 set -eu
 
 # Keep non-Rust commits fast and avoid running rustfmt when no Rust source is
-# being committed. The check covers the whole workspace so every staged Rust
-# file is validated with the same rustfmt configuration.
-if ! git diff --cached --name-only --diff-filter=ACMR -- '*.rs' | grep -q .; then
+# being committed. The formatter covers the whole workspace so every staged
+# Rust file uses the same rustfmt configuration.
+staged_rust_files=$(mktemp)
+trap 'rm -f "$staged_rust_files"' EXIT
+
+git diff --cached --name-only --diff-filter=ACMR -- '*.rs' > "$staged_rust_files"
+if [ ! -s "$staged_rust_files" ]; then
     exit 0
 fi
 
-printf '%s\n' 'Checking staged Rust files with cargo fmt...'
+# Do not accidentally stage unrelated edits when updating formatted files.
+while IFS= read -r file; do
+    if ! git diff --quiet -- "$file"; then
+        printf '%s\n' '' \
+            "Rust file has unstaged changes, so it cannot be auto-staged: $file" \
+            'Stage or discard those changes, then commit again.' >&2
+        exit 1
+    fi
+done < "$staged_rust_files"
+
+printf '%s\n' 'Formatting Rust files with cargo fmt...'
+
+if ! cargo fmt --all; then
+    printf '%s\n' '' 'Rust formatting is required before committing.' \
+        'Please fix the formatting error and commit again.' >&2
+    exit 1
+fi
+
+# Include cargo fmt's changes in the commit, but only for files that were
+# already staged when the hook started.
+while IFS= read -r file; do
+    git add -- "$file"
+done < "$staged_rust_files"
 
 if ! cargo fmt --all -- --check; then
-    printf '%s\n' '' 'Rust formatting is required before committing.' \
-        'Run "cargo fmt --all" and stage the formatted files, then commit again.' >&2
+    printf '%s\n' '' 'Rust formatting did not complete cleanly.' >&2
     exit 1
 fi
