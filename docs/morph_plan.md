@@ -22,6 +22,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Add the first Studio GLB import/preview loop with bounded mesh decoding and a native file picker.
 - [x] Add source-structure inspection for imported drafts, including node/mesh/material counts and LOD candidates.
 - [x] Add draft `.morph.json` sidecar export from the Studio mapping controls.
+- [x] Reopen a `.morph.json` sidecar, restore its mappings, and revalidate its referenced GLB.
 - [x] Make the imported preview readable with a shaded surface pass and wireframe toggle.
 - [ ] Build the Morphs workspace MVP.
 
@@ -50,6 +51,8 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added draft `.morph.json` export from the Studio mapping controls. A raw import receives a bounded in-memory headwear draft identity derived from its filename, and the exporter writes that asset, a safe relative GLB filename, rigid head attachment, mapped Near/Mid/Far nodes, and bounded triangle counts through the same sidecar validator used by the CLI.
 - 2026-09-10: Improved the raw GLB preview with depth-offset projection, a CPU shaded surface pass, and a wireframe toggle so imported meshes remain readable while topology is inspected.
 - 2026-09-10 verification: Studio has 12 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and `git diff --check` passes. Local `rustfmt` and `clippy` components are unavailable in the installed Rust toolchain.
+- 2026-09-10: Added sidecar reimport through a native `.morph.json` picker. Studio resolves the sidecar’s safe relative GLB path, validates the full source contract and exact mapped LOD counts, restores the draft asset and mapping fields, then replaces the preview atomically.
+- 2026-09-10 verification: Studio has 14 passing tests, the authoring crate has 8 passing tests, Studio `cargo check` passes, and both repositories pass `git diff --check`. Local `rustfmt` and `clippy` components remain unavailable in the installed Rust toolchain.
 
 ## Architecture and delivery plan
 
