@@ -14,9 +14,11 @@ Status: in progress; last updated September 10, 2026
 - [x] Add the Studio-only `.morph.json` rigid-accessory source manifest and attachment validation contract.
 - [x] Add dependency-free GLB container/JSON inspection for declared rigid-accessory LODs and triangle budgets.
 - [x] Add a Studio authoring CLI for validating a sidecar against a GLB export.
-- [ ] Complete Phase 0 terminology and baseline capture inventory.
-- [ ] Complete Phase 1 catalog resolution and fit/conflict resolution.
+- [x] Record Phase 0 terminology and baseline capture inventory.
+- [ ] Produce and review the Phase 0 PNG/JSON baseline artifacts.
+- [x] Complete Phase 1 catalog resolution and fit/conflict resolution.
 - [ ] Build the rigid Blender accessory vertical slice.
+- [x] Add the Morphs workspace shell MVP with catalog library, search, and inspector.
 - [ ] Build the Morphs workspace MVP.
 
 ### Work log
@@ -29,6 +31,13 @@ Status: in progress; last updated September 10, 2026
 - 2026-09-10: Added a dependency-free GLB v2 boundary inspector to the Studio authoring crate. It validates the container, JSON nodes/meshes/accessors, declared near/mid/far node mapping, supported primitive modes, and manifest triangle budgets; it intentionally does not decode vertex buffers or publish a runtime pack yet.
 - 2026-09-10: Added `morph_validate <manifest.morph.json> <asset.glb>` for repeatable local artist checks. Running it against `~/Downloads/test_top_hat.glb` confirmed the export is GLB v2 with one `Cylinder` node/mesh and 248 triangles, but correctly rejected it because the required distinct near/mid/far LOD nodes are not present.
 - 2026-09-10 verification: the authoring crate now has 6 passing tests (including duplicate-LOD rejection), strict Clippy passes, the CLI returns exit code 1 with three actionable LOD-node diagnostics for the supplied top-hat export, and the full Rust workspace remains at 171 passing tests.
+- 2026-09-10: Added shared deterministic loadout resolution. It validates base/part references, supported bases, rig and fit-profile intersections, occupied-slot collisions, conflict tags, and engine capability requirements; presets route through the same resolver. Studio now calls that shared resolver through its catalog adapter.
+- 2026-09-10 verification: `cubacadabra-morphs` has 18 passing tests, Studio has 11 passing tests, and strict Clippy/formatting pass. The full workspace remains platform-safe because resolution is CPU-only data work with no renderer or per-frame dependencies.
+- 2026-09-10: Added all 21 current V1 analytic face presets to the shared compatibility catalog so migrated V1 appearances can resolve their `MorphLoadout.face` reference instead of stopping at an unknown catalog asset.
+- 2026-09-10: Recorded the Phase 0 terminology, V1-to-V2 identity map, authored/runtime inventory, web thumbnail inventory, and 15-scenario capture matrix in [`morph_baseline_inventory.md`](morph_baseline_inventory.md). The inventory is complete; PNG/JSON capture artifacts remain blocked by the pre-existing `dev-showcase` renderer validation compile errors.
+- 2026-09-10 verification: the complete workspace now passes 175 tests (10 app, 4 client, 143 engine, 18 morphs); normal engine and host Android-backend checks pass. The WASM check remains unavailable because `wasm32-unknown-unknown` is not installed locally.
+- 2026-09-10: Added the shared Morphs workspace shell entry. It loads the same catalog used by the resolver, provides searchable kind-grouped assets, and shows a compact identity/fit/capability inspector beside the existing preview surface. Import, reimport, diagnostics, and production rendering remain the next UI slices.
+- 2026-09-10 verification: Studio has 11 passing tests after the Morphs tab was added; the existing logo texture and shared platform menu boundaries remain unchanged.
 
 ## Architecture and delivery plan
 

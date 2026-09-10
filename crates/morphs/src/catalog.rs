@@ -408,7 +408,7 @@ mod tests {
     #[test]
     fn bundled_compatibility_catalog_is_valid_and_inspectable() {
         let catalog = parse_catalog(FIXTURE).expect("morph catalog");
-        assert_eq!(catalog.assets.len(), 13);
+        assert_eq!(catalog.assets.len(), 34);
         assert_eq!(catalog.presets.len(), 3);
         let person = MorphAssetId::parse("cuba:base/person.v1").unwrap();
         assert_eq!(catalog.asset(&person).unwrap().kind, MorphAssetKind::Base);

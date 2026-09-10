@@ -11,6 +11,7 @@ mod diagnostic;
 mod id;
 mod legacy;
 mod loadout;
+mod resolve;
 
 pub use capability::{CapabilityId, CapabilitySet};
 pub use catalog::{
@@ -25,3 +26,4 @@ pub use loadout::{
     MAX_LOADOUT_BYTES, MAX_PARAMETERS, MAX_PARTS, MORPH_LOADOUT_VERSION, MorphLoadout,
     MorphParameterValue, parse_loadout,
 };
+pub use resolve::{ResolvedMorphLoadout, resolve_loadout, resolve_preset};
