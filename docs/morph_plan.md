@@ -9,15 +9,18 @@ Status: in progress; last updated September 10, 2026
 - [x] Add shared bounded asset IDs, published-ID rules, versioned capability IDs, and deterministic diagnostics.
 - [x] Add a bounded V2 `MorphLoadout` contract and explicit V1 appearance compatibility mapping.
 - [x] Make the engine consume shared morph asset-ID validation without changing V1 rendering behavior.
-- [ ] Complete Phase 0 terminology, asset schema, catalog schema, and baseline capture inventory.
-- [ ] Complete Phase 1 catalog resolution and make it inspectable by Studio.
+- [x] Add the shared asset/catalog schema and seed the current compatibility catalog and person presets.
+- [x] Add a Studio-side catalog inspection adapter using the shared crate, without depending on engine internals.
+- [ ] Complete Phase 0 terminology and baseline capture inventory.
+- [ ] Complete Phase 1 catalog resolution and fit/conflict resolution.
 - [ ] Build the rigid Blender accessory vertical slice.
 - [ ] Build the Morphs workspace MVP.
 
 ### Work log
 
 - 2026-09-10: Started Phase 0/1 with the portable contract crate. The first engine integration deliberately replaces only the duplicate equipment asset-ID validator; animation, rendering, FFI, snapshots, and appearance fallback remain on the V1 path.
-- 2026-09-10 verification: `cubacadabra-morphs` has 11 passing unit tests and passes strict Clippy; all 168 normal Rust workspace tests and all 8 Studio tests pass; normal Metal, host Android-feature, and Studio checks pass. The WebAssembly target is not installed locally. The existing `dev-showcase` build is currently blocked outside the morph changes by stale renderer validation fixtures (`texture_bounds` and `world_pipeline` arguments), so new baseline captures have not yet been recorded.
+- 2026-09-10 verification: `cubacadabra-morphs` has 14 passing unit tests and passes strict Clippy; all 171 normal Rust workspace tests and all 10 Studio tests pass; normal Metal, host Android-feature, and Studio checks pass. The WebAssembly target is not installed locally. The existing `dev-showcase` build is currently blocked outside the morph changes by stale renderer validation fixtures (`texture_bounds` and `world_pipeline` arguments), so new baseline captures have not yet been recorded.
+- 2026-09-10: Added `MorphCatalog`, asset metadata validation, compatibility fixture data, and the Studio inspection adapter. The catalog is metadata-only at this stage; GLB ingestion and compiled packs remain the next vertical slice.
 
 ## Architecture and delivery plan
 

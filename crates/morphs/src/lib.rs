@@ -6,12 +6,18 @@
 //! and validation behavior.
 
 mod capability;
+mod catalog;
 mod diagnostic;
 mod id;
 mod legacy;
 mod loadout;
 
 pub use capability::{CapabilityId, CapabilitySet};
+pub use catalog::{
+    MAX_CATALOG_ASSETS, MAX_CATALOG_BYTES, MAX_CATALOG_PRESETS, MORPH_CATALOG_SCHEMA_VERSION,
+    MorphAssetDefinition, MorphAssetKind, MorphCatalog, MorphLodBudget, MorphPreset,
+    MorphProvenance, MorphSourceReference, parse_catalog,
+};
 pub use diagnostic::MorphDiagnostic;
 pub use id::{AssetIdError, MorphAssetId};
 pub use legacy::{LegacyAppearance, migrate_v1_appearance};
