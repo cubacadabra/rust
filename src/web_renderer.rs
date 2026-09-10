@@ -52,6 +52,10 @@ impl WebRenderer {
             .set_package_image_atlas(width, height, &pixels.to_vec(), regions)
     }
 
+    pub fn register_morph_pack(&mut self, bytes: js_sys::Uint8Array) -> bool {
+        self.renderer.register_morph_pack(&bytes.to_vec()).is_ok()
+    }
+
     /// Selects the staged character visual rollout mode: 0 = legacy, 1 =
     /// magic. Invalid values are rejected without changing the current mode.
     pub fn set_appearance_mode(&mut self, mode: u8) -> bool {

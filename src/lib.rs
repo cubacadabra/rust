@@ -126,5 +126,12 @@ pub mod native {
             self.inner
                 .set_package_image_atlas(width, height, pixels, regions)
         }
+
+        pub fn register_morph_pack(
+            &mut self,
+            bytes: &[u8],
+        ) -> Result<(), Vec<cubacadabra_morphs::MorphDiagnostic>> {
+            self.inner.register_morph_pack(bytes)
+        }
     }
 }

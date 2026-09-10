@@ -12,6 +12,7 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 
 use bytemuck::Zeroable;
+use cubacadabra_morphs::{MorphDiagnostic, decode_morph_pack};
 use wgpu::util::DeviceExt;
 
 use super::{
@@ -672,6 +673,11 @@ impl Renderer {
         self.package_image_regions
             .insert(id.to_owned(), [0.0, 0.0, 1.0, 1.0]);
         true
+    }
+
+    pub(crate) fn register_morph_pack(&mut self, bytes: &[u8]) -> Result<(), Vec<MorphDiagnostic>> {
+        let pack = decode_morph_pack(bytes)?;
+        self.characters.register_morph_pack(&self.device, pack)
     }
 
     pub(crate) fn set_package_image_atlas(

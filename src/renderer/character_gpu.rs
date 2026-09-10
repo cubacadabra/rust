@@ -8,7 +8,12 @@ use super::{
     rounded_geometry::RoundedMeshCache,
 };
 use crate::character::{BodyId, BodyRecipe, OutfitId, body_recipe};
+use cubacadabra_morphs::{
+    MorphAssetDefinition, MorphAssetId, MorphDiagnostic, MorphPack, MorphPackAttachment,
+    MorphPackLod,
+};
 use glam::{Mat4, Quat, Vec3};
+use std::collections::BTreeMap;
 use wgpu::util::DeviceExt;
 
 pub(super) const MAX_CHARACTERS: usize = 50;
@@ -16,6 +21,8 @@ pub(super) const MAX_CHARACTERS: usize = 50;
 const MAX_PARTS: usize = 48 + crate::character::hair::MAX_LOCKS;
 pub(super) const MAX_MESHES: usize = 384 + 2 * crate::character::hair::MAX_LOCKS * 3;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
+const MAX_MORPH_PACKS: usize = 32;
+const MAX_MORPH_RESIDENCY: usize = 16 * 1024 * 1024;
 
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
     let face = entity.face.clamped();
@@ -128,6 +135,152 @@ struct Mesh {
     indices: wgpu::Buffer,
     index_count: u32,
 }
+
+struct RegisteredMorph {
+    _asset: MorphAssetDefinition,
+    _attachment: MorphPackAttachment,
+    _base_colors: [Option<[f32; 4]>; 3],
+    _lods: [Mesh; 3],
+    bytes: usize,
+}
+
+/// GPU resources for compiled rigid morphs. This registry is intentionally
+/// separate from the bundled V1 character catalog: registering content does
+/// not rebuild or grow the fixed character batches.
+struct MorphRegistry {
+    assets: BTreeMap<MorphAssetId, RegisteredMorph>,
+    resident_bytes: usize,
+}
+
+impl MorphRegistry {
+    fn new() -> Self {
+        Self {
+            assets: BTreeMap::new(),
+            resident_bytes: 0,
+        }
+    }
+
+    fn register(
+        &mut self,
+        device: &wgpu::Device,
+        pack: MorphPack,
+    ) -> Result<(), Vec<MorphDiagnostic>> {
+        let id = pack.asset.id.clone();
+        let lod_bytes = pack
+            .lods
+            .iter()
+            .map(morph_lod_bytes)
+            .collect::<Option<Vec<_>>>()
+            .ok_or_else(|| vec![morph_error("MORPH_GPU_RESOURCE_OVERFLOW", "geometry")])?;
+        let bytes = lod_bytes
+            .iter()
+            .try_fold(0usize, |total, value| total.checked_add(*value));
+        let Some(bytes) = bytes else {
+            return Err(vec![morph_error("MORPH_GPU_RESOURCE_OVERFLOW", "geometry")]);
+        };
+        let previous_bytes = self.assets.get(&id).map(|asset| asset.bytes).unwrap_or(0);
+        let Some(new_resident_bytes) = self
+            .resident_bytes
+            .checked_sub(previous_bytes)
+            .and_then(|value| value.checked_add(bytes))
+        else {
+            return Err(vec![morph_error("MORPH_GPU_RESOURCE_OVERFLOW", "geometry")]);
+        };
+        if new_resident_bytes > MAX_MORPH_RESIDENCY {
+            return Err(vec![morph_error("MORPH_GPU_RESOURCE_LIMIT", "geometry")]);
+        }
+        if !self.assets.contains_key(&id) && self.assets.len() >= MAX_MORPH_PACKS {
+            return Err(vec![morph_error("MORPH_GPU_PACK_LIMIT", "asset.id")]);
+        }
+
+        let base_colors = pack.lods.each_ref().map(|lod| lod.base_color);
+        let [near, mid, far] = pack.lods;
+        let lods = [
+            upload_morph_lod(device, &id, "near", near),
+            upload_morph_lod(device, &id, "mid", mid),
+            upload_morph_lod(device, &id, "far", far),
+        ]
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?;
+        let lods: [Mesh; 3] = lods
+            .try_into()
+            .map_err(|_| vec![morph_error("MORPH_GPU_INVALID_LOD_COUNT", "lods")])?;
+        let [near, mid, far] = lods;
+        self.assets.insert(
+            id,
+            RegisteredMorph {
+                _asset: pack.asset,
+                _attachment: pack.attachment,
+                _base_colors: base_colors,
+                _lods: [near, mid, far],
+                bytes,
+            },
+        );
+        self.resident_bytes = new_resident_bytes;
+        Ok(())
+    }
+}
+
+fn morph_lod_bytes(lod: &MorphPackLod) -> Option<usize> {
+    size_of::<CharacterVertex>()
+        .checked_mul(lod.vertices.len())?
+        .checked_add(size_of::<u32>().checked_mul(lod.indices.len())?)
+}
+
+fn upload_morph_lod(
+    device: &wgpu::Device,
+    id: &MorphAssetId,
+    level: &str,
+    lod: MorphPackLod,
+) -> Result<Mesh, Vec<MorphDiagnostic>> {
+    let mut normals = vec![Vec3::ZERO; lod.vertices.len()];
+    for triangle in lod.indices.chunks_exact(3) {
+        let a = Vec3::from_array(lod.vertices[triangle[0] as usize]);
+        let b = Vec3::from_array(lod.vertices[triangle[1] as usize]);
+        let c = Vec3::from_array(lod.vertices[triangle[2] as usize]);
+        let normal = (b - a).cross(c - a);
+        normals[triangle[0] as usize] += normal;
+        normals[triangle[1] as usize] += normal;
+        normals[triangle[2] as usize] += normal;
+    }
+    let vertices = lod
+        .vertices
+        .into_iter()
+        .zip(normals)
+        .map(|(position, normal)| CharacterVertex {
+            position,
+            normal: normal.try_normalize().unwrap_or(Vec3::Y).to_array(),
+            uv: [0.0, 0.0],
+        })
+        .collect::<Vec<_>>();
+    let index_count = u32::try_from(lod.indices.len()).map_err(|_| {
+        vec![morph_error(
+            "MORPH_GPU_INDEX_COUNT_OVERFLOW",
+            &format!("{id}.{level}.indices"),
+        )]
+    })?;
+    Ok(Mesh {
+        vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("morph vertices"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
+        }),
+        indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("morph indices"),
+            contents: bytemuck::cast_slice(&lod.indices),
+            usage: wgpu::BufferUsages::INDEX,
+        }),
+        index_count,
+    })
+}
+
+fn morph_error(code: &str, path: &str) -> MorphDiagnostic {
+    MorphDiagnostic {
+        code: code.to_owned(),
+        path: path.to_owned(),
+        message: "compiled morph exceeds the renderer resource limit".to_owned(),
+    }
+}
 struct CompiledBody {
     body: BodyId,
     outfit: OutfitId,
@@ -178,6 +331,7 @@ pub(super) struct CharacterStats {
 pub(super) struct CharacterRenderer {
     bodies: Vec<CompiledBody>,
     meshes: Vec<Mesh>,
+    morphs: MorphRegistry,
     batches: Vec<Batch>,
     instances: Vec<CharacterInstance>,
     buffer: wgpu::Buffer,
@@ -328,6 +482,7 @@ impl CharacterRenderer {
             head_only: false,
             bodies,
             meshes,
+            morphs: MorphRegistry::new(),
             batches,
             instances: Vec::with_capacity(MAX_CHARACTERS * MAX_PARTS),
             buffer,
@@ -336,6 +491,14 @@ impl CharacterRenderer {
             effects: character_material::pipeline(device, globals, samples, CharacterPass::Effect),
             stats,
         }
+    }
+
+    pub(super) fn register_morph_pack(
+        &mut self,
+        device: &wgpu::Device,
+        pack: MorphPack,
+    ) -> Result<(), Vec<MorphDiagnostic>> {
+        self.morphs.register(device, pack)
     }
 
     pub fn begin(&mut self) {

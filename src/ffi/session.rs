@@ -635,6 +635,36 @@ pub unsafe extern "C" fn engine_renderer_set_package_image_atlas(
     u8::from(renderer.set_package_image_atlas(width, height, pixels, regions))
 }
 
+/// Registers a validated compiled morph pack with the renderer. The pack is
+/// decoded and uploaded as immutable GPU mesh resources; it is not parsed as
+/// GLB or Blender data by the runtime.
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
+/// `renderer` must be null or a live pointer returned by
+/// `engine_renderer_create`. When non-zero, `bytes` must reference `length`
+/// readable bytes for the duration of this call.
+pub unsafe extern "C" fn engine_renderer_register_morph_pack(
+    renderer: *mut Renderer,
+    bytes: *const u8,
+    length: usize,
+) -> u8 {
+    let Some(renderer) = (unsafe { renderer.as_mut() }) else {
+        return 0;
+    };
+    if length > cubacadabra_morphs::MAX_MORPH_PACK_BYTES
+        || (length > 0 && bytes.is_null())
+    {
+        return 0;
+    }
+    let bytes = if length == 0 {
+        &[]
+    } else {
+        unsafe { slice::from_raw_parts(bytes, length) }
+    };
+    u8::from(renderer.register_morph_pack(bytes).is_ok())
+}
+
 /// Selects the reversible character renderer rollout mode. `0` is the
 /// legacy hard-cuboid renderer and `1` is the magic instanced renderer. An
 /// invalid value leaves the current mode unchanged and returns zero.

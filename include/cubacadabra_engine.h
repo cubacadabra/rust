@@ -263,6 +263,12 @@ uint8_t engine_renderer_set_package_image_atlas(
     const uint8_t *regions,
     uintptr_t regions_len
 );
+/* Decodes and registers a bounded compiled morph pack with the renderer. */
+uint8_t engine_renderer_register_morph_pack(
+    CubacadabraRenderer *renderer,
+    const uint8_t *bytes,
+    uintptr_t length
+);
 /* Selects the reversible character visual rollout mode. Returns 1 for
  * legacy (0) or magic (1), and 0 for an invalid mode or null renderer. */
 uint8_t engine_renderer_set_appearance_mode(
