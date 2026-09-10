@@ -59,8 +59,7 @@ impl Engine {
             UiPointerPhase::Cancel,
         ]
         .get(phase as usize)
-        .copied()
-        else {
+        .copied() else {
             return false;
         };
         self.ui_pointer(pointer_id, phase, x, y)

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::UsernameValidationError;
-use crate::{validate_account_username, EffectId};
+use crate::{EffectId, validate_account_username};
 
 pub const DEFAULT_BODY_ID: &str = "cuba:person.v1";
 pub const PLAYER_BODY_IDS: [&str; 3] =

@@ -41,7 +41,7 @@ pub fn validate_account_username(value: &str) -> Result<String, UsernameValidati
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_account_username, UsernameValidationError};
+    use super::{UsernameValidationError, validate_account_username};
 
     #[test]
     fn trims_valid_account_usernames() {

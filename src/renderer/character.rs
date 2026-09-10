@@ -990,13 +990,7 @@ fn add_species_parts(vertices: &mut Vec<Part>, root: Anchor, head: Anchor, recip
                     } else {
                         -0.26
                     };
-            let z = 0.40
-                + progress
-                    * if recipe.id == BodyId::Cat {
-                        0.58
-                    } else {
-                        0.86
-                    };
+            let z = 0.40 + progress * if recipe.id == BodyId::Cat { 0.58 } else { 0.86 };
             let tail = Mat4::from_translation(Vec3::new(x, y, z))
                 * Mat4::from_quat(Quat::from_rotation_x(-0.22 + progress * 0.25));
             let size = if recipe.id == BodyId::Cat {

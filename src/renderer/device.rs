@@ -750,9 +750,7 @@ pub(super) fn create_vertex_buffer(device: &wgpu::Device, capacity: usize) -> wg
     })
 }
 
-pub(super) fn world_texture_bind_group_layout(
-    device: &wgpu::Device,
-) -> wgpu::BindGroupLayout {
+pub(super) fn world_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("cubacadabra world image texture layout"),
         entries: &[
