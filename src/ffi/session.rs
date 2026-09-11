@@ -701,6 +701,22 @@ pub unsafe extern "C" fn engine_renderer_appearance_mode(renderer: *const Render
 #[cfg(not(target_arch = "wasm32"))]
 #[unsafe(no_mangle)]
 /// # Safety
+/// `renderer` must be null or a live pointer returned by
+/// `engine_renderer_create`.
+pub unsafe extern "C" fn engine_renderer_set_avatar_preview_mode(
+    renderer: *mut Renderer,
+    enabled: u8,
+) -> u8 {
+    let Some(renderer) = (unsafe { renderer.as_mut() }) else {
+        return 0;
+    };
+    renderer.set_avatar_preview_mode(enabled != 0);
+    1
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[unsafe(no_mangle)]
+/// # Safety
 /// `renderer` and `engine` must be null or live pointers returned by their
 /// corresponding create functions.
 pub unsafe extern "C" fn engine_renderer_sync(renderer: *mut Renderer, engine: *const Engine) {

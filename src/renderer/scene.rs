@@ -214,6 +214,9 @@ impl Renderer {
         self.scene
             .build_blocks
             .extend_from_slice(engine.build_blocks());
+        if self.avatar_preview_mode {
+            self.apply_avatar_preview_scene();
+        }
         // SwiftUI/Metal can ask the renderer to sync while the engine is
         // still rebuilding its UI frame. Do not turn that transient overlap
         // into a process-aborting RefCell panic; the next frame will retry
@@ -224,6 +227,41 @@ impl Renderer {
         self.ui_frame = ui.frame().clone();
         #[cfg(target_os = "ios")]
         log_ui_frame(&self.ui_frame);
+    }
+
+    fn apply_avatar_preview_scene(&mut self) {
+        self.scene.world = RenderWorld {
+            ground_size: 12.0,
+            grid_size: 0.0,
+            grid_divisions: 0,
+            show_grid: false,
+            show_spawn_pad: false,
+            palette: super::RenderPalette {
+                sky: [0.035, 0.04, 0.07, 1.0],
+                ground: [0.07, 0.08, 0.12, 1.0],
+                ground_edge: [0.10, 0.12, 0.18, 1.0],
+                grid: [0.10, 0.12, 0.18, 1.0],
+                ink: [0.85, 0.88, 0.98, 1.0],
+                paper: [0.96, 0.97, 1.0, 1.0],
+            },
+            ..RenderWorld::default()
+        };
+        self.scene.agents.clear();
+        self.scene.remote_players.clear();
+        self.scene.remote_names.clear();
+        self.scene.pad_seconds.clear();
+        self.scene.interaction_states.clear();
+        self.scene.effect_states.clear();
+        self.scene.effect_instances.clear();
+        self.scene.build_blocks.clear();
+        self.scene.player.position = [0.0, 0.0, 0.0];
+        self.scene.player.yaw = 0.0;
+        self.scene.player.walk_cycle = 0.0;
+        self.scene.player.moving = false;
+        self.scene.player.sprinting = false;
+        self.scene.player.support = crate::types::CharacterSupport::Grounded { height: 0.0 };
+        self.scene.camera = [0.0, -0.06, 5.8];
+        self.rebuild_static_vertices();
     }
 }
 

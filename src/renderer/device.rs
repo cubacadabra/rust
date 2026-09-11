@@ -230,6 +230,15 @@ impl Renderer {
         self.character_render_mode
     }
 
+    /// Uses the normal character/equipment renderer in a neutral, isolated
+    /// scene. This is shared by Studio and the platform character editors.
+    pub(crate) fn set_avatar_preview_mode(&mut self, enabled: bool) {
+        if self.avatar_preview_mode != enabled {
+            self.avatar_preview_mode = enabled;
+            self.active_world = usize::MAX;
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
         if layer.is_null() || width <= 0.0 || height <= 0.0 {
@@ -612,6 +621,7 @@ impl Renderer {
             // select Legacy before their first sync for staged rollout or
             // instant comparison; changing this setting is presentation-only.
             character_render_mode: super::CharacterRenderMode::Magic,
+            avatar_preview_mode: false,
             package_image_regions: std::collections::BTreeMap::new(),
             package_generation: 0,
             active_world: usize::MAX,

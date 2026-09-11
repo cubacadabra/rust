@@ -133,5 +133,10 @@ pub mod native {
         ) -> Result<(), Vec<cubacadabra_morphs::MorphDiagnostic>> {
             self.inner.register_morph_pack(bytes)
         }
+
+        #[cfg(feature = "studio-ui")]
+        pub fn set_avatar_preview_mode(&mut self, enabled: bool) {
+            self.inner.set_avatar_preview_mode(enabled);
+        }
     }
 }

@@ -351,6 +351,7 @@ pub struct Renderer {
     pub(super) height: f32,
     pub(super) scene: Scene,
     pub(super) character_render_mode: CharacterRenderMode,
+    pub(super) avatar_preview_mode: bool,
     pub(super) package_image_regions: std::collections::BTreeMap<String, [f32; 4]>,
     pub(super) package_generation: u32,
     pub(super) active_world: usize,

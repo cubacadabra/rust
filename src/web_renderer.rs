@@ -70,6 +70,10 @@ impl WebRenderer {
         self.renderer.character_render_mode().as_u8()
     }
 
+    pub fn set_avatar_preview_mode(&mut self, enabled: bool) {
+        self.renderer.set_avatar_preview_mode(enabled);
+    }
+
     pub fn sync_engine(&mut self, engine: usize) {
         let engine = engine as *const Engine;
         if let Some(engine) = unsafe { engine.as_ref() } {

@@ -598,6 +598,26 @@ Yes: create a new portable cubacadabra-morphs crate, but do not move the whole r
   - The normal mobile/web engine paths incur no authoring dependencies, file watchers, or per-frame catalog work.
   - Existing IDs, snapshots, physics, networking, and the three legacy presets remain compatible throughout migration.
 
-  This is roughly a multi-month program, not a shell feature. The smallest credible first investment is Phases 0–3 plus
-  the Blender hat vertical slice. That validates the crate boundary, artist loop, compiled format, and renderer
-  injection API before committing to the much more expensive skinned-mesh work.
+This is roughly a multi-month program, not a shell feature. The smallest credible first investment is Phases 0–3 plus
+the Blender hat vertical slice. That validates the crate boundary, artist loop, compiled format, and renderer
+injection API before committing to the much more expensive skinned-mesh work.
+
+## MVP D1/R2 and shared preview checkpoint
+
+The first real catalog slice is now implemented:
+
+- Backend migration `013_morphs.sql` adds published `morph_assets` metadata and revisioned
+  `user_appearances` persistence.
+- `GET /morphs/catalog` applies bounded kind/base/rig filters and returns stable pack URLs.
+- Published pack objects are served through the existing Worker R2 binding at
+  `/morphs/assets/:assetId`, with immutable cache headers.
+- Studio starts in Morphs, requests the catalog from the backend, displays remote rows, downloads
+  a selected pack, and applies it to the shared runtime appearance.
+- The Rust renderer exposes a neutral `avatar_preview_mode` through the native, web, iOS, and
+  Android bridges. It reuses the normal character/equipment GPU path and leaves normal game mode
+  unchanged.
+
+The two proof rows are seeded by `014_seed_morph_assets.sql`. The current deployment token can
+apply D1 migrations and deploy the Worker, but lacks R2 Object Write permission; the seed rows are
+therefore waiting on the two corresponding immutable pack uploads before remote selection can
+complete. The local `.morphpack` files remain valid test inputs.
