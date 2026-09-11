@@ -123,6 +123,9 @@ pub(super) struct Part {
 #[derive(Clone, Copy)]
 pub(super) enum Feature {
     None,
+    /// Skin normally supplied by bundled sleeves; used beneath authored tops
+    /// when no authored base is supplying the character's arms.
+    GarmentUnderlayer,
     Sole,
     Eye(f32),
     Brow(f32),
@@ -189,6 +192,27 @@ pub(super) fn world_label_height(body: BodyId) -> f32 {
             head_top.max(feature_top) + 0.10
         })
     })[BodyId::ALL.iter().position(|id| *id == body).unwrap_or(0)]
+}
+
+pub(super) fn garment_underlayer(body: BodyId) -> Vec<Part> {
+    if !body.is_person() {
+        return Vec::new();
+    }
+    [
+        (JointId::LeftUpperArm, -0.27, Vec3::new(0.28, 0.66, 0.32)),
+        (JointId::RightUpperArm, -0.27, Vec3::new(0.28, 0.66, 0.32)),
+        (JointId::LeftLowerArm, -0.24, Vec3::new(0.25, 0.55, 0.30)),
+        (JointId::RightLowerArm, -0.24, Vec3::new(0.25, 0.55, 0.30)),
+    ]
+    .into_iter()
+    .map(|(joint, y, size)| Part {
+        anchor: Anchor::new(joint) * Mat4::from_translation(Vec3::new(0.0, y, 0.0)),
+        spec: BodyPart::new(size, 0.0),
+        tint: Tint::Skin,
+        feature: Feature::GarmentUnderlayer,
+        shape: super::hero_geometry::Shape::Limb,
+    })
+    .collect()
 }
 
 fn base_parts(recipe: &BodyRecipe) -> Vec<Part> {
@@ -1189,6 +1213,27 @@ pub(super) fn bounds(body: BodyId, outfit: OutfitId) -> (Vec3, f32) {
 mod tests {
     use super::*;
     use crate::renderer::hero_geometry::Shape;
+
+    #[test]
+    fn garment_skin_is_bounded_and_bound_to_arm_joints() {
+        for body in BodyId::ALL {
+            let parts = garment_underlayer(body);
+            assert_eq!(parts.len(), if body.is_person() { 4 } else { 0 });
+            for part in parts {
+                assert!(matches!(part.feature, Feature::GarmentUnderlayer));
+                assert!(part.tint == Tint::Skin);
+                assert!(matches!(
+                    part.anchor.joint,
+                    JointId::LeftUpperArm
+                        | JointId::RightUpperArm
+                        | JointId::LeftLowerArm
+                        | JointId::RightLowerArm
+                ));
+                assert!(part.spec.size.min_element() > 0.0);
+                assert!(part.spec.size.max_element() < 0.7);
+            }
+        }
+    }
 
     #[test]
     fn camera_anchors_are_body_defined() {

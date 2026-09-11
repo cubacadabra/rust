@@ -26,11 +26,15 @@ const MAX_MORPH_RESIDENCY: usize = 16 * 1024 * 1024;
 const MAX_SKINNED_VERTICES: usize = MAX_CHARACTERS * 8192;
 const MAX_MORPH_INSTANCES: usize = MAX_CHARACTERS * 16 * MAX_MORPH_PACK_SURFACES;
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "character_morph_review.rs"]
+mod morph_review;
+
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
     let face = entity.face.clamped();
     let mut local = part.anchor.local;
     match part.feature {
-        Feature::None | Feature::Sole => {}
+        Feature::None | Feature::Sole | Feature::GarmentUnderlayer => {}
         Feature::Cloth => {
             let pivot = Vec3::Y * part.spec.size.y * 0.42;
             local = local
@@ -778,7 +782,8 @@ impl CharacterRenderer {
                 recipe.rig.validate().expect("bundled rig");
                 let mut parts: [Vec<(Part, usize)>; 3] = std::array::from_fn(|_| Vec::new());
                 for lod in CharacterLod::ALL {
-                    let pieces = character::parts_for(&recipe, outfit);
+                    let mut pieces = character::parts_for(&recipe, outfit);
+                    pieces.extend(character::garment_underlayer(body));
                     assert!(
                         pieces.len() <= MAX_PARTS,
                         "character catalog entry exceeds MAX_PARTS: body={:?} outfit={:?} parts={}",
@@ -1047,6 +1052,11 @@ impl CharacterRenderer {
         let authored_footwear = self.morphs.has_skinned_coverage(morph_assets, &["feet"]);
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
+            if matches!(part.feature, Feature::GarmentUnderlayer)
+                && (!authored_top || authored_base)
+            {
+                continue;
+            }
             if authored_base && part.tint == character::Tint::Skin {
                 continue;
             }
