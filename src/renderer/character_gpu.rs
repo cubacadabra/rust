@@ -29,6 +29,9 @@ const MAX_MORPH_INSTANCES: usize = MAX_CHARACTERS * 16 * MAX_MORPH_PACK_SURFACES
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "character_morph_review.rs"]
 mod morph_review;
+#[cfg(all(test, feature = "studio-ui", not(target_arch = "wasm32")))]
+#[path = "character_starter_review.rs"]
+mod starter_review;
 
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
     let face = entity.face.clamped();
@@ -1045,6 +1048,15 @@ impl CharacterRenderer {
             .iter()
             .take(16)
             .any(|asset_id| self.morphs.is_skinned_base(asset_id));
+        #[cfg(feature = "studio-ui")]
+        let authored_hair = morph_assets.iter().take(16).any(|id| {
+            id.as_str() == "cuba:hair/bald.v1"
+                || self
+                    .morphs
+                    .assets
+                    .get(id)
+                    .is_some_and(|asset| asset.kind == MorphAssetKind::Hair)
+        });
         let authored_top = self
             .morphs
             .has_skinned_coverage(morph_assets, &["torso", "arms"]);
@@ -1052,6 +1064,10 @@ impl CharacterRenderer {
         let authored_footwear = self.morphs.has_skinned_coverage(morph_assets, &["feet"]);
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
+            #[cfg(feature = "studio-ui")]
+            if authored_hair && part.tint == character::Tint::Hair {
+                continue;
+            }
             if matches!(part.feature, Feature::GarmentUnderlayer)
                 && (!authored_top || authored_base)
             {

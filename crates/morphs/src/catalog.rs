@@ -1,6 +1,6 @@
-use crate::{CapabilityId, MorphAssetId, MorphDiagnostic};
+use crate::{CapabilityId, MorphAssetId, MorphDiagnostic, MorphLoadout, MorphParameterValue};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const MORPH_CATALOG_SCHEMA_VERSION: u16 = 1;
 pub const MAX_CATALOG_BYTES: usize = 1024 * 1024;
@@ -93,7 +93,7 @@ impl MorphAssetDefinition {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MorphPreset {
     pub id: MorphAssetId,
@@ -101,9 +101,31 @@ pub struct MorphPreset {
     pub base: MorphAssetId,
     #[serde(default)]
     pub parts: Vec<MorphAssetId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub face: Option<MorphAssetId>,
+    #[serde(default)]
+    pub parameters: BTreeMap<String, MorphParameterValue>,
+    /// Optional catalog thumbnail. It depicts the complete composed appearance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+impl MorphPreset {
+    /// Presets are copied into ordinary editable loadouts; they never own the
+    /// resulting appearance or propagate subsequent catalog edits to a player.
+    pub fn loadout(&self) -> MorphLoadout {
+        MorphLoadout {
+            version: crate::MORPH_LOADOUT_VERSION,
+            base: self.base.clone(),
+            parts: self.parts.clone(),
+            face: self.face.clone(),
+            parameters: self.parameters.clone(),
+            revision: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MorphCatalog {
     pub schema_version: u16,
@@ -258,6 +280,23 @@ impl MorphCatalog {
                 &format!("{path}.displayName"),
                 &mut diagnostics,
             );
+            for mut diagnostic in preset.loadout().validate() {
+                diagnostic.path = format!("{path}.{}", diagnostic.path);
+                diagnostics.push(diagnostic);
+            }
+            if let Some(face) = &preset.face {
+                validate_reference(face, "face", &asset_ids, &path, &mut diagnostics);
+                if self
+                    .asset(face)
+                    .is_some_and(|asset| asset.kind != MorphAssetKind::Face)
+                {
+                    diagnostics.push(MorphDiagnostic::error(
+                        "MORPH_CATALOG_PRESET_INVALID_FACE",
+                        &format!("{path}.face"),
+                        "preset face must reference a face asset",
+                    ));
+                }
+            }
             validate_reference(&preset.base, "base", &asset_ids, &path, &mut diagnostics);
             if let Some(base) = self.assets.iter().find(|asset| asset.id == preset.base)
                 && base.kind != MorphAssetKind::Base
@@ -413,7 +452,10 @@ mod tests {
         let person = MorphAssetId::parse("cuba:base/person.v1").unwrap();
         let person_02 = MorphAssetId::parse("cuba:base/person-02.v1").unwrap();
         assert_eq!(catalog.asset(&person).unwrap().kind, MorphAssetKind::Base);
-        assert_eq!(catalog.asset(&person_02).unwrap().kind, MorphAssetKind::Base);
+        assert_eq!(
+            catalog.asset(&person_02).unwrap().kind,
+            MorphAssetKind::Base
+        );
     }
 
     #[test]

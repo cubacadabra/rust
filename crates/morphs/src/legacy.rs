@@ -168,6 +168,9 @@ pub fn project_v2_to_v1(
             continue;
         };
         match part.kind {
+            MorphAssetKind::Hair if part.source.is_some() => {
+                equipment.insert("hair".to_owned(), part_id.to_string());
+            }
             MorphAssetKind::Hair => match part_id.as_str() {
                 "cuba:hair/swept.v1" => {}
                 "cuba:hair/side-ponytail.v1" => legacy_body = "cuba:person-girl.v1",
@@ -258,6 +261,8 @@ fn legacy_slot(asset: &crate::MorphAssetDefinition) -> &'static str {
         "ear-accessory"
     } else if asset.occupied_slots.iter().any(|slot| slot == "facewear") {
         "glasses"
+    } else if asset.occupied_slots.iter().any(|slot| slot == "ear-device") {
+        "ear-device"
     } else if asset.occupied_slots.iter().any(|slot| slot == "neck") {
         "neck"
     } else if asset.occupied_slots.iter().any(|slot| slot == "back") {
@@ -374,10 +379,7 @@ mod tests {
         let legacy = project_v2_to_v1(&catalog, &loadout).unwrap();
         assert_eq!(legacy.body.as_deref(), Some("cuba:person-girl.v1"));
         assert_eq!(legacy.outfit.as_deref(), Some("cuba:everyday-hoodie.v1"));
-        assert_eq!(
-            legacy.equipment.get("base").unwrap(),
-            "cuba:base/person.v1"
-        );
+        assert_eq!(legacy.equipment.get("base").unwrap(), "cuba:base/person.v1");
         assert_eq!(
             legacy.equipment.get("ear-accessory").unwrap(),
             "cuba:headphones.v1"

@@ -1,6 +1,6 @@
 use crate::{
-    CapabilityId, CapabilitySet, MORPH_LOADOUT_VERSION, MorphAssetDefinition, MorphAssetId,
-    MorphAssetKind, MorphCatalog, MorphDiagnostic, MorphLoadout,
+    CapabilityId, CapabilitySet, MorphAssetDefinition, MorphAssetId, MorphAssetKind, MorphCatalog,
+    MorphDiagnostic, MorphLoadout,
 };
 use std::collections::BTreeSet;
 
@@ -163,14 +163,7 @@ pub fn resolve_preset(
             format!("catalog does not contain {preset_id}"),
         )]);
     };
-    let loadout = MorphLoadout {
-        version: MORPH_LOADOUT_VERSION,
-        base: preset.base.clone(),
-        parts: preset.parts.clone(),
-        face: None,
-        parameters: Default::default(),
-        revision: 0,
-    };
+    let loadout = preset.loadout();
     resolve_loadout(catalog, &loadout, capabilities)
 }
 
@@ -225,7 +218,9 @@ fn error(code: &str, path: &str, message: impl Into<String>) -> MorphDiagnostic 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CapabilityId, LegacyAppearance, migrate_v1_appearance, parse_catalog};
+    use crate::{
+        CapabilityId, LegacyAppearance, MORPH_LOADOUT_VERSION, migrate_v1_appearance, parse_catalog,
+    };
 
     const FIXTURE: &str = include_str!("../../../assets/characters/morph_catalog.json");
 
