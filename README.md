@@ -183,3 +183,10 @@ spells, treasures, doors, and checkpoints remain entirely in Luau.
   and package loading
 - [ios_app/README.md](../ios_app/README.md) — C ABI integration and Xcode build
 - [first-game/README.md](../first-game/README.md) — the content and Luau rules
+
+### Licensing
+
+Copyright (C) 2026 Andrew Arrow
+
+Licensed under the GNU General Public License v3.0 or later.
+See [LICENSE](LICENSE).
