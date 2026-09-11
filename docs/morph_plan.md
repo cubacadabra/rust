@@ -36,6 +36,9 @@ Status: in progress; last updated September 10, 2026
 - [x] Keep the Morphs preview and inspector headers collision-free at the compact Studio width.
 - [x] Build the Morphs workspace MVP.
 - [x] Add package-host asset discovery and automatic pack registration for deployed iOS, Android, and web sessions.
+- [x] Make the D1 catalog return canonical shared asset definitions, including pack-less procedural compatibility assets.
+- [x] Route Studio base, face, hair, outfit, and accessory selection through one V2 loadout with a temporary V1 renderer projection.
+- [ ] Replace the temporary V1 renderer projection with the first Blender-authored skinned Person base.
 
 ### Work log
 
@@ -107,6 +110,9 @@ Deployed game packages declare compiled morphs under `assets.morphPacks`; the ke
 
 Hosts load these files before the first draw and pass only the bounded compiled format to the renderer. The renderer enforces its 32-pack and 16 MiB residency limits; hosts enforce the same package limits before upload.
 - 2026-09-10 verification: Studio has 19 passing tests, morph authoring has 10 passing tests, the portable morph crate has 21 passing tests, the shared engine has 143 passing tests, Android-feature compilation passes, both repositories pass formatting and diff checks, and the rebuilt 14,633-byte pack passes the shared decoder with Near 248, Mid 124, and Far 48 triangles.
+- 2026-09-10: Started the clean V2 migration. The portable crate now owns a single V2-to-V1 compatibility projection for the current procedural renderer; Studio stores and edits one V2 loadout across base, face, hair, outfit, and equipment selections. This keeps the renderer replacement isolated behind one boundary.
+- 2026-09-10: Added backend migration `015_seed_morph_catalog.sql` for the complete 34-asset compatibility catalog. D1 now serves canonical `MorphAssetDefinition` objects; procedural entries have no pack URL, while the two proof headwear entries retain their R2 URLs. V2 account appearance payloads are accepted and validated without removing V1 compatibility.
+- 2026-09-10 verification: local D1 contains 36 published morph rows (34 catalog assets plus two proof packs), the local catalog endpoint returns all 36 with two packs, Rust has 144 passing tests, Studio has 20 passing tests, and backend tests plus JavaScript syntax checks pass.
 
 ## Architecture and delivery plan
 
@@ -613,6 +619,12 @@ The first real catalog slice is now implemented:
   `/morphs/assets/:assetId`, with immutable cache headers.
 - Studio starts in Morphs, requests the catalog from the backend, displays remote rows, downloads
   a selected pack, and applies it to the shared runtime appearance.
+- D1 migration `015_seed_morph_catalog.sql` seeds the complete current compatibility catalog. The
+  API returns each canonical shared definition and uses `pack: null` for assets that are still
+  rendered procedurally; the two Blender proof assets remain R2-backed.
+- Studio edits one V2 loadout for every library category and projects it through one temporary
+  compatibility boundary into the procedural renderer. This is the deliberate seam for the first
+  Blender-authored skinned base.
 - The Rust renderer exposes a neutral `avatar_preview_mode` through the native, web, iOS, and
   Android bridges. It reuses the normal character/equipment GPU path and leaves normal game mode
   unchanged.

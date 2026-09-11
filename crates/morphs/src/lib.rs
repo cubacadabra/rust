@@ -22,7 +22,7 @@ pub use catalog::{
 };
 pub use diagnostic::MorphDiagnostic;
 pub use id::{AssetIdError, MorphAssetId};
-pub use legacy::{LegacyAppearance, migrate_v1_appearance};
+pub use legacy::{LegacyAppearance, migrate_v1_appearance, project_v2_to_v1};
 pub use loadout::{
     MAX_LOADOUT_BYTES, MAX_PARAMETERS, MAX_PARTS, MORPH_LOADOUT_VERSION, MorphLoadout,
     MorphParameterValue, parse_loadout,
