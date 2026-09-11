@@ -687,7 +687,8 @@ impl Renderer {
 
     pub(crate) fn register_morph_pack(&mut self, bytes: &[u8]) -> Result<(), Vec<MorphDiagnostic>> {
         let pack = decode_morph_pack(bytes)?;
-        self.characters.register_morph_pack(&self.device, pack)
+        self.characters
+            .register_morph_pack(&self.device, &self.queue, pack)
     }
 
     pub(crate) fn set_package_image_atlas(

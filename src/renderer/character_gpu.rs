@@ -147,6 +147,7 @@ struct RegisteredMorph {
     coverage: Vec<String>,
     lods: [Mesh; 3],
     skinned_lods: Option<[MorphPackLod; 3]>,
+    textures: Vec<wgpu::BindGroup>,
     bytes: usize,
 }
 
@@ -214,6 +215,8 @@ impl MorphRegistry {
     fn register(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture_layout: &wgpu::BindGroupLayout,
         pack: MorphPack,
     ) -> Result<(), Vec<MorphDiagnostic>> {
         let id = pack.asset.id.clone();
@@ -223,10 +226,15 @@ impl MorphRegistry {
             .map(morph_lod_bytes)
             .collect::<Option<Vec<_>>>()
             .ok_or_else(|| vec![morph_error("MORPH_GPU_RESOURCE_OVERFLOW", "geometry")])?;
-        let bytes = lod_bytes
+        let geometry_bytes = lod_bytes
             .iter()
             .try_fold(0usize, |total, value| total.checked_add(*value));
-        let Some(bytes) = bytes else {
+        let texture_bytes = pack.textures.iter().try_fold(0usize, |total, texture| {
+            total.checked_add(texture.pixels.len())
+        });
+        let Some(bytes) = geometry_bytes
+            .and_then(|geometry| texture_bytes.and_then(|textures| geometry.checked_add(textures)))
+        else {
             return Err(vec![morph_error("MORPH_GPU_RESOURCE_OVERFLOW", "geometry")]);
         };
         let previous_bytes = self.assets.get(&id).map(|asset| asset.bytes).unwrap_or(0);
@@ -254,6 +262,20 @@ impl MorphRegistry {
             }));
         }
         let skinned_lods = (mode == MorphPackAttachmentMode::Skinned).then(|| pack.lods.clone());
+        let textures = pack
+            .textures
+            .iter()
+            .map(|texture| {
+                super::device::create_world_texture_bind_group(
+                    device,
+                    queue,
+                    texture_layout,
+                    u32::from(texture.width),
+                    u32::from(texture.height),
+                    &texture.pixels,
+                )
+            })
+            .collect();
         let [near, mid, far] = pack.lods;
         let lods = [
             upload_morph_lod(device, &id, "near", near),
@@ -277,6 +299,7 @@ impl MorphRegistry {
                 coverage: pack.asset.coverage.clone(),
                 lods: [near, mid, far],
                 skinned_lods,
+                textures,
                 bytes,
             },
         );
@@ -362,7 +385,8 @@ impl MorphRegistry {
                 .iter()
                 .zip(skinning)
                 .zip(normals)
-                .map(|((position, skin), normal)| {
+                .zip(&lod_mesh.uvs)
+                .map(|(((position, skin), normal), uv)| {
                     let mut skinned_position = Vec3::ZERO;
                     let mut skinned_normal = Vec3::ZERO;
                     for (joint, weight) in skin.joints.into_iter().zip(skin.weights) {
@@ -377,7 +401,7 @@ impl MorphRegistry {
                     CharacterVertex {
                         position: skinned_position.to_array(),
                         normal: skinned_normal.try_normalize().unwrap_or(Vec3::Y).to_array(),
-                        uv: [0.0, 0.0],
+                        uv: *uv,
                     }
                 })
                 .collect();
@@ -462,11 +486,15 @@ impl MorphRegistry {
         }
     }
 
-    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline) {
+    fn draw(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        solid_pipeline: &wgpu::RenderPipeline,
+        textured_pipeline: &wgpu::RenderPipeline,
+    ) {
         if self.draws.is_empty() && self.skinned_draws.is_empty() {
             return;
         }
-        pass.set_pipeline(pipeline);
         for draw in &self.draws {
             let Some(asset) = self.assets.get(&draw.asset_id) else {
                 continue;
@@ -480,6 +508,15 @@ impl MorphRegistry {
             let Some(surface) = mesh.surfaces.get(draw.surface) else {
                 continue;
             };
+            let texture = surface
+                .texture
+                .and_then(|index| asset.textures.get(usize::from(index)));
+            if let Some(texture) = texture {
+                pass.set_pipeline(textured_pipeline);
+                pass.set_bind_group(1, texture, &[]);
+            } else {
+                pass.set_pipeline(solid_pipeline);
+            }
             pass.draw_indexed(
                 surface.index_start..surface.index_start + surface.index_count,
                 0,
@@ -505,6 +542,15 @@ impl MorphRegistry {
             let Some(surface) = mesh.surfaces.get(draw.surface) else {
                 continue;
             };
+            let texture = surface
+                .texture
+                .and_then(|index| asset.textures.get(usize::from(index)));
+            if let Some(texture) = texture {
+                pass.set_pipeline(textured_pipeline);
+                pass.set_bind_group(1, texture, &[]);
+            } else {
+                pass.set_pipeline(solid_pipeline);
+            }
             pass.draw_indexed(
                 surface.index_start..surface.index_start + surface.index_count,
                 0,
@@ -544,11 +590,15 @@ fn morph_surface_appearance(
         MorphAssetKind::Footwear => style.shoes,
         _ => authored,
     };
-    let material = match kind {
-        MorphAssetKind::Top | MorphAssetKind::Outerwear => Material::Cloth,
-        MorphAssetKind::Bottom => Material::Denim,
-        MorphAssetKind::Footwear => Material::Rubber,
-        _ => Material::Toy,
+    let material = if surface.texture.is_some() {
+        Material::Textured
+    } else {
+        match kind {
+            MorphAssetKind::Top | MorphAssetKind::Outerwear => Material::Cloth,
+            MorphAssetKind::Bottom => Material::Denim,
+            MorphAssetKind::Footwear => Material::Rubber,
+            _ => Material::Toy,
+        }
     };
     (
         if surface.use_avatar_tint {
@@ -590,10 +640,11 @@ fn upload_morph_lod(
         .vertices
         .into_iter()
         .zip(normals)
-        .map(|(position, normal)| CharacterVertex {
+        .zip(lod.uvs)
+        .map(|((position, normal), uv)| CharacterVertex {
             position,
             normal: normal.try_normalize().unwrap_or(Vec3::Y).to_array(),
-            uv: [0.0, 0.0],
+            uv,
         })
         .collect::<Vec<_>>();
     let index_count = u32::try_from(lod.indices.len()).map_err(|_| {
@@ -702,8 +753,10 @@ pub(super) struct CharacterRenderer {
     instances: Vec<CharacterInstance>,
     buffer: wgpu::Buffer,
     opaque: wgpu::RenderPipeline,
+    textured: wgpu::RenderPipeline,
     face: wgpu::RenderPipeline,
     effects: wgpu::RenderPipeline,
+    texture_layout: wgpu::BindGroupLayout,
     pub stats: CharacterStats,
     pub(super) hero_study: super::hero_character::Study,
     #[cfg(feature = "dev-showcase")]
@@ -712,6 +765,7 @@ pub(super) struct CharacterRenderer {
 
 impl CharacterRenderer {
     pub fn new(device: &wgpu::Device, globals: &wgpu::BindGroupLayout, samples: u32) -> Self {
+        let texture_layout = super::device::world_texture_bind_group_layout(device);
         let mut meshes = Vec::new();
         let mut recipes = Vec::new();
         let mut batches: Vec<Batch> = Vec::new();
@@ -854,8 +908,15 @@ impl CharacterRenderer {
             instances: Vec::with_capacity(MAX_CHARACTERS * MAX_PARTS),
             buffer,
             opaque: character_material::pipeline(device, globals, samples, CharacterPass::Opaque),
+            textured: character_material::textured_pipeline(
+                device,
+                globals,
+                &texture_layout,
+                samples,
+            ),
             face: character_material::pipeline(device, globals, samples, CharacterPass::Face),
             effects: character_material::pipeline(device, globals, samples, CharacterPass::Effect),
+            texture_layout,
             stats,
         }
     }
@@ -863,9 +924,11 @@ impl CharacterRenderer {
     pub(super) fn register_morph_pack(
         &mut self,
         device: &wgpu::Device,
+        queue: &wgpu::Queue,
         pack: MorphPack,
     ) -> Result<(), Vec<MorphDiagnostic>> {
-        self.morphs.register(device, pack)
+        self.morphs
+            .register(device, queue, &self.texture_layout, pack)
     }
 
     pub fn begin(&mut self) {
@@ -1270,7 +1333,7 @@ impl CharacterRenderer {
             pass.draw_indexed(0..mesh.index_count, 0, 0..batch.instances.len() as u32);
         }
         if kind == CharacterPass::Opaque {
-            self.morphs.draw(pass, &self.opaque);
+            self.morphs.draw(pass, &self.opaque, &self.textured);
         }
     }
 }

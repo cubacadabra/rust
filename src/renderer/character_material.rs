@@ -72,6 +72,7 @@ pub(super) enum Material {
     Fuzz,
     Face,
     Seam,
+    Textured,
 }
 
 impl Material {
@@ -89,6 +90,7 @@ impl Material {
             Self::Fuzz => [0.98, 0.015, 0.0, 0.0],
             Self::Face => [1.0, 0.0, 0.0, 0.0],
             Self::Seam => [1.0, 0.0, 1.4, 0.0],
+            Self::Textured => [0.82, 0.04, 0.0, 19.0],
         }
     }
     pub fn pass(self) -> CharacterPass {
@@ -172,6 +174,60 @@ pub(super) fn pipeline(
                         },
                     })
                 },
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+pub(super) fn textured_pipeline(
+    device: &wgpu::Device,
+    globals_layout: &wgpu::BindGroupLayout,
+    texture_layout: &wgpu::BindGroupLayout,
+    sample_count: u32,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("textured morph materials"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("character_textured.wgsl").into()),
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("textured morph layout"),
+        bind_group_layouts: &[Some(globals_layout), Some(texture_layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("textured morph surfaces"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[CharacterVertex::LAYOUT, CharacterInstance::LAYOUT],
+        },
+        primitive: wgpu::PrimitiveState {
+            cull_mode: Some(wgpu::Face::Back),
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: super::DEPTH_FORMAT,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: Default::default(),
+            bias: Default::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: sample_count,
+            ..Default::default()
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: super::targets::SCENE_FORMAT,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
