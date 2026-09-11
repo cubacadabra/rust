@@ -235,13 +235,15 @@ mod tests {
             CapabilityId::parse("face.analytic.v1").unwrap(),
             CapabilityId::parse("secondary.chain.v1").unwrap(),
             CapabilityId::parse("material.emissive.v1").unwrap(),
+            CapabilityId::parse("skin.biped15-linear.v1").unwrap(),
+            CapabilityId::parse("material.cuba-pbr.v1").unwrap(),
         ])
     }
 
     #[test]
     fn resolves_legacy_person_preset_with_common_fit_and_capabilities() {
         let catalog = parse_catalog(FIXTURE).unwrap();
-        let preset = MorphAssetId::parse("cuba:preset/person-girl.v1").unwrap();
+        let preset = MorphAssetId::parse("cuba:preset/person-01.v1").unwrap();
         let resolved = resolve_preset(&catalog, &preset, &all_capabilities()).unwrap();
         assert_eq!(resolved.base.as_str(), "cuba:base/person.v1");
         assert_eq!(resolved.fit_profile.as_str(), "cuba:fit/person-standard.v1");
@@ -256,10 +258,18 @@ mod tests {
 
     #[test]
     fn reports_unsupported_base_and_missing_capability() {
-        let catalog = parse_catalog(FIXTURE).unwrap();
+        let mut catalog = parse_catalog(FIXTURE).unwrap();
+        let hair = MorphAssetId::parse("cuba:hair/side-ponytail.v1").unwrap();
+        catalog
+            .assets
+            .iter_mut()
+            .find(|asset| asset.id == hair)
+            .unwrap()
+            .supported_bases
+            .retain(|base| base.as_str() != "cuba:base/person-02.v1");
         let loadout = MorphLoadout {
             version: MORPH_LOADOUT_VERSION,
-            base: MorphAssetId::parse("cuba:base/cat.v1").unwrap(),
+            base: MorphAssetId::parse("cuba:base/person-02.v1").unwrap(),
             parts: vec![MorphAssetId::parse("cuba:hair/side-ponytail.v1").unwrap()],
             face: None,
             parameters: Default::default(),
