@@ -751,7 +751,7 @@ impl Renderer {
             super::ui::add_world_label(vertices, &self.ui_frame, x, y, name, font_size);
         };
 
-        if self.scene.camera[2] > 0.75 {
+        if self.scene.camera[2] > 0.75 && !self.avatar_preview_mode {
             add(self.scene.player, &self.scene.username);
         }
         for (index, player) in self.scene.remote_players.iter().enumerate() {
