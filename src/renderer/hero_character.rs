@@ -396,8 +396,8 @@ pub(super) fn finish(parts: &mut Vec<Part>, body: crate::character::BodyId) {
                 // Seat each eye on the front-side curve of the head rather
                 // than on one flat frontal plane. It keeps the familiar front
                 // spacing while leaving the near eye readable in profile.
-                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.335, 0.015, -0.345))
-                    * Mat4::from_rotation_y(-side * 0.68);
+                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.325, 0.015, -0.410))
+                    * Mat4::from_rotation_y(-side * 0.58);
             }
             (_, _, Feature::Brow(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.17, 0.035, 0.025), 0.0);
@@ -653,10 +653,10 @@ mod tests {
         assert_eq!(eyes.len(), 2);
         for eye in eyes {
             let center = eye.anchor.local.transform_point3(Vec3::ZERO);
-            assert!(center.x.abs() >= 0.33);
-            assert!(center.z > -0.36);
+            assert!(center.x.abs() >= 0.32);
+            assert!(center.z < -0.40);
             let normal = eye.anchor.local.transform_vector3(Vec3::Z).normalize();
-            assert!(normal.x.abs() > 0.60);
+            assert!(normal.x.abs() > 0.54);
         }
     }
 
