@@ -148,19 +148,15 @@ pub fn project_v2_to_v1(
         "cuba:base/cat.v1" => "cuba:cat.v1",
         "cuba:base/wolf.v1" => "cuba:wolf.v1",
         "cuba:base/dragon.v1" => "cuba:dragon.v1",
-        _ => {
-            diagnostics.push(MorphDiagnostic::error(
-                "MORPH_LEGACY_UNSUPPORTED_BASE",
-                "base",
-                format!("{} has no legacy renderer projection", loadout.base),
-            ));
-            "cuba:person.v1"
-        }
+        _ => "cuba:person.v1",
     };
 
     let mut legacy_body = body;
     let mut outfit = None;
-    let mut equipment = BTreeMap::new();
+    // The legacy wire object is also the bridge into the pack renderer. Keep
+    // the selected base ID there even when its procedural body falls back to
+    // Person; once the pack is registered, the renderer replaces that body.
+    let mut equipment = BTreeMap::from([("base".to_owned(), loadout.base.to_string())]);
     for (index, part_id) in loadout.parts.iter().enumerate() {
         let path = format!("parts[{index}]");
         let Some(part) = catalog.asset(part_id) else {
@@ -379,9 +375,39 @@ mod tests {
         assert_eq!(legacy.body.as_deref(), Some("cuba:person-girl.v1"));
         assert_eq!(legacy.outfit.as_deref(), Some("cuba:everyday-hoodie.v1"));
         assert_eq!(
+            legacy.equipment.get("base").unwrap(),
+            "cuba:base/person.v1"
+        );
+        assert_eq!(
             legacy.equipment.get("ear-accessory").unwrap(),
             "cuba:headphones.v1"
         );
         assert_eq!(legacy.revision, 4);
+    }
+
+    #[test]
+    fn authored_person_base_survives_the_legacy_renderer_bridge() {
+        let catalog = crate::parse_catalog(include_str!(
+            "../../../assets/characters/morph_catalog.json"
+        ))
+        .unwrap();
+        let loadout = MorphLoadout {
+            version: 2,
+            base: parse_known_id("cuba:base/person-02.v1"),
+            parts: Vec::new(),
+            face: Some(parse_known_id("cuba:face/happy.v1")),
+            parameters: BTreeMap::new(),
+            revision: 5,
+        };
+
+        let legacy = project_v2_to_v1(&catalog, &loadout).unwrap();
+        assert_eq!(legacy.body.as_deref(), Some("cuba:person.v1"));
+        assert_eq!(
+            legacy.equipment.get("base").unwrap(),
+            "cuba:base/person-02.v1"
+        );
+
+        let restored = migrate_v1_appearance(&legacy).unwrap();
+        assert_eq!(restored.base.as_str(), "cuba:base/person-02.v1");
     }
 }

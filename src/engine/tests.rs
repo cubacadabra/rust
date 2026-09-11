@@ -1,4 +1,5 @@
 use super::{DEFAULT_ORBIT_DISTANCE, Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
+use crate::character::definition::EquipmentSlot;
 use crate::types::{
     Agent, AgentPhase, CharacterEntityKind, CharacterSupport, Input, LaunchPadPhase,
 };
@@ -562,6 +563,28 @@ fn local_appearance_is_atomic_and_revisioned() {
         2
     );
     assert_eq!(engine.player_appearance.body, crate::character::BodyId::Cat);
+}
+
+#[test]
+fn local_appearance_can_switch_between_authored_person_bases_repeatedly() {
+    let mut engine = Engine::new();
+    for (revision, base) in [
+        (1, "cuba:base/person-02.v1"),
+        (2, "cuba:base/person.v1"),
+        (3, "cuba:base/person-02.v1"),
+    ] {
+        let appearance = format!(
+            r#"{{"version":1,"body":"cuba:person.v1","equipment":{{"base":"{base}"}},"revision":{revision}}}"#
+        );
+        assert_eq!(engine.set_local_appearance_json(&appearance), 1);
+        let selected = engine
+            .player_appearance
+            .equipment
+            .iter()
+            .find(|item| item.slot == EquipmentSlot::Base)
+            .unwrap();
+        assert_eq!(selected.asset_id, base);
+    }
 }
 
 #[test]
