@@ -38,7 +38,7 @@ Status: in progress; last updated September 10, 2026
 - [x] Add package-host asset discovery and automatic pack registration for deployed iOS, Android, and web sessions.
 - [x] Make the D1 catalog return canonical shared asset definitions, including pack-less procedural compatibility assets.
 - [x] Route Studio base, face, hair, outfit, and accessory selection through one V2 loadout with a temporary V1 renderer projection.
-- [ ] Replace the temporary V1 renderer projection with the first Blender-authored skinned Person base.
+- [x] Replace the temporary V1 renderer projection with the first Blender-authored skinned Person base.
 
 ### Work log
 
@@ -113,6 +113,8 @@ Hosts load these files before the first draw and pass only the bounded compiled 
 - 2026-09-10: Started the clean V2 migration. The portable crate now owns a single V2-to-V1 compatibility projection for the current procedural renderer; Studio stores and edits one V2 loadout across base, face, hair, outfit, and equipment selections. This keeps the renderer replacement isolated behind one boundary.
 - 2026-09-10: Added backend migration `015_seed_morph_catalog.sql` for the complete 34-asset compatibility catalog. D1 now serves canonical `MorphAssetDefinition` objects; procedural entries have no pack URL, while the two proof headwear entries retain their R2 URLs. V2 account appearance payloads are accepted and validated without removing V1 compatibility.
 - 2026-09-10 verification: local D1 contains 36 published morph rows (34 catalog assets plus two proof packs), the local catalog endpoint returns all 36 with two packs, Rust has 144 passing tests, Studio has 20 passing tests, and backend tests plus JavaScript syntax checks pass.
+- 2026-09-11: Completed the first authored-base Phase 5 slice. Schema 2 `.morphpack` payloads now carry bounded JOINTS_0/WEIGHTS_0 data for the canonical 15-joint rig, while schema 1 rigid packs remain unchanged. Studio authoring accepts the skinned base sidecar contract and compiles the generated Person GLB; the shared renderer pre-skins those vertices against the animated pose and suppresses the procedural body whenever an authored base is active. The compatibility projection maps the authored Person base to the existing person runtime body and Studio injects the registered base pack through the new `base` equipment slot.
+- 2026-09-11 verification: `/Users/aa/Downloads/person_skinned.morphpack` compiles to a 19,336-byte schema 2 pack from `/Users/aa/Downloads/person_skinned.glb` and is ready for hash-addressed runtime placement. Rust has 144 passing tests, Studio has 20 passing tests, and both normal and Studio builds pass. Cross-target Android-feature verification remains required after the shared renderer change; the browser WASM target is still unavailable locally.
 
 ## Architecture and delivery plan
 

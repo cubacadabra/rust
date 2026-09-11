@@ -36,7 +36,7 @@ pub fn migrate_v1_appearance(
         )]);
     }
     let body = legacy.body.as_deref().unwrap_or("cuba:person.v1");
-    let (base, hair) = match body {
+    let (base_name, hair) = match body {
         "cuba:person.v1" => ("cuba:base/person.v1", Some("cuba:hair/swept.v1")),
         "cuba:person-girl.v1" => ("cuba:base/person.v1", Some("cuba:hair/side-ponytail.v1")),
         "cuba:person-nb.v1" => ("cuba:base/person.v1", Some("cuba:hair/shag.v1")),
@@ -51,6 +51,7 @@ pub fn migrate_v1_appearance(
             )]);
         }
     };
+    let mut base = parse_known_id(base_name);
     let mut parts = Vec::new();
     if let Some(hair) = hair {
         parts.push(parse_known_id(hair));
@@ -69,6 +70,9 @@ pub fn migrate_v1_appearance(
     }
     for (slot, item) in &legacy.equipment {
         match MorphAssetId::parse(item) {
+            Ok(item) if slot == "base" && item.as_str().starts_with("cuba:base/") => {
+                base = item;
+            }
             Ok(item) => parts.push(item),
             Err(error) => {
                 return Err(vec![MorphDiagnostic::error(
@@ -98,7 +102,7 @@ pub fn migrate_v1_appearance(
         .collect();
     let mut loadout = MorphLoadout {
         version: 2,
-        base: parse_known_id(base),
+        base,
         parts,
         face: Some(parse_known_id(&format!("cuba:face/{face}.v1"))),
         parameters,
@@ -140,6 +144,7 @@ pub fn project_v2_to_v1(
 
     let body = match loadout.base.as_str() {
         "cuba:base/person.v1" => "cuba:person.v1",
+        "cuba:base/person-authored.v1" => "cuba:person.v1",
         "cuba:base/cat.v1" => "cuba:cat.v1",
         "cuba:base/wolf.v1" => "cuba:wolf.v1",
         "cuba:base/dragon.v1" => "cuba:dragon.v1",

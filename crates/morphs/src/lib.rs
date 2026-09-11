@@ -28,7 +28,8 @@ pub use loadout::{
     MorphParameterValue, parse_loadout,
 };
 pub use pack::{
-    MAX_MORPH_PACK_BYTES, MORPH_PACK_MAGIC, MORPH_PACK_SCHEMA_VERSION, MorphPack,
-    MorphPackAttachment, MorphPackLod, decode_morph_pack,
+    MAX_MORPH_PACK_BYTES, MORPH_PACK_MAGIC, MORPH_PACK_SCHEMA_VERSION,
+    MORPH_PACK_SKINNED_SCHEMA_VERSION, MorphPack, MorphPackAttachment, MorphPackAttachmentMode,
+    MorphPackLod, MorphPackVertexSkin, decode_morph_pack,
 };
 pub use resolve::{ResolvedMorphLoadout, resolve_loadout, resolve_preset};

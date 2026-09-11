@@ -173,6 +173,7 @@ impl Default for OutfitId {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EquipmentSlot {
+    Base,
     Hat,
     Glasses,
     EarAccessory,
@@ -187,7 +188,8 @@ pub(crate) enum EquipmentSlot {
 
 impl EquipmentSlot {
     #[allow(dead_code)]
-    pub(crate) const ALL: [Self; 10] = [
+    pub(crate) const ALL: [Self; 11] = [
+        Self::Base,
         Self::Hat,
         Self::Glasses,
         Self::EarAccessory,
@@ -202,6 +204,7 @@ impl EquipmentSlot {
 
     pub(crate) fn from_id(value: &str) -> Option<Self> {
         match value {
+            "base" => Some(Self::Base),
             "hat" => Some(Self::Hat),
             "glasses" => Some(Self::Glasses),
             "ear-accessory" | "earAccessory" => Some(Self::EarAccessory),

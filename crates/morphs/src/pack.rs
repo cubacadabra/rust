@@ -2,6 +2,7 @@ use crate::{MorphAssetDefinition, MorphDiagnostic};
 use serde::Deserialize;
 
 pub const MORPH_PACK_SCHEMA_VERSION: u16 = 1;
+pub const MORPH_PACK_SKINNED_SCHEMA_VERSION: u16 = 2;
 pub const MORPH_PACK_MAGIC: &[u8; 8] = b"CUBAMORP";
 pub const MAX_MORPH_PACK_BYTES: usize = 64 * 1024 * 1024;
 const MAX_MORPH_PACK_MANIFEST_BYTES: usize = 256 * 1024;
@@ -18,10 +19,17 @@ pub struct MorphPack {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MorphPackAttachment {
+    pub mode: MorphPackAttachmentMode,
     pub joint: String,
     pub translation: [f32; 3],
     pub rotation: [f32; 4],
     pub scale: [f32; 3],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MorphPackAttachmentMode {
+    Rigid,
+    Skinned,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -30,6 +38,13 @@ pub struct MorphPackLod {
     pub vertices: Vec<[f32; 3]>,
     pub indices: Vec<u32>,
     pub base_color: Option<[f32; 4]>,
+    pub skinning: Option<Vec<MorphPackVertexSkin>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MorphPackVertexSkin {
+    pub joints: [u16; 4],
+    pub weights: [f32; 4],
 }
 
 #[derive(Deserialize)]
@@ -70,7 +85,7 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
         )]);
     }
     let schema = cursor.read_u16("schema")?;
-    if schema != MORPH_PACK_SCHEMA_VERSION {
+    if schema != MORPH_PACK_SCHEMA_VERSION && schema != MORPH_PACK_SKINNED_SCHEMA_VERSION {
         return Err(vec![error(
             "MORPH_PACK_UNSUPPORTED_SCHEMA",
             "schema",
@@ -106,17 +121,30 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
         return Err(asset_diagnostics);
     }
     validate_attachment(&manifest.attachment)?;
-    if manifest.attachment.mode != "rigid" {
-        return Err(vec![error(
-            "MORPH_PACK_UNSUPPORTED_ATTACHMENT",
-            "attachment.mode",
-            "only rigid attachments are supported",
-        )]);
-    }
+    let mode = match (schema, manifest.attachment.mode.as_str()) {
+        (1, "rigid") => MorphPackAttachmentMode::Rigid,
+        (MORPH_PACK_SKINNED_SCHEMA_VERSION, "skinned") => MorphPackAttachmentMode::Skinned,
+        (1, _) => {
+            return Err(vec![error(
+                "MORPH_PACK_UNSUPPORTED_ATTACHMENT",
+                "attachment.mode",
+                "schema 1 only supports rigid attachments",
+            )]);
+        }
+        (MORPH_PACK_SKINNED_SCHEMA_VERSION, _) => {
+            return Err(vec![error(
+                "MORPH_PACK_UNSUPPORTED_ATTACHMENT",
+                "attachment.mode",
+                "schema 2 requires a skinned attachment",
+            )]);
+        }
+        _ => unreachable!(),
+    };
 
+    let skinned = mode == MorphPackAttachmentMode::Skinned;
     let mut lods = Vec::with_capacity(3);
     for level in ["near", "mid", "far"] {
-        lods.push(read_lod(&mut cursor, level)?);
+        lods.push(read_lod(&mut cursor, level, skinned)?);
     }
     if cursor.remaining() != 0 {
         return Err(vec![error(
@@ -153,6 +181,7 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
     Ok(MorphPack {
         asset: manifest.asset,
         attachment: MorphPackAttachment {
+            mode,
             joint: manifest.attachment.joint,
             translation: manifest.attachment.translation,
             rotation: manifest.attachment.rotation,
@@ -207,7 +236,11 @@ fn validate_attached_bounds(
     Ok(())
 }
 
-fn read_lod(cursor: &mut Cursor<'_>, level: &str) -> Result<MorphPackLod, Vec<MorphDiagnostic>> {
+fn read_lod(
+    cursor: &mut Cursor<'_>,
+    level: &str,
+    skinned: bool,
+) -> Result<MorphPackLod, Vec<MorphDiagnostic>> {
     let triangle_count = cursor.read_u32(&format!("lods.{level}.triangleCount"))?;
     let vertex_count = bounded_count(
         cursor.read_u32(&format!("lods.{level}.vertexCount"))?,
@@ -235,6 +268,12 @@ fn read_lod(cursor: &mut Cursor<'_>, level: &str) -> Result<MorphPackLod, Vec<Mo
     for vertex_index in 0..vertex_count {
         let vertex = cursor.read_vertex(&format!("lods.{level}.vertices[{vertex_index}]"))?;
         vertices.push(vertex);
+    }
+    let mut skinning = skinned.then(|| Vec::with_capacity(vertex_count));
+    if let Some(skinning) = &mut skinning {
+        for vertex_index in 0..vertex_count {
+            skinning.push(cursor.read_skin(&format!("lods.{level}.skinning[{vertex_index}]"))?);
+        }
     }
     let mut indices = Vec::with_capacity(index_count);
     for index in 0..index_count {
@@ -276,6 +315,7 @@ fn read_lod(cursor: &mut Cursor<'_>, level: &str) -> Result<MorphPackLod, Vec<Mo
         vertices,
         indices,
         base_color,
+        skinning,
     })
 }
 
@@ -405,6 +445,34 @@ impl<'a> Cursor<'a> {
     fn read_u16(&mut self, path: &str) -> Result<u16, Vec<MorphDiagnostic>> {
         let bytes = self.read_bytes(2, path)?;
         Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+    }
+
+    fn read_skin(&mut self, path: &str) -> Result<MorphPackVertexSkin, Vec<MorphDiagnostic>> {
+        let joints = [
+            self.read_u16(path)?,
+            self.read_u16(path)?,
+            self.read_u16(path)?,
+            self.read_u16(path)?,
+        ];
+        let weights = [
+            self.read_f32(path)?,
+            self.read_f32(path)?,
+            self.read_f32(path)?,
+            self.read_f32(path)?,
+        ];
+        if joints.iter().any(|joint| *joint >= 15)
+            || weights
+                .iter()
+                .any(|weight| !weight.is_finite() || !(0.0..=1.0).contains(weight))
+            || (weights.iter().sum::<f32>() - 1.0).abs() > 0.01
+        {
+            return Err(vec![error(
+                "MORPH_PACK_INVALID_SKIN",
+                path,
+                "skin joints must reference the 15-joint rig and weights must be finite, normalized, and within 0..=1",
+            )]);
+        }
+        Ok(MorphPackVertexSkin { joints, weights })
     }
 
     fn read_u32(&mut self, path: &str) -> Result<u32, Vec<MorphDiagnostic>> {
@@ -553,6 +621,7 @@ mod tests {
             vertices: vec![[2.0, 0.0, 0.0]],
             indices: vec![0, 0, 0],
             base_color: None,
+            skinning: None,
         };
         let diagnostics =
             validate_attached_bounds(&attachment, &[lod.clone(), lod.clone(), lod]).unwrap_err();
