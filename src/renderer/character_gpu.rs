@@ -9,8 +9,8 @@ use super::{
 };
 use crate::character::{BodyId, BodyRecipe, JointId, OutfitId, body_recipe};
 use cubacadabra_morphs::{
-    MorphAssetId, MorphDiagnostic, MorphPack, MorphPackAttachment, MorphPackAttachmentMode,
-    MorphPackLod,
+    MorphAssetId, MorphAssetKind, MorphDiagnostic, MorphPack, MorphPackAttachment,
+    MorphPackAttachmentMode, MorphPackLod,
 };
 use glam::{Mat3, Mat4, Quat, Vec3};
 use std::collections::BTreeMap;
@@ -140,6 +140,7 @@ struct Mesh {
 struct RegisteredMorph {
     attachment: MorphPackAttachment,
     mode: MorphPackAttachmentMode,
+    kind: MorphAssetKind,
     is_base: bool,
     coverage: Vec<String>,
     base_colors: [Option<[f32; 4]>; 3],
@@ -269,6 +270,7 @@ impl MorphRegistry {
             RegisteredMorph {
                 attachment: pack.attachment,
                 mode,
+                kind: pack.asset.kind,
                 is_base: pack.asset.kind == cubacadabra_morphs::MorphAssetKind::Base,
                 coverage: pack.asset.coverage.clone(),
                 base_colors,
@@ -298,6 +300,7 @@ impl MorphRegistry {
         lod: CharacterLod,
         root: Mat4,
         joints: [Mat4; 15],
+        style: AvatarStyle,
     ) {
         let existing_instances =
             self.batches.values().map(Vec::len).sum::<usize>() + self.skinned_batches.len();
@@ -312,7 +315,14 @@ impl MorphRegistry {
             Quat::from_array(asset.attachment.rotation),
             Vec3::from_array(asset.attachment.translation),
         );
-        let tint = asset.base_colors[lod.index()].unwrap_or([0.7, 0.7, 0.7, 1.0]);
+        let authored_color = asset.base_colors[lod.index()].unwrap_or([0.7, 0.7, 0.7, 1.0]);
+        let (tint, material) = match asset.kind {
+            MorphAssetKind::Base => (style.skin, Material::Toy),
+            MorphAssetKind::Top | MorphAssetKind::Outerwear => (style.shirt, Material::Cloth),
+            MorphAssetKind::Bottom => (style.pants, Material::Denim),
+            MorphAssetKind::Footwear => (style.shoes, Material::Rubber),
+            _ => (authored_color, Material::Toy),
+        };
         if asset.mode == MorphPackAttachmentMode::Skinned {
             let Some(lod_mesh) = asset
                 .skinned_lods
@@ -377,7 +387,7 @@ impl MorphRegistry {
                 asset_id: asset_id.clone(),
                 lod: lod.index(),
                 vertices,
-                instance: CharacterInstance::new(root * attachment, tint, Material::Toy),
+                instance: CharacterInstance::new(root * attachment, tint, material),
             });
             return;
         }
@@ -901,7 +911,8 @@ impl CharacterRenderer {
             Vec3::from_array(entity.position),
         );
         for morph_asset in morph_assets.iter().take(16) {
-            self.morphs.add_instance(morph_asset, lod, root, joints);
+            self.morphs
+                .add_instance(morph_asset, lod, root, joints, style);
         }
         let authored_base = morph_assets
             .iter()
@@ -917,13 +928,38 @@ impl CharacterRenderer {
             if authored_base && part.tint == character::Tint::Skin {
                 continue;
             }
-            if authored_top && part.tint == character::Tint::Shirt {
+            if authored_top
+                && (matches!(
+                    part.tint,
+                    character::Tint::Shirt
+                        | character::Tint::Detail
+                        | character::Tint::Outer
+                        | character::Tint::Armor
+                        | character::Tint::Fuzz
+                ) || (part.tint == character::Tint::Ivory
+                    && matches!(
+                        part.anchor.joint,
+                        crate::character::JointId::Torso
+                            | crate::character::JointId::LeftUpperArm
+                            | crate::character::JointId::LeftLowerArm
+                            | crate::character::JointId::RightUpperArm
+                            | crate::character::JointId::RightLowerArm
+                    )))
+            {
                 continue;
             }
             if authored_bottom && part.tint == character::Tint::Pants {
                 continue;
             }
-            if authored_footwear && part.tint == character::Tint::Shoes {
+            if authored_footwear
+                && (part.tint == character::Tint::Shoes
+                    || (part.tint == character::Tint::Ivory
+                        && matches!(
+                            part.anchor.joint,
+                            crate::character::JointId::LeftFoot
+                                | crate::character::JointId::RightFoot
+                        )))
+            {
                 continue;
             }
             #[cfg(feature = "dev-showcase")]
