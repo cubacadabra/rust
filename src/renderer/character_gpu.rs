@@ -141,6 +141,7 @@ struct RegisteredMorph {
     attachment: MorphPackAttachment,
     mode: MorphPackAttachmentMode,
     is_base: bool,
+    coverage: Vec<String>,
     base_colors: [Option<[f32; 4]>; 3],
     lods: [Mesh; 3],
     skinned_lods: Option<[MorphPackLod; 3]>,
@@ -269,6 +270,7 @@ impl MorphRegistry {
                 attachment: pack.attachment,
                 mode,
                 is_base: pack.asset.kind == cubacadabra_morphs::MorphAssetKind::Base,
+                coverage: pack.asset.coverage.clone(),
                 base_colors,
                 lods: [near, mid, far],
                 skinned_lods,
@@ -478,6 +480,17 @@ impl MorphRegistry {
         self.assets
             .get(asset_id)
             .is_some_and(|asset| asset.mode == MorphPackAttachmentMode::Skinned && asset.is_base)
+    }
+
+    fn has_skinned_coverage(&self, asset_ids: &[MorphAssetId], coverage: &[&str]) -> bool {
+        asset_ids.iter().take(16).any(|asset_id| {
+            self.assets.get(asset_id).is_some_and(|asset| {
+                asset.mode == MorphPackAttachmentMode::Skinned
+                    && coverage
+                        .iter()
+                        .any(|region| asset.coverage.iter().any(|value| value == region))
+            })
+        })
     }
 }
 
@@ -894,9 +907,23 @@ impl CharacterRenderer {
             .iter()
             .take(16)
             .any(|asset_id| self.morphs.is_skinned_base(asset_id));
+        let authored_top = self
+            .morphs
+            .has_skinned_coverage(morph_assets, &["torso", "arms"]);
+        let authored_bottom = self.morphs.has_skinned_coverage(morph_assets, &["legs"]);
+        let authored_footwear = self.morphs.has_skinned_coverage(morph_assets, &["feet"]);
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
-            if authored_base {
+            if authored_base && part.tint == character::Tint::Skin {
+                continue;
+            }
+            if authored_top && part.tint == character::Tint::Shirt {
+                continue;
+            }
+            if authored_bottom && part.tint == character::Tint::Pants {
+                continue;
+            }
+            if authored_footwear && part.tint == character::Tint::Shoes {
                 continue;
             }
             #[cfg(feature = "dev-showcase")]

@@ -248,7 +248,13 @@ pub fn project_v2_to_v1(
 }
 
 fn legacy_slot(asset: &crate::MorphAssetDefinition) -> &'static str {
-    if asset
+    if asset.occupied_slots.iter().any(|slot| slot == "shirt") {
+        "shirt"
+    } else if asset.occupied_slots.iter().any(|slot| slot == "pants") {
+        "pants"
+    } else if asset.occupied_slots.iter().any(|slot| slot == "shoes") {
+        "shoes"
+    } else if asset
         .occupied_slots
         .iter()
         .any(|slot| slot == "ear-accessory")
