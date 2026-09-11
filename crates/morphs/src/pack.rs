@@ -1,14 +1,19 @@
-use crate::{MorphAssetDefinition, MorphDiagnostic};
+use crate::{MorphAssetDefinition, MorphAssetKind, MorphDiagnostic};
 use serde::Deserialize;
 
 pub const MORPH_PACK_SCHEMA_VERSION: u16 = 1;
 pub const MORPH_PACK_SKINNED_SCHEMA_VERSION: u16 = 2;
+pub const MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION: u16 = 3;
 pub const MORPH_PACK_MAGIC: &[u8; 8] = b"CUBAMORP";
 pub const MAX_MORPH_PACK_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_MORPH_PACK_SURFACES: usize = 8;
 const MAX_MORPH_PACK_MANIFEST_BYTES: usize = 256 * 1024;
 const MAX_MORPH_PACK_VERTICES: usize = 200_000;
 const MAX_MORPH_PACK_INDICES: usize = 600_000;
 const MAX_ATTACHED_VERTEX_ABS: f32 = 100.0;
+const SURFACE_HAS_COLOR: u8 = 1 << 0;
+const SURFACE_USES_AVATAR_TINT: u8 = 1 << 1;
+const SURFACE_KNOWN_FLAGS: u8 = SURFACE_HAS_COLOR | SURFACE_USES_AVATAR_TINT;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MorphPack {
@@ -39,6 +44,15 @@ pub struct MorphPackLod {
     pub indices: Vec<u32>,
     pub base_color: Option<[f32; 4]>,
     pub skinning: Option<Vec<MorphPackVertexSkin>>,
+    pub surfaces: Vec<MorphPackSurface>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MorphPackSurface {
+    pub index_start: u32,
+    pub index_count: u32,
+    pub base_color: Option<[f32; 4]>,
+    pub use_avatar_tint: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -85,11 +99,16 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
         )]);
     }
     let schema = cursor.read_u16("schema")?;
-    if schema != MORPH_PACK_SCHEMA_VERSION && schema != MORPH_PACK_SKINNED_SCHEMA_VERSION {
+    if schema != MORPH_PACK_SCHEMA_VERSION
+        && schema != MORPH_PACK_SKINNED_SCHEMA_VERSION
+        && schema != MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION
+    {
         return Err(vec![error(
             "MORPH_PACK_UNSUPPORTED_SCHEMA",
             "schema",
-            format!("expected schema {MORPH_PACK_SCHEMA_VERSION}"),
+            format!(
+                "expected schema {MORPH_PACK_SCHEMA_VERSION}, {MORPH_PACK_SKINNED_SCHEMA_VERSION}, or {MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION}"
+            ),
         )]);
     }
     let _flags = cursor.read_u16("flags")?;
@@ -124,6 +143,8 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
     let mode = match (schema, manifest.attachment.mode.as_str()) {
         (1, "rigid") => MorphPackAttachmentMode::Rigid,
         (MORPH_PACK_SKINNED_SCHEMA_VERSION, "skinned") => MorphPackAttachmentMode::Skinned,
+        (MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION, "rigid") => MorphPackAttachmentMode::Rigid,
+        (MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION, "skinned") => MorphPackAttachmentMode::Skinned,
         (1, _) => {
             return Err(vec![error(
                 "MORPH_PACK_UNSUPPORTED_ATTACHMENT",
@@ -138,13 +159,27 @@ pub fn decode_morph_pack(bytes: &[u8]) -> Result<MorphPack, Vec<MorphDiagnostic>
                 "schema 2 requires a skinned attachment",
             )]);
         }
+        (MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION, _) => {
+            return Err(vec![error(
+                "MORPH_PACK_UNSUPPORTED_ATTACHMENT",
+                "attachment.mode",
+                "schema 3 requires a rigid or skinned attachment",
+            )]);
+        }
         _ => unreachable!(),
     };
 
     let skinned = mode == MorphPackAttachmentMode::Skinned;
+    let legacy_avatar_tint = uses_avatar_tint(manifest.asset.kind);
     let mut lods = Vec::with_capacity(3);
     for level in ["near", "mid", "far"] {
-        lods.push(read_lod(&mut cursor, level, skinned)?);
+        lods.push(read_lod(
+            &mut cursor,
+            level,
+            skinned,
+            schema,
+            legacy_avatar_tint,
+        )?);
     }
     if cursor.remaining() != 0 {
         return Err(vec![error(
@@ -240,6 +275,8 @@ fn read_lod(
     cursor: &mut Cursor<'_>,
     level: &str,
     skinned: bool,
+    schema: u16,
+    legacy_avatar_tint: bool,
 ) -> Result<MorphPackLod, Vec<MorphDiagnostic>> {
     let triangle_count = cursor.read_u32(&format!("lods.{level}.triangleCount"))?;
     let vertex_count = bounded_count(
@@ -252,18 +289,35 @@ fn read_lod(
         MAX_MORPH_PACK_INDICES,
         &format!("lods.{level}.indexCount"),
     )?;
-    let has_color = cursor.read_u8(&format!("lods.{level}.hasColor"))?;
-    let base_color = match has_color {
-        0 => None,
-        1 => Some(cursor.read_color(&format!("lods.{level}.baseColor"))?),
-        _ => {
-            return Err(vec![error(
-                "MORPH_PACK_INVALID_COLOR_FLAG",
-                &format!("lods.{level}.hasColor"),
-                "color flag must be 0 or 1",
-            )]);
-        }
+    let surfaces = if schema == MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION {
+        read_surfaces(cursor, level, index_count)?
+    } else {
+        let has_color = cursor.read_u8(&format!("lods.{level}.hasColor"))?;
+        let base_color = match has_color {
+            0 => None,
+            1 => Some(cursor.read_color(&format!("lods.{level}.baseColor"))?),
+            _ => {
+                return Err(vec![error(
+                    "MORPH_PACK_INVALID_COLOR_FLAG",
+                    &format!("lods.{level}.hasColor"),
+                    "color flag must be 0 or 1",
+                )]);
+            }
+        };
+        vec![MorphPackSurface {
+            index_start: 0,
+            index_count: u32::try_from(index_count).map_err(|_| {
+                vec![error(
+                    "MORPH_PACK_COUNT_OVERFLOW",
+                    &format!("lods.{level}.indexCount"),
+                    "index count exceeds the supported range",
+                )]
+            })?,
+            base_color,
+            use_avatar_tint: legacy_avatar_tint,
+        }]
     };
+    let base_color = surfaces.first().and_then(|surface| surface.base_color);
     let mut vertices = Vec::with_capacity(vertex_count);
     for vertex_index in 0..vertex_count {
         let vertex = cursor.read_vertex(&format!("lods.{level}.vertices[{vertex_index}]"))?;
@@ -316,7 +370,106 @@ fn read_lod(
         indices,
         base_color,
         skinning,
+        surfaces,
     })
+}
+
+fn read_surfaces(
+    cursor: &mut Cursor<'_>,
+    level: &str,
+    index_count: usize,
+) -> Result<Vec<MorphPackSurface>, Vec<MorphDiagnostic>> {
+    let surface_count = bounded_count(
+        u32::from(cursor.read_u16(&format!("lods.{level}.surfaceCount"))?),
+        MAX_MORPH_PACK_SURFACES,
+        &format!("lods.{level}.surfaceCount"),
+    )?;
+    if surface_count == 0 {
+        return Err(vec![error(
+            "MORPH_PACK_INVALID_SURFACES",
+            &format!("lods.{level}.surfaceCount"),
+            "a LOD must contain at least one surface",
+        )]);
+    }
+    let mut surfaces = Vec::with_capacity(surface_count);
+    let mut expected_start = 0usize;
+    for surface_index in 0..surface_count {
+        let path = format!("lods.{level}.surfaces[{surface_index}]");
+        let start =
+            usize::try_from(cursor.read_u32(&format!("{path}.indexStart"))?).map_err(|_| {
+                vec![error(
+                    "MORPH_PACK_COUNT_OVERFLOW",
+                    &format!("{path}.indexStart"),
+                    "surface index start exceeds the supported range",
+                )]
+            })?;
+        let count =
+            usize::try_from(cursor.read_u32(&format!("{path}.indexCount"))?).map_err(|_| {
+                vec![error(
+                    "MORPH_PACK_COUNT_OVERFLOW",
+                    &format!("{path}.indexCount"),
+                    "surface index count exceeds the supported range",
+                )]
+            })?;
+        let flags = cursor.read_u8(&format!("{path}.flags"))?;
+        if flags & !SURFACE_KNOWN_FLAGS != 0 {
+            return Err(vec![error(
+                "MORPH_PACK_INVALID_SURFACE_FLAGS",
+                &format!("{path}.flags"),
+                "surface contains unsupported flags",
+            )]);
+        }
+        if start != expected_start || count == 0 || count % 3 != 0 {
+            return Err(vec![error(
+                "MORPH_PACK_INVALID_SURFACES",
+                &path,
+                "surfaces must be non-empty, contiguous triangle-list index spans",
+            )]);
+        }
+        let end = start.checked_add(count).ok_or_else(|| {
+            vec![error(
+                "MORPH_PACK_COUNT_OVERFLOW",
+                &path,
+                "surface index range overflows the supported range",
+            )]
+        })?;
+        if end > index_count {
+            return Err(vec![error(
+                "MORPH_PACK_INVALID_SURFACES",
+                &path,
+                "surface index range exceeds the LOD index payload",
+            )]);
+        }
+        let base_color = (flags & SURFACE_HAS_COLOR != 0)
+            .then(|| cursor.read_color(&format!("{path}.baseColor")))
+            .transpose()?;
+        surfaces.push(MorphPackSurface {
+            index_start: u32::try_from(start).unwrap_or(u32::MAX),
+            index_count: u32::try_from(count).unwrap_or(u32::MAX),
+            base_color,
+            use_avatar_tint: flags & SURFACE_USES_AVATAR_TINT != 0,
+        });
+        expected_start = end;
+    }
+    if expected_start != index_count {
+        return Err(vec![error(
+            "MORPH_PACK_INVALID_SURFACES",
+            &format!("lods.{level}.surfaces"),
+            "surface spans must cover the complete LOD index payload",
+        )]);
+    }
+    Ok(surfaces)
+}
+
+fn uses_avatar_tint(kind: MorphAssetKind) -> bool {
+    matches!(
+        kind,
+        MorphAssetKind::Base
+            | MorphAssetKind::Top
+            | MorphAssetKind::Outerwear
+            | MorphAssetKind::Bottom
+            | MorphAssetKind::Footwear
+    )
 }
 
 fn bounded_count(count: u32, limit: usize, path: &str) -> Result<usize, Vec<MorphDiagnostic>> {
@@ -590,6 +743,71 @@ mod tests {
         bytes
     }
 
+    fn multi_surface_fixture() -> Vec<u8> {
+        let manifest = serde_json::to_vec(&json!({
+            "schemaVersion": 1,
+            "asset": {
+                "id": "cuba:top/multi-surface-test.v1",
+                "kind": "top",
+                "displayName": "Multi Surface Test",
+                "rigProfile": "cuba:rig/biped15.v1",
+                "fitProfiles": ["cuba:fit/person-standard.v1"],
+                "supportedBases": ["cuba:base/person.v1"],
+                "occupiedSlots": ["shirt"],
+                "coverage": ["torso"],
+                "conflicts": [],
+                "materials": ["cloth", "drawstring"],
+                "lod": {"near": 2, "mid": 2, "far": 2},
+                "requiredCapabilities": ["mesh.rigid.v1"],
+                "provenance": {"source": "test", "license": "test"}
+            },
+            "attachment": {
+                "mode": "rigid",
+                "joint": "torso",
+                "translation": [0.0, 0.0, 0.0],
+                "rotation": [0.0, 0.0, 0.0, 1.0],
+                "scale": [1.0, 1.0, 1.0]
+            }
+        }))
+        .unwrap();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(MORPH_PACK_MAGIC);
+        bytes.extend_from_slice(&MORPH_PACK_MULTI_SURFACE_SCHEMA_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&0u16.to_le_bytes());
+        bytes.extend_from_slice(&(manifest.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&manifest);
+        for _ in 0..3 {
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&3u32.to_le_bytes());
+            bytes.extend_from_slice(&6u32.to_le_bytes());
+            bytes.extend_from_slice(&2u16.to_le_bytes());
+            for (start, flags, color) in [
+                (
+                    0u32,
+                    SURFACE_HAS_COLOR | SURFACE_USES_AVATAR_TINT,
+                    [0.1f32, 0.5, 0.4, 1.0],
+                ),
+                (3u32, SURFACE_HAS_COLOR, [1.0f32, 1.0, 1.0, 1.0]),
+            ] {
+                bytes.extend_from_slice(&start.to_le_bytes());
+                bytes.extend_from_slice(&3u32.to_le_bytes());
+                bytes.push(flags);
+                for value in color {
+                    bytes.extend_from_slice(&value.to_le_bytes());
+                }
+            }
+            for vertex in [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
+                for value in vertex {
+                    bytes.extend_from_slice(&value.to_le_bytes());
+                }
+            }
+            for index in [0u32, 1, 2, 0, 2, 1] {
+                bytes.extend_from_slice(&index.to_le_bytes());
+            }
+        }
+        bytes
+    }
+
     #[test]
     fn decodes_a_bounded_pack() {
         let pack = decode_morph_pack(&fixture()).expect("pack should decode");
@@ -597,6 +815,18 @@ mod tests {
         assert_eq!(pack.attachment.joint, "head");
         assert_eq!(pack.lods[1].vertices.len(), 3);
         assert_eq!(pack.lods[2].base_color, Some([0.2, 0.4, 0.8, 1.0]));
+    }
+
+    #[test]
+    fn decodes_bounded_multi_surface_materials() {
+        let pack = decode_morph_pack(&multi_surface_fixture()).expect("pack should decode");
+        assert_eq!(pack.lods[0].surfaces.len(), 2);
+        assert!(pack.lods[0].surfaces[0].use_avatar_tint);
+        assert_eq!(pack.lods[0].surfaces[1].index_start, 3);
+        assert_eq!(
+            pack.lods[0].surfaces[1].base_color,
+            Some([1.0, 1.0, 1.0, 1.0])
+        );
     }
 
     #[test]
@@ -622,6 +852,12 @@ mod tests {
             indices: vec![0, 0, 0],
             base_color: None,
             skinning: None,
+            surfaces: vec![MorphPackSurface {
+                index_start: 0,
+                index_count: 3,
+                base_color: None,
+                use_avatar_tint: false,
+            }],
         };
         let diagnostics =
             validate_attached_bounds(&attachment, &[lod.clone(), lod.clone(), lod]).unwrap_err();

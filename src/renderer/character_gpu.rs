@@ -9,8 +9,8 @@ use super::{
 };
 use crate::character::{BodyId, BodyRecipe, JointId, OutfitId, body_recipe};
 use cubacadabra_morphs::{
-    MorphAssetId, MorphAssetKind, MorphDiagnostic, MorphPack, MorphPackAttachment,
-    MorphPackAttachmentMode, MorphPackLod,
+    MAX_MORPH_PACK_SURFACES, MorphAssetId, MorphAssetKind, MorphDiagnostic, MorphPack,
+    MorphPackAttachment, MorphPackAttachmentMode, MorphPackLod, MorphPackSurface,
 };
 use glam::{Mat3, Mat4, Quat, Vec3};
 use std::collections::BTreeMap;
@@ -24,6 +24,7 @@ const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
 const MAX_MORPH_PACKS: usize = 32;
 const MAX_MORPH_RESIDENCY: usize = 16 * 1024 * 1024;
 const MAX_SKINNED_VERTICES: usize = MAX_CHARACTERS * 8192;
+const MAX_MORPH_INSTANCES: usize = MAX_CHARACTERS * 16 * MAX_MORPH_PACK_SURFACES;
 
 fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
     let face = entity.face.clamped();
@@ -135,6 +136,7 @@ struct Mesh {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     index_count: u32,
+    surfaces: Vec<MorphPackSurface>,
 }
 
 struct RegisteredMorph {
@@ -143,7 +145,6 @@ struct RegisteredMorph {
     kind: MorphAssetKind,
     is_base: bool,
     coverage: Vec<String>,
-    base_colors: [Option<[f32; 4]>; 3],
     lods: [Mesh; 3],
     skinned_lods: Option<[MorphPackLod; 3]>,
     bytes: usize,
@@ -152,6 +153,7 @@ struct RegisteredMorph {
 struct MorphDraw {
     asset_id: MorphAssetId,
     lod: usize,
+    surface: usize,
     start: usize,
     count: usize,
 }
@@ -160,7 +162,7 @@ struct SkinnedBatch {
     asset_id: MorphAssetId,
     lod: usize,
     vertices: Vec<CharacterVertex>,
-    instance: CharacterInstance,
+    instances: Vec<CharacterInstance>,
 }
 
 struct SkinnedDraw {
@@ -169,6 +171,7 @@ struct SkinnedDraw {
     vertex_start: usize,
     vertex_count: usize,
     instance_start: usize,
+    surface: usize,
 }
 
 /// GPU resources for compiled morphs. This registry is intentionally
@@ -177,7 +180,7 @@ struct SkinnedDraw {
 struct MorphRegistry {
     assets: BTreeMap<MorphAssetId, RegisteredMorph>,
     resident_bytes: usize,
-    batches: BTreeMap<(MorphAssetId, usize), Vec<CharacterInstance>>,
+    batches: BTreeMap<(MorphAssetId, usize, usize), Vec<CharacterInstance>>,
     instances: Vec<CharacterInstance>,
     draws: Vec<MorphDraw>,
     skinned_batches: Vec<SkinnedBatch>,
@@ -193,15 +196,15 @@ impl MorphRegistry {
             assets: BTreeMap::new(),
             resident_bytes: 0,
             batches: BTreeMap::new(),
-            instances: Vec::with_capacity(MAX_CHARACTERS * 16),
-            draws: Vec::with_capacity(MAX_CHARACTERS),
+            instances: Vec::with_capacity(MAX_MORPH_INSTANCES),
+            draws: Vec::with_capacity(MAX_CHARACTERS * 16),
             skinned_batches: Vec::with_capacity(MAX_CHARACTERS),
             skinned_draws: Vec::with_capacity(MAX_CHARACTERS),
             skinned_vertices: Vec::with_capacity(MAX_SKINNED_VERTICES),
             skinned_buffer: None,
             buffer: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("reusable morph instances"),
-                size: (MAX_CHARACTERS * 17 * size_of::<CharacterInstance>()) as u64,
+                size: (MAX_MORPH_INSTANCES * size_of::<CharacterInstance>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }),
@@ -250,7 +253,6 @@ impl MorphRegistry {
                 mapped_at_creation: false,
             }));
         }
-        let base_colors = pack.lods.each_ref().map(|lod| lod.base_color);
         let skinned_lods = (mode == MorphPackAttachmentMode::Skinned).then(|| pack.lods.clone());
         let [near, mid, far] = pack.lods;
         let lods = [
@@ -264,7 +266,7 @@ impl MorphRegistry {
             .try_into()
             .map_err(|_| vec![morph_error("MORPH_GPU_INVALID_LOD_COUNT", "lods")])?;
         let [near, mid, far] = lods;
-        self.batches.retain(|(asset_id, _), _| asset_id != &id);
+        self.batches.retain(|(asset_id, _, _), _| asset_id != &id);
         self.assets.insert(
             id,
             RegisteredMorph {
@@ -273,7 +275,6 @@ impl MorphRegistry {
                 kind: pack.asset.kind,
                 is_base: pack.asset.kind == cubacadabra_morphs::MorphAssetKind::Base,
                 coverage: pack.asset.coverage.clone(),
-                base_colors,
                 lods: [near, mid, far],
                 skinned_lods,
                 bytes,
@@ -302,27 +303,24 @@ impl MorphRegistry {
         joints: [Mat4; 15],
         style: AvatarStyle,
     ) {
-        let existing_instances =
-            self.batches.values().map(Vec::len).sum::<usize>() + self.skinned_batches.len();
-        if existing_instances >= MAX_CHARACTERS * 16 {
-            return;
-        }
         let Some(asset) = self.assets.get(asset_id) else {
             return;
         };
+        let existing_instances = self.batches.values().map(Vec::len).sum::<usize>()
+            + self
+                .skinned_batches
+                .iter()
+                .map(|batch| batch.instances.len())
+                .sum::<usize>();
+        let surface_count = asset.lods[lod.index()].surfaces.len();
+        if existing_instances.saturating_add(surface_count) > MAX_MORPH_INSTANCES {
+            return;
+        }
         let attachment = Mat4::from_scale_rotation_translation(
             Vec3::from_array(asset.attachment.scale),
             Quat::from_array(asset.attachment.rotation),
             Vec3::from_array(asset.attachment.translation),
         );
-        let authored_color = asset.base_colors[lod.index()].unwrap_or([0.7, 0.7, 0.7, 1.0]);
-        let (tint, material) = match asset.kind {
-            MorphAssetKind::Base => (style.skin, Material::Toy),
-            MorphAssetKind::Top | MorphAssetKind::Outerwear => (style.shirt, Material::Cloth),
-            MorphAssetKind::Bottom => (style.pants, Material::Denim),
-            MorphAssetKind::Footwear => (style.shoes, Material::Rubber),
-            _ => (authored_color, Material::Toy),
-        };
         if asset.mode == MorphPackAttachmentMode::Skinned {
             let Some(lod_mesh) = asset
                 .skinned_lods
@@ -383,32 +381,43 @@ impl MorphRegistry {
                     }
                 })
                 .collect();
+            let instances = lod_mesh
+                .surfaces
+                .iter()
+                .map(|surface| {
+                    let (tint, material) = morph_surface_appearance(asset.kind, *surface, style);
+                    CharacterInstance::new(root * attachment, tint, material)
+                })
+                .collect();
             self.skinned_batches.push(SkinnedBatch {
                 asset_id: asset_id.clone(),
                 lod: lod.index(),
                 vertices,
-                instance: CharacterInstance::new(root * attachment, tint, material),
+                instances,
             });
             return;
         }
         let Some(joint) = morph_joint(&asset.attachment.joint) else {
             return;
         };
-        self.batches
-            .entry((asset_id.clone(), lod.index()))
-            .or_default()
-            .push(CharacterInstance::new(
-                root * joints[joint.index()] * attachment,
-                tint,
-                Material::Toy,
-            ));
+        for (surface_index, surface) in asset.lods[lod.index()].surfaces.iter().enumerate() {
+            let (tint, material) = morph_surface_appearance(asset.kind, *surface, style);
+            self.batches
+                .entry((asset_id.clone(), lod.index(), surface_index))
+                .or_default()
+                .push(CharacterInstance::new(
+                    root * joints[joint.index()] * attachment,
+                    tint,
+                    material,
+                ));
+        }
     }
 
     fn upload(&mut self, queue: &wgpu::Queue) {
         self.instances.clear();
         self.draws.clear();
         self.skinned_vertices.clear();
-        for ((asset_id, lod), batch) in &self.batches {
+        for ((asset_id, lod, surface), batch) in &self.batches {
             if batch.is_empty() {
                 continue;
             }
@@ -417,22 +426,26 @@ impl MorphRegistry {
             self.draws.push(MorphDraw {
                 asset_id: asset_id.clone(),
                 lod: *lod,
+                surface: *surface,
                 start,
                 count: batch.len(),
             });
         }
         for batch in &self.skinned_batches {
             let vertex_start = self.skinned_vertices.len();
-            let instance_start = self.instances.len();
             self.skinned_vertices.extend_from_slice(&batch.vertices);
-            self.instances.push(batch.instance);
-            self.skinned_draws.push(SkinnedDraw {
-                asset_id: batch.asset_id.clone(),
-                lod: batch.lod,
-                vertex_start,
-                vertex_count: batch.vertices.len(),
-                instance_start,
-            });
+            for (surface, instance) in batch.instances.iter().copied().enumerate() {
+                let instance_start = self.instances.len();
+                self.instances.push(instance);
+                self.skinned_draws.push(SkinnedDraw {
+                    asset_id: batch.asset_id.clone(),
+                    lod: batch.lod,
+                    vertex_start,
+                    vertex_count: batch.vertices.len(),
+                    instance_start,
+                    surface,
+                });
+            }
         }
         if !self.instances.is_empty() {
             queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&self.instances));
@@ -464,7 +477,14 @@ impl MorphRegistry {
             let end = start + (draw.count * size_of::<CharacterInstance>()) as u64;
             pass.set_vertex_buffer(1, self.buffer.slice(start..end));
             pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..mesh.index_count, 0, 0..draw.count as u32);
+            let Some(surface) = mesh.surfaces.get(draw.surface) else {
+                continue;
+            };
+            pass.draw_indexed(
+                surface.index_start..surface.index_start + surface.index_count,
+                0,
+                0..draw.count as u32,
+            );
         }
         let Some(skinned_buffer) = self.skinned_buffer.as_ref() else {
             return;
@@ -482,7 +502,14 @@ impl MorphRegistry {
             let instance_end = instance_start + size_of::<CharacterInstance>() as u64;
             pass.set_vertex_buffer(1, self.buffer.slice(instance_start..instance_end));
             pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-            pass.draw_indexed(0..mesh.index_count, 0, 0..1);
+            let Some(surface) = mesh.surfaces.get(draw.surface) else {
+                continue;
+            };
+            pass.draw_indexed(
+                surface.index_start..surface.index_start + surface.index_count,
+                0,
+                0..1,
+            );
         }
     }
 
@@ -504,6 +531,35 @@ impl MorphRegistry {
     }
 }
 
+fn morph_surface_appearance(
+    kind: MorphAssetKind,
+    surface: MorphPackSurface,
+    style: AvatarStyle,
+) -> ([f32; 4], Material) {
+    let authored = surface.base_color.unwrap_or([0.7, 0.7, 0.7, 1.0]);
+    let avatar_tint = match kind {
+        MorphAssetKind::Base => style.skin,
+        MorphAssetKind::Top | MorphAssetKind::Outerwear => style.shirt,
+        MorphAssetKind::Bottom => style.pants,
+        MorphAssetKind::Footwear => style.shoes,
+        _ => authored,
+    };
+    let material = match kind {
+        MorphAssetKind::Top | MorphAssetKind::Outerwear => Material::Cloth,
+        MorphAssetKind::Bottom => Material::Denim,
+        MorphAssetKind::Footwear => Material::Rubber,
+        _ => Material::Toy,
+    };
+    (
+        if surface.use_avatar_tint {
+            avatar_tint
+        } else {
+            authored
+        },
+        material,
+    )
+}
+
 fn morph_lod_bytes(lod: &MorphPackLod) -> Option<usize> {
     size_of::<CharacterVertex>()
         .checked_mul(lod.vertices.len())?
@@ -516,6 +572,7 @@ fn upload_morph_lod(
     level: &str,
     lod: MorphPackLod,
 ) -> Result<Mesh, Vec<MorphDiagnostic>> {
+    let surfaces = lod.surfaces.clone();
     let mut normals = vec![Vec3::ZERO; lod.vertices.len()];
     for triangle in lod.indices.chunks(3) {
         let [ia, ib, ic] = triangle else {
@@ -557,6 +614,7 @@ fn upload_morph_lod(
             usage: wgpu::BufferUsages::INDEX,
         }),
         index_count,
+        surfaces,
     })
 }
 
@@ -725,6 +783,7 @@ impl CharacterRenderer {
                                         },
                                     ),
                                     index_count: mesh.indices.len() as u32,
+                                    surfaces: Vec::new(),
                                 });
                                 recipes.push((mesh_recipe, part.shape));
                                 meshes.len() - 1
