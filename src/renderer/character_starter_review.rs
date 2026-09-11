@@ -148,19 +148,26 @@ fn render_thumbnail(
     tall_headwear: bool,
     path: &std::path::Path,
 ) {
-    let width = 256;
-    let height = 320;
+    let portrait = std::env::var_os("CUBA_STARTER_PORTRAIT").is_some();
+    let width = if portrait { 512 } else { 256 };
+    let height = if portrait { 640 } else { 320 };
     let extent = wgpu::Extent3d {
         width,
         height,
         depth_or_array_layers: 1,
     };
-    let (center, half_height) = if tall_headwear {
-        (2.35, 2.75)
+    let (center, half_height) = if portrait {
+        (2.82, 1.03)
+    } else if tall_headwear {
+        (1.95, 2.30)
     } else {
         (1.9, 2.25)
     };
-    let camera = Vec3::new(0.5, center + 0.6, -7.);
+    let yaw: f32 = std::env::var("CUBA_STARTER_YAW")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.0713);
+    let camera = Vec3::new(yaw.sin() * 7., center + 0.6, -yaw.cos() * 7.);
     let globals = Globals {
         view_projection: (Mat4::orthographic_rh(
             -half_height * 0.8,

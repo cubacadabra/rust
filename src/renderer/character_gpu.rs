@@ -601,6 +601,8 @@ fn morph_surface_appearance(
         Material::Textured
     } else {
         match kind {
+            #[cfg(feature = "studio-ui")]
+            MorphAssetKind::Hair => Material::Hair,
             MorphAssetKind::Top | MorphAssetKind::Outerwear => Material::Cloth,
             MorphAssetKind::Bottom => Material::Denim,
             MorphAssetKind::Footwear => Material::Rubber,
