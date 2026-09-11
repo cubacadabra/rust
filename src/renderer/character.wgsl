@@ -109,17 +109,31 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
             let radius = dot(p,p);
             if radius > 0.94 { discard; }
             coverage=1.0-smoothstep(0.94-max(uv_footprint*4.0,0.008),0.94,radius);
-            color = vec3<f32>(0.12,0.085,0.065);
-            // The soft-shoulder study tests one quiet highlight on the same
-            // head/light. The everyday resting face is just dark graphic eyes.
-            if input.material.x > 0.5 && distance(p,vec2<f32>(-0.24,0.30)) < 0.12 {
-                color=vec3<f32>(0.72,0.68,0.59);
-            }
             // Negative z packs eyelid opening for the hero's graphic face.
             // A closing eye becomes a lid stroke, rather than a tiny iris.
             if input.material.z > -0.30 {
                 color=vec3<f32>(0.16,0.09,0.055);
                 if abs(p.y-0.25*(1.0-p.x*p.x))>0.30 { discard; }
+            } else {
+                // Keep the hero/starter path consistent with regular person
+                // eyes: warm sclera plus an iris, pupil, and catchlight gives
+                // every skin tone the same clear focal point.
+                let rim = smoothstep(0.78, 0.94, radius);
+                color = mix(vec3<f32>(0.93, 0.89, 0.82), vec3<f32>(0.12, 0.07, 0.045), rim);
+                let iris_center = vec2<f32>(0.02, -0.01);
+                let iris_p = (p - iris_center) / vec2<f32>(0.30, 0.44);
+                if dot(iris_p, iris_p) < 1.0 {
+                    color = vec3<f32>(0.17, 0.095, 0.055);
+                    let pupil_p = (p - iris_center) / vec2<f32>(0.12, 0.23);
+                    if dot(pupil_p, pupil_p) < 1.0 {
+                        color = vec3<f32>(0.018, 0.012, 0.010);
+                    }
+                    let catchlight_p = (p - (iris_center + vec2<f32>(-0.09, 0.16)))
+                        / vec2<f32>(0.055, 0.080);
+                    if dot(catchlight_p, catchlight_p) < 1.0 {
+                        color = vec3<f32>(0.99, 0.98, 0.94);
+                    }
+                }
             }
         } else if input.material.w == 10.0 {
             let arch=0.38*(1.0-p.x*p.x)-0.15;
@@ -127,9 +141,32 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
             if abs(p.x)>0.96 || edge>0.0 { discard; }
             coverage=1.0-smoothstep(-max(uv_footprint*2.0,0.006),0.0,edge);
         } else if input.material.w == 4.0 {
-            if dot(p, p) > 0.88 { discard; }
-            let highlight = (p - vec2<f32>(-0.28, 0.34)) / vec2<f32>(0.23, 0.20);
-            if dot(highlight, highlight) < 1.0 { color = vec3<f32>(0.98, 0.97, 0.92); }
+            // Person eyes use the same readable graphic treatment at every
+            // skin tone: a softly warm sclera, dark iris/pupil, and a small
+            // catchlight. Keeping this palette independent of the face tint
+            // prevents very dark skin from swallowing the old black ovals.
+            let eye_p = p / vec2<f32>(0.96, 0.94);
+            let eye_radius = dot(eye_p, eye_p);
+            if eye_radius > 1.0 { discard; }
+            let rim = smoothstep(0.78, 1.0, eye_radius);
+            let sclera = vec3<f32>(0.93, 0.89, 0.82);
+            let outline = vec3<f32>(0.12, 0.07, 0.045);
+            color = mix(sclera, outline, rim);
+
+            let iris_center = vec2<f32>(0.02, -0.01);
+            let iris_p = (p - iris_center) / vec2<f32>(0.30, 0.44);
+            if dot(iris_p, iris_p) < 1.0 {
+                color = vec3<f32>(0.17, 0.095, 0.055);
+                let pupil_p = (p - iris_center) / vec2<f32>(0.12, 0.23);
+                if dot(pupil_p, pupil_p) < 1.0 {
+                    color = vec3<f32>(0.018, 0.012, 0.010);
+                }
+                let catchlight_p = (p - (iris_center + vec2<f32>(-0.09, 0.16)))
+                    / vec2<f32>(0.055, 0.080);
+                if dot(catchlight_p, catchlight_p) < 1.0 {
+                    color = vec3<f32>(0.99, 0.98, 0.94);
+                }
+            }
         } else if input.material.w == 5.0 {
             let curve = input.material.x;
             let opening = clamp(input.material.y, 0.0, 1.0);

@@ -325,7 +325,9 @@ impl Default for FaceAnchors {
         Self {
             eye_y: 0.10,
             eye_x: 0.19,
-            eye_size: Vec2::new(0.18, 0.27),
+            // A slightly wider, lower eye leaves room for a readable sclera
+            // and iris instead of collapsing into a vertical ink mark.
+            eye_size: Vec2::new(0.22, 0.22),
             eye_tilt: -0.025,
             face_z: -0.397,
             brow_y: 0.27,

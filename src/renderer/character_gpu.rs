@@ -48,6 +48,10 @@ fn feature_transform(part: Part, entity: RenderEntity) -> Mat4 {
         Feature::Eye(side) => {
             let look = face.look * if is_hero(entity) { 0.45 } else { 1.0 };
             local = local
+                // Keep the eye card just ahead of the rounded head. This is
+                // especially important for dark skin, where an occluded
+                // sclera would otherwise collapse back to a black slit.
+                * Mat4::from_translation(glam::Vec3::new(0.0, 0.0, -0.028))
                 * Mat4::from_translation(glam::Vec3::new(look.x, look.y, 0.0))
                 * Mat4::from_scale(glam::Vec3::new(
                     1.0,
