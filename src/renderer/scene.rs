@@ -254,15 +254,6 @@ impl Renderer {
         self.scene.effect_states.clear();
         self.scene.effect_instances.clear();
         self.scene.build_blocks.clear();
-        self.scene.player.position = [0.0, 0.0, 0.0];
-        // The preview camera sits on +Z. Character forward is -Z at yaw 0,
-        // so a half-turn presents the avatar's face to the viewer.
-        self.scene.player.yaw = std::f32::consts::PI;
-        self.scene.player.walk_cycle = 0.0;
-        self.scene.player.moving = false;
-        self.scene.player.sprinting = false;
-        self.scene.player.support = crate::types::CharacterSupport::Grounded { height: 0.0 };
-        self.scene.camera = [0.0, -0.06, 5.8];
         self.rebuild_static_vertices();
     }
 }
