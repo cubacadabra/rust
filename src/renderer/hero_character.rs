@@ -393,8 +393,11 @@ pub(super) fn finish(parts: &mut Vec<Part>, body: crate::character::BodyId) {
             }
             (_, _, Feature::Eye(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.115, 0.170, 0.025), 0.0);
-                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.245, 0.015, -0.408))
-                    * Mat4::from_rotation_y(-side * 0.42);
+                // Seat each eye on the front-side curve of the head rather
+                // than on one flat frontal plane. It keeps the familiar front
+                // spacing while leaving the near eye readable in profile.
+                p.anchor.local = Mat4::from_translation(Vec3::new(side * 0.335, 0.015, -0.345))
+                    * Mat4::from_rotation_y(-side * 0.68);
             }
             (_, _, Feature::Brow(side)) => {
                 p.spec = BodyPart::new(Vec3::new(0.17, 0.035, 0.025), 0.0);
@@ -635,6 +638,25 @@ mod tests {
                         .all(|vertex| { transform.transform_point3(vertex.position).is_finite() })
                 );
             }
+        }
+    }
+
+    #[test]
+    fn person_eyes_wrap_onto_the_profile_curve() {
+        let recipe = body_recipe(BodyId::Person);
+        let parts =
+            super::super::character::parts_for(&recipe, crate::character::OutfitId::EverydayHoodie);
+        let eyes: Vec<_> = parts
+            .iter()
+            .filter(|part| matches!(part.feature, Feature::Eye(_)))
+            .collect();
+        assert_eq!(eyes.len(), 2);
+        for eye in eyes {
+            let center = eye.anchor.local.transform_point3(Vec3::ZERO);
+            assert!(center.x.abs() >= 0.33);
+            assert!(center.z > -0.36);
+            let normal = eye.anchor.local.transform_vector3(Vec3::Z).normalize();
+            assert!(normal.x.abs() > 0.60);
         }
     }
 
