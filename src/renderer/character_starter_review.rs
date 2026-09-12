@@ -4,6 +4,9 @@
 use super::super::{DEPTH_FORMAT, Globals};
 use super::*;
 
+#[path = "character_reference_stage.rs"]
+mod reference_stage;
+
 #[test]
 #[ignore = "requires a GPU and a compiled starter catalog"]
 fn capture_starters() {
@@ -22,6 +25,27 @@ fn capture_starters() {
         !catalog.presets.is_empty(),
         "capture needs at least one complete preset"
     );
+    let reference = std::env::var_os("CUBA_STARTER_REFERENCE").is_some();
+    if reference {
+        assert_eq!(
+            catalog.presets.len(),
+            1,
+            "reference capture is an isolated study"
+        );
+        assert_eq!(
+            catalog.presets[0].id.as_str(),
+            "cuba:preset/mockup-person.v1"
+        );
+        assert_eq!(
+            catalog.presets[0].loadout().base.as_str(),
+            "cuba:base/study-person.v1"
+        );
+        assert_eq!(
+            catalog.presets[0].loadout().parts.len(),
+            4,
+            "no extra equipment"
+        );
+    }
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -94,7 +118,32 @@ fn capture_starters() {
             face: resolved.appearance.face,
             ..Default::default()
         };
-        let pose_name = std::env::var("CUBA_STARTER_POSE").unwrap_or_else(|_| "rest".into());
+        if reference {
+            for (key, expected) in [
+                ("skin", "#b87b4e"),
+                ("primary", "#8354b5"),
+                ("secondary", "#24384e"),
+                ("sole", "#f1ebdf"),
+            ] {
+                assert_eq!(legacy.colors[key], expected, "reference palette changed");
+            }
+            let mut parts: Vec<_> = loadout.parts.iter().map(|id| id.as_str()).collect();
+            parts.sort_unstable();
+            assert_eq!(
+                parts,
+                [
+                    "cuba:bottom/study-denim.v1",
+                    "cuba:footwear/study-sneakers.v1",
+                    "cuba:hair/study-swept.v1",
+                    "cuba:top/study-hoodie.v1"
+                ]
+            );
+        }
+        let pose_name = if reference {
+            "rest".into()
+        } else {
+            std::env::var("CUBA_STARTER_POSE").unwrap_or_else(|_| "rest".into())
+        };
         let mut pose = match pose_name.as_str() {
             "rest" => crate::character::Pose::rest(&recipe.rig),
             "walk" | "bend" | "jump" => {
@@ -117,14 +166,18 @@ fn capture_starters() {
                 }
             }
         }
-        let lod = match std::env::var("CUBA_STARTER_LOD")
-            .as_deref()
-            .unwrap_or("near")
-        {
-            "near" => CharacterLod::Near,
-            "mid" => CharacterLod::Mid,
-            "far" => CharacterLod::Far,
-            other => panic!("unsupported review LOD {other}"),
+        let lod = if reference {
+            CharacterLod::Near
+        } else {
+            match std::env::var("CUBA_STARTER_LOD")
+                .as_deref()
+                .unwrap_or("near")
+            {
+                "near" => CharacterLod::Near,
+                "mid" => CharacterLod::Mid,
+                "far" => CharacterLod::Far,
+                other => panic!("unsupported review LOD {other}"),
+            }
         };
         let entity = RenderEntity {
             body,
@@ -148,6 +201,9 @@ fn capture_starters() {
             true,
             &assets,
         );
+        if reference {
+            reference_stage::add(&mut renderer, &device);
+        }
         renderer.upload(&queue);
         if assets.iter().any(|id| {
             renderer
@@ -254,14 +310,19 @@ fn render_thumbnail(
     tall_headwear: bool,
     path: &std::path::Path,
 ) {
-    let portrait = std::env::var_os("CUBA_STARTER_PORTRAIT").is_some();
+    let reference = std::env::var_os("CUBA_STARTER_REFERENCE").is_some();
+    let portrait = !reference && std::env::var_os("CUBA_STARTER_PORTRAIT").is_some();
     // Optional inspection resolution uses the same meshes, lighting and draw
     // path as thumbnails. Keep the row width aligned for GPU readback.
-    let scale: u32 = std::env::var("CUBA_STARTER_SCALE")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1)
-        .clamp(1, 4);
+    let scale: u32 = if reference {
+        3
+    } else {
+        std::env::var("CUBA_STARTER_SCALE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1)
+            .clamp(1, 4)
+    };
     let width = if portrait { 512 } else { 256 } * scale;
     let height = if portrait { 640 } else { 320 } * scale;
     let extent = wgpu::Extent3d {
@@ -269,18 +330,36 @@ fn render_thumbnail(
         height,
         depth_or_array_layers: 1,
     };
-    let (center, half_height) = if portrait {
+    let (center, half_height) = if reference {
+        (1.62, 2.28)
+    } else if portrait {
         (2.82, 1.03)
     } else if tall_headwear {
         (1.95, 2.30)
     } else {
         (1.9, 2.25)
     };
-    let yaw: f32 = std::env::var("CUBA_STARTER_YAW")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.0713);
-    let camera = Vec3::new(yaw.sin() * 7., center + 0.6, -yaw.cos() * 7.);
+    let yaw: f32 = if reference {
+        0.26
+    } else {
+        std::env::var("CUBA_STARTER_YAW")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.0713)
+    };
+    let pitch: f32 = if reference {
+        0.12
+    } else {
+        std::env::var("CUBA_STARTER_PITCH")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0.6_f32.atan2(7.))
+    };
+    let camera = Vec3::new(
+        yaw.sin() * 7. * pitch.cos(),
+        center + 7. * pitch.sin(),
+        -yaw.cos() * 7. * pitch.cos(),
+    );
     let globals = Globals {
         view_projection: (Mat4::orthographic_rh(
             -half_height * 0.8,
