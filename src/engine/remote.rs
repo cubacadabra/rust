@@ -114,6 +114,13 @@ impl Engine {
             self.appearance_status = STATUS_INVALID;
             return false;
         }
+        if definition.version == Some(2) && project_v2_definition(&definition).is_none() {
+            // V2 is an explicit contract. Never silently reinterpret a broken
+            // loadout as a legacy appearance, because that hides missing packs
+            // and catalog/projection failures from the host UI.
+            self.appearance_status = STATUS_INVALID;
+            return false;
+        }
         let resolution = resolve_character_definition(
             &definition,
             self.player_appearance.colors,

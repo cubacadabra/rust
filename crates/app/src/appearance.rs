@@ -23,6 +23,7 @@ pub struct MorphAssetSnapshot {
     pub kind: String,
     pub display_name: String,
     pub thumbnail: Option<String>,
+    pub artifact_url: Option<String>,
     pub supported_bases: Vec<String>,
     pub occupied_slots: Vec<String>,
 }
@@ -91,7 +92,14 @@ struct RemoteAsset {
     name: String,
     thumbnail: Option<String>,
     #[serde(default)]
+    artifact: Option<RemoteArtifact>,
+    #[serde(default)]
     definition: Option<MorphAssetDefinition>,
+}
+
+#[derive(Deserialize)]
+struct RemoteArtifact {
+    url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -176,6 +184,7 @@ impl AppearanceState {
                     remote.name
                 },
                 thumbnail: remote.thumbnail,
+                artifact_url: remote.artifact.and_then(|artifact| artifact.url),
                 supported_bases: definition
                     .supported_bases
                     .iter()
