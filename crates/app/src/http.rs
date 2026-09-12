@@ -1,4 +1,5 @@
 use crate::{AppEffect, BirthdaySaveError, BodySaveError, EffectId, UsernameSaveError};
+use cubacadabra_morphs::MorphLoadout;
 use serde::Deserialize;
 
 pub(crate) fn username_request(
@@ -12,6 +13,42 @@ pub(crate) fn username_request(
         method: "POST".into(),
         path: "auth/username".into(),
         body: serde_json::json!({ "username": username }).to_string(),
+    }
+}
+
+pub(crate) fn appearance_catalog_request(effect_id: EffectId) -> AppEffect {
+    AppEffect::HttpRequest {
+        effect_id,
+        account_id: None,
+        method: "GET".into(),
+        path: "morphs/catalog?limit=100".into(),
+        body: String::new(),
+    }
+}
+
+pub(crate) fn appearance_load_request(effect_id: EffectId, account_id: String) -> AppEffect {
+    AppEffect::HttpRequest {
+        effect_id,
+        account_id: Some(account_id),
+        method: "GET".into(),
+        path: "auth/appearance".into(),
+        body: String::new(),
+    }
+}
+
+pub(crate) fn appearance_save_request(
+    effect_id: EffectId,
+    account_id: String,
+    appearance: MorphLoadout,
+    revision: u32,
+) -> AppEffect {
+    AppEffect::HttpRequest {
+        effect_id,
+        account_id: Some(account_id),
+        method: "PUT".into(),
+        path: "auth/appearance".into(),
+        body: serde_json::json!({ "expectedRevision": revision, "appearance": appearance })
+            .to_string(),
     }
 }
 

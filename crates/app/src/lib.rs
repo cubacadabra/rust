@@ -1,3 +1,4 @@
+mod appearance;
 mod catalog;
 #[cfg(not(target_arch = "wasm32"))]
 mod ffi;
@@ -8,6 +9,9 @@ mod username;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
+pub use appearance::{
+    AppearanceFeedback, AppearanceSnapshot, MorphAssetSnapshot, MorphPresetSnapshot,
+};
 use catalog::CatalogState;
 pub use catalog::{CatalogEntry, CatalogFeedback, CatalogFeedbackKind, CatalogSnapshot};
 use profile::ProfileState;
@@ -52,6 +56,18 @@ pub enum AppAction {
         body_id: String,
     },
     SaveBody {},
+    LoadAppearanceCatalog {},
+    BeginAppearanceEdit {},
+    SelectMorphPreset {
+        preset_id: String,
+    },
+    SetMorphPart {
+        asset_id: String,
+    },
+    ClearMorphPart {
+        asset_id: String,
+    },
+    SaveAppearance {},
     SaveBirthday {
         date_of_birth: String,
     },
@@ -100,6 +116,7 @@ pub struct AppSnapshot {
     pub profile: ProfileSnapshot,
     pub catalog: CatalogSnapshot,
     pub safety: SafetySnapshot,
+    pub appearance: AppearanceSnapshot,
 }
 
 /// One model per host session, not per screen. Hosts render snapshots, execute
@@ -110,6 +127,7 @@ pub struct AppModel {
     profile: ProfileState,
     catalog: CatalogState,
     safety: safety::SafetyState,
+    appearance: appearance::AppearanceState,
     effects: VecDeque<AppEffect>,
     next_effect_id: u32,
 }
@@ -122,6 +140,7 @@ impl Default for AppModel {
             profile: ProfileState::new(None, None, None),
             catalog: CatalogState::default(),
             safety: safety::SafetyState::default(),
+            appearance: appearance::AppearanceState::default(),
             effects: VecDeque::new(),
             next_effect_id: 1,
         }
@@ -154,6 +173,7 @@ impl AppModel {
                 );
                 self.catalog.replace();
                 self.safety.replace();
+                self.appearance.replace();
                 self.effects.clear();
             }
             AppAction::BeginUsernameEdit {} => self.profile.begin_username_edit(),
@@ -192,6 +212,29 @@ impl AppModel {
                             .expect("effect ID exhausted");
                         self.effects
                             .push_back(http::body_request(effect_id, account_id, body_id));
+                    }
+                }
+            }
+            AppAction::LoadAppearanceCatalog {} => {
+                let effect_id = EffectId(self.next_effect_id);
+                if self.appearance.request_catalog(effect_id) {
+                    self.next_effect_id += 1;
+                    self.effects
+                        .push_back(http::appearance_catalog_request(effect_id));
+                }
+            }
+            AppAction::BeginAppearanceEdit {} => self.appearance.begin_edit(),
+            AppAction::SelectMorphPreset { preset_id } => self.appearance.select_preset(&preset_id),
+            AppAction::SetMorphPart { asset_id } => self.appearance.set_part(&asset_id),
+            AppAction::ClearMorphPart { asset_id } => self.appearance.clear_part(&asset_id),
+            AppAction::SaveAppearance {} => {
+                if let Some(account_id) = self.account_id.clone() {
+                    let effect_id = EffectId(self.next_effect_id);
+                    if let Some((loadout, revision)) = self.appearance.request_save(effect_id) {
+                        self.next_effect_id += 1;
+                        self.effects.push_back(http::appearance_save_request(
+                            effect_id, account_id, loadout, revision,
+                        ));
                     }
                 }
             }
@@ -315,6 +358,35 @@ impl AppModel {
                         Ok(date_of_birth) => self.profile.birthday_saved(effect_id, date_of_birth),
                         Err(error) => self.profile.birthday_save_failed(effect_id, error),
                     }
+                } else if self.appearance.is_pending(effect_id) {
+                    let request = self.appearance.pending_kind(effect_id);
+                    let result = match request {
+                        Some(appearance::PendingAppearanceRequest::Catalog(_)) => {
+                            self.appearance.catalog_loaded(effect_id, &body)
+                        }
+                        Some(appearance::PendingAppearanceRequest::Load(_)) => {
+                            self.appearance.appearance_loaded(effect_id, status, &body)
+                        }
+                        Some(appearance::PendingAppearanceRequest::Save(_)) => {
+                            self.appearance.appearance_saved(effect_id, status, &body)
+                        }
+                        None => Err(()),
+                    };
+                    if result.is_err() {
+                        self.appearance.failed(effect_id);
+                    } else if matches!(
+                        request,
+                        Some(appearance::PendingAppearanceRequest::Catalog(_))
+                    ) {
+                        if let Some(account_id) = self.account_id.clone() {
+                            let next_id = EffectId(self.next_effect_id);
+                            self.next_effect_id += 1;
+                            if self.appearance.request_load(next_id) {
+                                self.effects
+                                    .push_back(http::appearance_load_request(next_id, account_id));
+                            }
+                        }
+                    }
                 } else if self.catalog.is_pending(effect_id) {
                     match catalog::response(status, &body) {
                         Ok(page) => self.catalog.loaded(
@@ -373,6 +445,8 @@ impl AppModel {
                 } else if self.profile.is_birthday_pending(effect_id) {
                     self.profile
                         .birthday_save_failed(effect_id, BirthdaySaveError::Unavailable)
+                } else if self.appearance.is_pending(effect_id) {
+                    self.appearance.failed(effect_id)
                 } else if self.catalog.is_pending(effect_id) {
                     self.catalog.failed(
                         effect_id,
@@ -418,6 +492,7 @@ impl AppModel {
             profile,
             catalog: self.catalog.snapshot(),
             safety: self.safety.snapshot(),
+            appearance: self.appearance.snapshot(),
         }
     }
 
