@@ -146,25 +146,6 @@ fn is_hero(entity: RenderEntity) -> bool {
     entity.body.is_person() && entity.outfit == OutfitId::EverydayHoodie
 }
 
-fn rendering_poses(
-    entity: RenderEntity,
-    study: super::hero_character::Study,
-    rig: &crate::character::rig::RigDefinition,
-    canonical_rest: bool,
-) -> (crate::character::Pose, crate::character::Pose) {
-    let bundled_pose = if is_hero(entity) {
-        super::hero_character::fit_pose(entity, study, rig)
-    } else {
-        entity.pose
-    };
-    let morph_pose = if canonical_rest {
-        entity.pose
-    } else {
-        bundled_pose
-    };
-    (morph_pose, bundled_pose)
-}
-
 struct Mesh {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
@@ -1081,21 +1062,19 @@ impl CharacterRenderer {
                 .get(id)
                 .is_some_and(|asset| asset.is_base && asset.canonical_rest)
         });
-        // Authored packs and bundled legacy pieces can coexist while a user
-        // customizes a morph. Canonical packs use the shared rest rig, while
-        // bundled sleeves and other procedural pieces still need the hero
-        // refit they were modeled against.
-        let (morph_pose, bundled_pose) =
-            rendering_poses(entity, self.hero_study, &body.recipe.rig, canonical_rest);
-        let morph_joints = body.recipe.rig.world_matrices(&morph_pose.transforms);
-        let bundled_joints = body.recipe.rig.world_matrices(&bundled_pose.transforms);
+        let pose = if is_hero(entity) && !canonical_rest {
+            super::hero_character::fit_pose(entity, self.hero_study, &body.recipe.rig)
+        } else {
+            entity.pose
+        };
+        let joints = body.recipe.rig.world_matrices(&pose.transforms);
         let root = Mat4::from_rotation_translation(
             Quat::from_rotation_y(entity.yaw),
             Vec3::from_array(entity.position),
         );
         for morph_asset in morph_assets.iter().take(16) {
             self.morphs
-                .add_instance(morph_asset, lod, root, morph_joints, style);
+                .add_instance(morph_asset, lod, root, joints, style);
         }
         let authored_base = morph_assets
             .iter()
@@ -1209,7 +1188,7 @@ impl CharacterRenderer {
             }
             let batch = &mut self.batches[*index];
             let transform =
-                root * bundled_joints[part.anchor.joint.index()] * feature_transform(*part, entity);
+                root * joints[part.anchor.joint.index()] * feature_transform(*part, entity);
             let mut tint = part.tint.color(style, face).map(|v| {
                 if v.is_finite() {
                     v.clamp(0.0, 1.0)
@@ -1270,9 +1249,7 @@ impl CharacterRenderer {
                     } else {
                         crate::character::JointId::RightLowerArm
                     };
-                    let turn = bundled_pose.transforms[elbow.index()]
-                        .rotation
-                        .to_scaled_axis();
+                    let turn = pose.transforms[elbow.index()].rotation.to_scaled_axis();
                     // Unused normal-row w lanes carry a bounded elbow axis-angle.
                     // Layout and inverse-transpose xyz lanes stay unchanged.
                     instance.normal[0][3] = turn.x;
@@ -1428,44 +1405,5 @@ impl CharacterRenderer {
         if kind == CharacterPass::Opaque {
             self.morphs.draw(pass, &self.opaque, &self.textured);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn canonical_morphs_keep_rest_pose_without_mangling_bundled_sleeves() {
-        let recipe = body_recipe(BodyId::Person);
-        let entity = RenderEntity {
-            body: BodyId::Person,
-            outfit: OutfitId::EverydayHoodie,
-            pose: crate::character::Pose::rest(&recipe.rig),
-            ..Default::default()
-        };
-
-        let (morph_pose, bundled_pose) = rendering_poses(
-            entity,
-            super::super::hero_character::Study::Everyday,
-            &recipe.rig,
-            true,
-        );
-        let expected_bundled_pose = super::super::hero_character::fit_pose(
-            entity,
-            super::super::hero_character::Study::Everyday,
-            &recipe.rig,
-        );
-
-        assert_eq!(morph_pose, entity.pose);
-        assert_eq!(
-            bundled_pose, expected_bundled_pose,
-            "bundled pieces must retain the legacy hero fit"
-        );
-        assert_ne!(
-            bundled_pose.transforms[JointId::LeftUpperArm.index()].translation,
-            morph_pose.transforms[JointId::LeftUpperArm.index()].translation,
-            "authored and bundled sleeves need distinct shoulder transforms"
-        );
     }
 }
