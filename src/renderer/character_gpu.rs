@@ -605,7 +605,6 @@ fn morph_surface_appearance(
         Material::Textured
     } else {
         match kind {
-            #[cfg(feature = "studio-ui")]
             MorphAssetKind::Hair => Material::Hair,
             MorphAssetKind::Top | MorphAssetKind::Outerwear => Material::Cloth,
             MorphAssetKind::Bottom => Material::Denim,
@@ -1054,7 +1053,6 @@ impl CharacterRenderer {
             .iter()
             .take(16)
             .any(|asset_id| self.morphs.is_skinned_base(asset_id));
-        #[cfg(feature = "studio-ui")]
         let authored_hair = morph_assets.iter().take(16).any(|id| {
             id.as_str() == "cuba:hair/bald.v1"
                 || self
@@ -1070,7 +1068,6 @@ impl CharacterRenderer {
         let authored_footwear = self.morphs.has_skinned_coverage(morph_assets, &["feet"]);
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
-            #[cfg(feature = "studio-ui")]
             if authored_hair && part.tint == character::Tint::Hair {
                 continue;
             }

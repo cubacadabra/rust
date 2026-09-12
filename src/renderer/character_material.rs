@@ -64,7 +64,6 @@ impl CharacterInstance {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Material {
     Toy,
-    #[cfg(feature = "studio-ui")]
     Hair,
     Cloth,
     Denim,
@@ -82,9 +81,7 @@ impl Material {
         match self {
             Self::Toy => [0.42, 0.18, 0.0, 0.0],
             // Authored starter hair has a softer sheen than plastic accessories.
-            // Its sculpted detail is in the source mesh. Studio-only until
-            // other clients advertise authored-hair support.
-            #[cfg(feature = "studio-ui")]
+            // Its sculpted detail is in the source mesh.
             Self::Hair => [0.78, 0.032, 0.0, 0.0],
             // The fourth value selects a deliberately cheap, filtered-looking
             // material detail branch in the character shader. It is not a
