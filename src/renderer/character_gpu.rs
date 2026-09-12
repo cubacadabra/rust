@@ -29,7 +29,7 @@ const MAX_MORPH_INSTANCES: usize = MAX_CHARACTERS * 16 * MAX_MORPH_PACK_SURFACES
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "character_morph_review.rs"]
 mod morph_review;
-#[cfg(all(test, feature = "studio-ui", not(target_arch = "wasm32")))]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 #[path = "character_starter_review.rs"]
 mod starter_review;
 
@@ -158,6 +158,8 @@ struct RegisteredMorph {
     coverage: Vec<String>,
     lods: [Mesh; 3],
     skinned_lods: Option<[MorphPackLod; 3]>,
+    canonical_rest: bool,
+    authored_static_face: bool,
     textures: Vec<wgpu::BindGroup>,
     bytes: usize,
 }
@@ -231,6 +233,20 @@ impl MorphRegistry {
         pack: MorphPack,
     ) -> Result<(), Vec<MorphDiagnostic>> {
         let id = pack.asset.id.clone();
+        for (index, lod) in pack.lods.iter().enumerate() {
+            if lod.normals.len() != lod.vertices.len()
+                || lod.normals.iter().any(|normal| {
+                    let n = Vec3::from_array(*normal);
+                    !n.is_finite() || !(0.98..=1.02).contains(&n.length_squared())
+                })
+            {
+                return Err(vec![MorphDiagnostic {
+                    code: "MORPH_GPU_INVALID_NORMALS".into(),
+                    path: format!("lods[{index}].normals"),
+                    message: "every vertex requires a finite authored unit normal".into(),
+                }]);
+            }
+        }
         let lod_bytes = pack
             .lods
             .iter()
@@ -310,6 +326,16 @@ impl MorphRegistry {
                 coverage: pack.asset.coverage.clone(),
                 lods: [near, mid, far],
                 skinned_lods,
+                canonical_rest: pack
+                    .asset
+                    .required_capabilities
+                    .iter()
+                    .any(|capability| capability.as_str() == "rig.canonical-rest.v1"),
+                authored_static_face: pack
+                    .asset
+                    .required_capabilities
+                    .iter()
+                    .any(|capability| capability.as_str() == "face.authored-static.v1"),
                 textures,
                 bytes,
             },
@@ -377,27 +403,15 @@ impl MorphRegistry {
             {
                 return;
             }
-            let mut normals = vec![Vec3::ZERO; lod_mesh.vertices.len()];
-            for triangle in lod_mesh.indices.chunks(3) {
-                let [ia, ib, ic] = triangle else {
-                    continue;
-                };
-                let a = Vec3::from_array(lod_mesh.vertices[*ia as usize]);
-                let b = Vec3::from_array(lod_mesh.vertices[*ib as usize]);
-                let c = Vec3::from_array(lod_mesh.vertices[*ic as usize]);
-                let normal = (b - a).cross(c - a);
-                normals[*ia as usize] += normal;
-                normals[*ib as usize] += normal;
-                normals[*ic as usize] += normal;
-            }
             let joint_normals = joints.map(Mat3::from_mat4);
             let vertices = lod_mesh
                 .vertices
                 .iter()
                 .zip(skinning)
-                .zip(normals)
+                .zip(&lod_mesh.normals)
                 .zip(&lod_mesh.uvs)
                 .map(|(((position, skin), normal), uv)| {
+                    let normal = Vec3::from_array(*normal);
                     let mut skinned_position = Vec3::ZERO;
                     let mut skinned_normal = Vec3::ZERO;
                     for (joint, weight) in skin.joints.into_iter().zip(skin.weights) {
@@ -602,7 +616,15 @@ fn morph_surface_appearance(
         _ => authored,
     };
     let material = if surface.texture.is_some() {
-        Material::Textured
+        match kind {
+            MorphAssetKind::Base
+            | MorphAssetKind::Hair
+            | MorphAssetKind::Top
+            | MorphAssetKind::Outerwear
+            | MorphAssetKind::Bottom
+            | MorphAssetKind::Footwear => Material::AuthoredTexture(kind),
+            _ => Material::Textured,
+        }
     } else {
         match kind {
             MorphAssetKind::Hair => Material::Hair,
@@ -635,27 +657,14 @@ fn upload_morph_lod(
     lod: MorphPackLod,
 ) -> Result<Mesh, Vec<MorphDiagnostic>> {
     let surfaces = lod.surfaces.clone();
-    let mut normals = vec![Vec3::ZERO; lod.vertices.len()];
-    for triangle in lod.indices.chunks(3) {
-        let [ia, ib, ic] = triangle else {
-            continue;
-        };
-        let a = Vec3::from_array(lod.vertices[*ia as usize]);
-        let b = Vec3::from_array(lod.vertices[*ib as usize]);
-        let c = Vec3::from_array(lod.vertices[*ic as usize]);
-        let normal = (b - a).cross(c - a);
-        normals[triangle[0] as usize] += normal;
-        normals[triangle[1] as usize] += normal;
-        normals[triangle[2] as usize] += normal;
-    }
     let vertices = lod
         .vertices
         .into_iter()
-        .zip(normals)
+        .zip(lod.normals)
         .zip(lod.uvs)
         .map(|((position, normal), uv)| CharacterVertex {
             position,
-            normal: normal.try_normalize().unwrap_or(Vec3::Y).to_array(),
+            normal,
             uv,
         })
         .collect::<Vec<_>>();
@@ -1035,7 +1044,16 @@ impl CharacterRenderer {
             .find(|candidate| candidate.body == entity.body && candidate.outfit == entity.outfit)
             .or_else(|| self.bodies.first())
             .expect("bundled character catalog");
-        let pose = if is_hero(entity) {
+        // Authored coordinates already target the declared biped bind pose.
+        // The legacy procedural hero refit moves shoulders, hips and ankles;
+        // applying it to those coordinates tears a complete authored outfit.
+        let canonical_rest = morph_assets.iter().take(16).any(|id| {
+            self.morphs
+                .assets
+                .get(id)
+                .is_some_and(|asset| asset.is_base && asset.canonical_rest)
+        });
+        let pose = if is_hero(entity) && !canonical_rest {
             super::hero_character::fit_pose(entity, self.hero_study, &body.recipe.rig)
         } else {
             entity.pose
@@ -1066,8 +1084,22 @@ impl CharacterRenderer {
             .has_skinned_coverage(morph_assets, &["torso", "arms"]);
         let authored_bottom = self.morphs.has_skinned_coverage(morph_assets, &["legs"]);
         let authored_footwear = self.morphs.has_skinned_coverage(morph_assets, &["feet"]);
+        let authored_static_face = morph_assets.iter().take(16).any(|id| {
+            self.morphs.assets.get(id).is_some_and(|asset| {
+                asset.is_base
+                    && asset.mode == MorphPackAttachmentMode::Skinned
+                    && asset.authored_static_face
+            })
+        });
         let mut effect_count = 0;
         for (part, index) in &body.parts[lod.index()] {
+            // An explicitly declared static art-study face owns its complete
+            // graphic expression. Animated analytic faces remain the default.
+            if authored_static_face
+                && matches!(part.tint, character::Tint::Face | character::Tint::Blush)
+            {
+                continue;
+            }
             if authored_hair && part.tint == character::Tint::Hair {
                 continue;
             }

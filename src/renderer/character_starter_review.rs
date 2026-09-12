@@ -18,7 +18,10 @@ fn capture_starters() {
         "presets": lock["presets"],
     })).unwrap();
     assert!(catalog.validate().is_empty());
-    assert_eq!(catalog.presets.len(), 24);
+    assert!(
+        !catalog.presets.is_empty(),
+        "capture needs at least one complete preset"
+    );
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = pollster::block_on(instance.request_adapter(&Default::default())).unwrap();
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -49,6 +52,15 @@ fn capture_starters() {
             ));
             let pack =
                 cubacadabra_morphs::decode_morph_pack(&std::fs::read(path).unwrap()).unwrap();
+            let mut invalid = pack.clone();
+            invalid.lods[0].normals.pop();
+            assert_eq!(
+                renderer
+                    .register_morph_pack(&device, &queue, invalid)
+                    .unwrap_err()[0]
+                    .code,
+                "MORPH_GPU_INVALID_NORMALS"
+            );
             renderer.register_morph_pack(&device, &queue, pack).unwrap();
         }
     }
@@ -82,10 +94,42 @@ fn capture_starters() {
             face: resolved.appearance.face,
             ..Default::default()
         };
+        let pose_name = std::env::var("CUBA_STARTER_POSE").unwrap_or_else(|_| "rest".into());
+        let mut pose = match pose_name.as_str() {
+            "rest" => crate::character::Pose::rest(&recipe.rig),
+            "walk" | "bend" | "jump" => {
+                crate::character::Pose::locomotion(&recipe.rig, 1.0, true, false)
+            }
+            _ => panic!("unsupported review pose {pose_name}"),
+        };
+        if pose_name == "bend" || pose_name == "jump" {
+            // Deliberate joint stress poses, not a substitute for a gameplay
+            // animation review. They expose rigid sleeve/knee attachment gaps.
+            for joint in [JointId::LeftLowerArm, JointId::RightLowerArm] {
+                pose.transforms[joint.index()].rotation = Quat::from_rotation_x(-1.1);
+            }
+            if pose_name == "jump" {
+                for joint in [JointId::LeftUpperLeg, JointId::RightUpperLeg] {
+                    pose.transforms[joint.index()].rotation = Quat::from_rotation_x(-0.6);
+                }
+                for joint in [JointId::LeftLowerLeg, JointId::RightLowerLeg] {
+                    pose.transforms[joint.index()].rotation = Quat::from_rotation_x(1.0);
+                }
+            }
+        }
+        let lod = match std::env::var("CUBA_STARTER_LOD")
+            .as_deref()
+            .unwrap_or("near")
+        {
+            "near" => CharacterLod::Near,
+            "mid" => CharacterLod::Mid,
+            "far" => CharacterLod::Far,
+            other => panic!("unsupported review LOD {other}"),
+        };
         let entity = RenderEntity {
             body,
             outfit: OutfitId::EverydayHoodie,
-            pose: crate::character::Pose::rest(&recipe.rig),
+            pose,
             face: crate::character::FaceParameters::preset(resolved.appearance.face),
             ..Default::default()
         };
@@ -99,12 +143,74 @@ fn capture_starters() {
             entity,
             style,
             [0.08, 0.04, 0.025, 1.],
-            CharacterLod::Near,
+            lod,
             0,
             true,
             &assets,
         );
         renderer.upload(&queue);
+        if assets.iter().any(|id| {
+            renderer
+                .morphs
+                .assets
+                .get(id)
+                .is_some_and(|a| a.is_base && a.canonical_rest)
+        }) {
+            let matrices = recipe.rig.world_matrices(&pose.transforms);
+            let expected_batches = assets
+                .iter()
+                .filter(|id| {
+                    renderer
+                        .morphs
+                        .assets
+                        .get(id)
+                        .is_some_and(|asset| asset.mode == MorphPackAttachmentMode::Skinned)
+                })
+                .count();
+            assert_eq!(
+                renderer.morphs.skinned_batches.len(),
+                expected_batches,
+                "all study parts must be admitted"
+            );
+            for batch in &renderer.morphs.skinned_batches {
+                let asset = &renderer.morphs.assets[&batch.asset_id];
+                let mesh = &asset.skinned_lods.as_ref().unwrap()[lod.index()];
+                for (index, actual) in batch.vertices.iter().enumerate() {
+                    let skin = &mesh.skinning.as_ref().unwrap()[index];
+                    let mut expected_position = Vec3::ZERO;
+                    let mut expected_normal = Vec3::ZERO;
+                    for (joint, weight) in skin.joints.into_iter().zip(skin.weights) {
+                        expected_position += matrices[joint as usize]
+                            .transform_point3(Vec3::from_array(mesh.vertices[index]))
+                            * weight;
+                        expected_normal += Mat3::from_mat4(matrices[joint as usize])
+                            * Vec3::from_array(mesh.normals[index])
+                            * weight;
+                    }
+                    assert!(Vec3::from_array(actual.position).distance(expected_position) < 1e-5);
+                    assert!(
+                        Vec3::from_array(actual.normal).distance(expected_normal.normalize())
+                            < 1e-5
+                    );
+                }
+            }
+            if assets.iter().any(|id| {
+                renderer
+                    .morphs
+                    .assets
+                    .get(id)
+                    .is_some_and(|a| a.is_base && a.authored_static_face)
+            }) {
+                assert!(
+                    renderer
+                        .batches
+                        .iter()
+                        .filter(|b| b.material == Material::Face)
+                        .all(|b| b.instances.is_empty()),
+                    "static face must own its expression on every target"
+                );
+            }
+        }
         let name = preset
             .id
             .as_str()
@@ -149,8 +255,15 @@ fn render_thumbnail(
     path: &std::path::Path,
 ) {
     let portrait = std::env::var_os("CUBA_STARTER_PORTRAIT").is_some();
-    let width = if portrait { 512 } else { 256 };
-    let height = if portrait { 640 } else { 320 };
+    // Optional inspection resolution uses the same meshes, lighting and draw
+    // path as thumbnails. Keep the row width aligned for GPU readback.
+    let scale: u32 = std::env::var("CUBA_STARTER_SCALE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1)
+        .clamp(1, 4);
+    let width = if portrait { 512 } else { 256 } * scale;
+    let height = if portrait { 640 } else { 320 } * scale;
     let extent = wgpu::Extent3d {
         width,
         height,

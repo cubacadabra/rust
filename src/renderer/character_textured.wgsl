@@ -48,7 +48,18 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
     let specular = pow(max(dot(normal, half_vector), 0.0), mix(100.0, 4.0, roughness)) * input.material.y;
     let rim = pow(1.0 - max(dot(normal, view), 0.0), 3.0) * 0.025;
     let base = decode_srgb(input.tint.rgb * sampled.rgb);
-    let lit = base * diffuse + vec3<f32>(specular + rim);
+    var lit = base * diffuse + vec3<f32>(specular + rim);
+    if input.material.w == 20.0 {
+        // Baked maps contain fiber/color and local contact occlusion only.
+        // Warm key and cool environment response still follow live normals;
+        // different cloth/hair/leather responses share the same vertex layout.
+        let sky = mix(vec3<f32>(0.17,0.19,0.24), vec3<f32>(0.39,0.46,0.56), normal.y*0.5+0.5);
+        let key = max((dot(normal,light)+0.13)/1.13,0.0);
+        let fill = max(dot(normal,normalize(vec3<f32>(-0.7,0.35,-0.4))),0.0);
+        lit = base * (sky + vec3<f32>(1.0,0.87,0.72)*key*0.86
+                          + vec3<f32>(0.65,0.78,1.0)*fill*0.20)
+            + vec3<f32>(1.0,0.93,0.82)*specular + base*rim*1.3;
+    }
     let fog = smoothstep(100.0, 220.0, distance(input.world, globals.camera_position.xyz));
     return vec4<f32>(mix(encode_srgb(lit), globals.fog_color.rgb, fog), input.tint.a * sampled.a);
 }

@@ -74,6 +74,7 @@ pub(super) enum Material {
     Face,
     Seam,
     Textured,
+    AuthoredTexture(cubacadabra_morphs::MorphAssetKind),
 }
 
 impl Material {
@@ -95,6 +96,17 @@ impl Material {
             Self::Face => [1.0, 0.0, 0.0, 0.0],
             Self::Seam => [1.0, 0.0, 1.4, 0.0],
             Self::Textured => [0.82, 0.04, 0.0, 19.0],
+            Self::AuthoredTexture(kind) => {
+                use cubacadabra_morphs::MorphAssetKind;
+                match kind {
+                    MorphAssetKind::Hair => [0.50, 0.075, 0.0, 20.0],
+                    MorphAssetKind::Top | MorphAssetKind::Outerwear => [0.94, 0.012, 0.0, 20.0],
+                    MorphAssetKind::Bottom => [0.89, 0.018, 0.0, 20.0],
+                    MorphAssetKind::Base => [0.72, 0.025, 0.0, 20.0],
+                    MorphAssetKind::Footwear => [0.70, 0.035, 0.0, 20.0],
+                    _ => [0.82, 0.04, 0.0, 19.0],
+                }
+            }
         }
     }
     pub fn pass(self) -> CharacterPass {
