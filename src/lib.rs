@@ -8,6 +8,7 @@ mod npc;
 mod player;
 #[cfg(any(not(target_arch = "wasm32"), feature = "web-renderer"))]
 mod renderer;
+mod schema;
 #[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
 pub mod dev_showcase {
     use std::path::Path;

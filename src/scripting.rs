@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
+use crate::schema::{ClassSchema, PropertyValue, interaction_zone_registry};
 use crate::ui::{UiEvent, UiRuntime};
 
 mod audio;
@@ -491,6 +492,18 @@ fn create_api(
             Ok(result)
         })?,
     )?;
+    interactions.set(
+        "get_schema",
+        lua.create_function(
+            move |lua, (_interactions, class_id): (lua::Table, String)| {
+                let registry = interaction_zone_registry();
+                let Some(class) = registry.class(&class_id) else {
+                    return Ok(lua::Value::Nil);
+                };
+                interaction_class_to_lua(lua, class).map(lua::Value::Table)
+            },
+        )?,
+    )?;
     api.set("interactions", interactions)?;
 
     network::install(lua, &api, Rc::clone(&state))?;
@@ -500,6 +513,45 @@ fn create_api(
     effects::install(lua, &api, Rc::clone(&state))?;
 
     Ok(api)
+}
+
+fn interaction_class_to_lua(lua: &lua::Lua, class: &ClassSchema) -> lua::Result<lua::Table> {
+    let result = create_table(lua)?;
+    result.set("id", class.id.as_str())?;
+    result.set("name", class.name.as_str())?;
+    let properties = create_table(lua)?;
+    for (index, property) in class.properties.iter().enumerate() {
+        let value = create_table(lua)?;
+        value.set("id", property.id.as_str())?;
+        value.set("name", property.name.as_str())?;
+        value.set("type", property.value_type.as_str())?;
+        value.set("default", property_value_to_lua(lua, &property.default)?)?;
+        if let Some(min) = property.range.min {
+            value.set("min", min)?;
+        }
+        if let Some(max) = property.range.max {
+            value.set("max", max)?;
+        }
+        let flags = create_table(lua)?;
+        flags.set("scriptVisible", property.flags.script_visible)?;
+        flags.set("serializable", property.flags.serializable)?;
+        flags.set("editorVisible", property.flags.editor_visible)?;
+        flags.set("replicable", property.flags.replicable)?;
+        value.set("flags", flags)?;
+        properties.set(index + 1, value)?;
+    }
+    result.set("properties", properties)?;
+    Ok(result)
+}
+
+fn property_value_to_lua(lua: &lua::Lua, value: &PropertyValue) -> lua::Result<lua::Value> {
+    match value {
+        PropertyValue::String(value) => Ok(lua::Value::String(lua.create_string(value)?)),
+        PropertyValue::Number(value) => Ok(lua::Value::Number(f64::from(*value))),
+        PropertyValue::Vector3(values) => Ok(lua::Value::Table(
+            lua.create_sequence_from(values.iter().copied())?,
+        )),
+    }
 }
 
 const MAX_SCRIPT_QUEUE_MESSAGES: usize = 64;
@@ -731,6 +783,34 @@ mod tests {
         assert_eq!(script.state().borrow().lobby_status, "button:enter");
         script.tick(0.0).expect("tick should run");
         assert_eq!(script.state().borrow().lobby_status, "inside:2");
+    }
+
+    #[test]
+    fn luau_can_read_the_shared_interaction_zone_schema() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    local schema = api.interactions:get_schema("cuba:interaction-zone.v1")
+                    local label_name = "missing"
+                    local radius_name = "missing"
+                    for _, property in ipairs(schema.properties) do
+                        if property.id == "cuba:interaction-zone.label" then
+                            label_name = property.name
+                        elseif property.id == "cuba:interaction-zone.radius" then
+                            radius_name = property.name
+                        end
+                    end
+                    api.lobby:set_status(schema.name .. ":" .. label_name .. "/" .. radius_name)
+                end
+                return game
+            "#,
+        );
+
+        assert_eq!(
+            script.state().borrow().lobby_status,
+            "InteractionZone:Label/Radius"
+        );
     }
 
     #[test]

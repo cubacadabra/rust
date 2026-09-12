@@ -1,6 +1,11 @@
 use crate::engine::Engine;
 use crate::game_package::InteractionDefinition;
 use crate::math::horizontal_distance;
+use crate::schema::{
+    INTERACTION_ZONE_CLASS_ID, INTERACTION_ZONE_KIND_ID, INTERACTION_ZONE_LABEL_ID,
+    INTERACTION_ZONE_POSITION_ID, INTERACTION_ZONE_RADIUS_ID, PropertyValue,
+    interaction_zone_registry,
+};
 use crate::scripting::{InteractionScriptState, InteractionZoneState};
 use crate::types::{InteractionEvent, InteractionRenderState};
 use crate::world::InteractionZone;
@@ -19,24 +24,60 @@ pub(crate) struct InteractionRuntime {
 
 impl InteractionRuntime {
     pub(crate) fn from_definitions(definitions: &[InteractionDefinition]) -> Self {
+        let schema = interaction_zone_registry();
+        let schema = schema
+            .class(INTERACTION_ZONE_CLASS_ID)
+            .expect("built-in interaction zone schema should be registered");
         let world = definitions
             .iter()
             .filter(|definition| !definition.id.trim().is_empty())
             .take(MAX_INTERACTIONS)
-            .map(|definition| InteractionZone {
-                id: definition.id.trim().to_owned(),
-                label: if definition.label.trim().is_empty() {
-                    definition.id.trim().to_owned()
+            .map(|definition| {
+                let id = definition.id.trim().to_owned();
+                let label = if definition.label.trim().is_empty() {
+                    id.clone()
                 } else {
-                    definition.label.clone()
-                },
-                kind: if definition.kind.trim().is_empty() {
-                    "zone".to_owned()
-                } else {
-                    definition.kind.clone()
-                },
-                position: definition.position(),
-                radius: definition.radius.max(0.5),
+                    definition.label.trim().to_owned()
+                };
+                let label = schema
+                    .property(INTERACTION_ZONE_LABEL_ID)
+                    .expect("interaction zone label schema should exist")
+                    .sanitize(PropertyValue::String(label))
+                    .as_string()
+                    .expect("interaction zone label should be a string")
+                    .to_owned();
+                let kind = schema
+                    .property(INTERACTION_ZONE_KIND_ID)
+                    .expect("interaction zone kind schema should exist")
+                    .sanitize(PropertyValue::String(
+                        if definition.kind.trim().is_empty() {
+                            "zone".to_owned()
+                        } else {
+                            definition.kind.trim().to_owned()
+                        },
+                    ))
+                    .as_string()
+                    .expect("interaction zone kind should be a string")
+                    .to_owned();
+                let position = schema
+                    .property(INTERACTION_ZONE_POSITION_ID)
+                    .expect("interaction zone position schema should exist")
+                    .sanitize(PropertyValue::Vector3(definition.position()))
+                    .as_vector3()
+                    .expect("interaction zone position should be a vector");
+                let radius = schema
+                    .property(INTERACTION_ZONE_RADIUS_ID)
+                    .expect("interaction zone radius schema should exist")
+                    .sanitize(PropertyValue::Number(definition.radius))
+                    .as_number()
+                    .expect("interaction zone radius should be a number");
+                InteractionZone {
+                    id,
+                    label,
+                    kind,
+                    position,
+                    radius,
+                }
             })
             .collect::<Vec<_>>();
         Self {
@@ -168,5 +209,28 @@ impl Engine {
             position[0],
             position[2],
         ) <= radius
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interaction_definitions_use_the_shared_schema_for_normalization() {
+        let runtime = InteractionRuntime::from_definitions(&[InteractionDefinition {
+            id: "  gate-a  ".to_owned(),
+            label: "  GATE A  ".to_owned(),
+            kind: "  ".to_owned(),
+            position: vec![1.0, 2.0, 3.0],
+            radius: -10.0,
+            ..InteractionDefinition::default()
+        }]);
+
+        assert_eq!(runtime.world[0].id, "gate-a");
+        assert_eq!(runtime.world[0].label, "GATE A");
+        assert_eq!(runtime.world[0].kind, "zone");
+        assert_eq!(runtime.world[0].position, [1.0, 2.0, 3.0]);
+        assert_eq!(runtime.world[0].radius, 0.5);
     }
 }
