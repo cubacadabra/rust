@@ -22,7 +22,10 @@ const MAX_PARTS: usize = 48 + crate::character::hair::MAX_LOCKS;
 pub(super) const MAX_MESHES: usize = 384 + 2 * crate::character::hair::MAX_LOCKS * 3;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
 const MAX_MORPH_PACKS: usize = 32;
-const MAX_MORPH_RESIDENCY: usize = 16 * 1024 * 1024;
+// The reusable starter wardrobe includes 20 baked, three-LOD assets. Keep a
+// bounded registry large enough for the complete catalog, not just one outfit.
+// This is a residency ceiling, not a preallocation or per-frame skinning budget.
+const MAX_MORPH_RESIDENCY: usize = 64 * 1024 * 1024;
 const MAX_SKINNED_VERTICES: usize = MAX_CHARACTERS * 8192;
 const MAX_MORPH_INSTANCES: usize = MAX_CHARACTERS * 16 * MAX_MORPH_PACK_SURFACES;
 
@@ -273,7 +276,13 @@ impl MorphRegistry {
             return Err(vec![morph_error("MORPH_GPU_RESOURCE_OVERFLOW", "geometry")]);
         };
         if new_resident_bytes > MAX_MORPH_RESIDENCY {
-            return Err(vec![morph_error("MORPH_GPU_RESOURCE_LIMIT", "geometry")]);
+            return Err(vec![MorphDiagnostic {
+                code: "MORPH_GPU_RESOURCE_LIMIT".into(),
+                path: "geometry".into(),
+                message: format!(
+                    "morph registry requires {new_resident_bytes} bytes; limit is {MAX_MORPH_RESIDENCY} bytes"
+                ),
+            }]);
         }
         if !self.assets.contains_key(&id) && self.assets.len() >= MAX_MORPH_PACKS {
             return Err(vec![morph_error("MORPH_GPU_PACK_LIMIT", "asset.id")]);

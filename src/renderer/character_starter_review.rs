@@ -88,6 +88,18 @@ fn capture_starters() {
             renderer.register_morph_pack(&device, &queue, pack).unwrap();
         }
     }
+    assert!(renderer.morphs.resident_bytes <= super::MAX_MORPH_RESIDENCY);
+    std::fs::write(
+        output.join("residency.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "packs": renderer.morphs.assets.len(),
+            "residentBytes": renderer.morphs.resident_bytes,
+            "limitBytes": super::MAX_MORPH_RESIDENCY,
+            "perFrameSkinnedVertexLimit": super::MAX_SKINNED_VERTICES
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     for preset in &catalog.presets {
         let loadout = preset.loadout();
         let legacy = cubacadabra_morphs::project_v2_to_v1(&catalog, &loadout).unwrap();
