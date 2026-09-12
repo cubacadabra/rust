@@ -165,7 +165,9 @@ impl Renderer {
             camera_position,
             world_viewport,
         );
-        ui_vertices.extend(super::ui::build_ui_vertices(&self.ui_frame));
+        if !self.avatar_preview_mode {
+            ui_vertices.extend(super::ui::build_ui_vertices(&self.ui_frame));
+        }
         #[cfg(target_os = "android")]
         if !super::device::ANDROID_FIRST_FRAME_REPORTED
             .swap(true, std::sync::atomic::Ordering::Relaxed)

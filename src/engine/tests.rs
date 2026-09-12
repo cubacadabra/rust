@@ -588,6 +588,32 @@ fn local_appearance_can_switch_between_authored_person_bases_repeatedly() {
 }
 
 #[test]
+fn v2_morph_loadouts_project_into_the_preview_renderer_contract() {
+    let mut engine = Engine::new();
+    assert_eq!(
+        engine.set_local_appearance_json(
+            r##"{"version":2,"base":"cuba:base/person-02.v1","parts":["cuba:hair/shag.v1","cuba:everyday-hoodie.v1"],"face":"cuba:face/surprised.v1","parameters":{},"revision":1}"##,
+        ),
+        1
+    );
+    assert_eq!(
+        engine.player_appearance.body,
+        crate::character::BodyId::PersonNonbinary
+    );
+    assert_eq!(
+        engine.player_appearance.face,
+        crate::character::FacePreset::Surprised
+    );
+    assert_eq!(
+        engine.player_appearance.outfit,
+        crate::character::OutfitId::EverydayHoodie
+    );
+    assert!(engine.player_appearance.equipment.iter().any(|item| {
+        item.slot == EquipmentSlot::Base && item.asset_id == "cuba:base/person-02.v1"
+    }));
+}
+
+#[test]
 fn versioned_remote_roster_preserves_identity_through_reorder() {
     let mut engine = Engine::new();
     let first = r##"{

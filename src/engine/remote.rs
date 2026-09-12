@@ -9,6 +9,7 @@ use crate::engine::identity::{
 use crate::engine::{Engine, MAX_AGENTS};
 use crate::game_package::CharacterDefinition;
 use crate::types::{CharacterEmote, CharacterEntityKey, CharacterSupport, RemotePlayer};
+use cubacadabra_morphs::{LegacyAppearance, MorphLoadout, parse_catalog, project_v2_to_v1};
 
 impl Engine {
     pub(crate) fn set_remote_player_count(&mut self, count: usize) {
@@ -484,6 +485,12 @@ pub(super) fn resolve_character_definition(
     legacy_colors: CharacterColors,
     fallback: &CharacterAppearance,
 ) -> crate::character::definition::AppearanceResolution {
+    if definition.version == Some(2) {
+        if let Some(legacy) = project_v2_definition(definition) {
+            return resolve_legacy_definition(&legacy, legacy_colors, fallback);
+        }
+    }
+
     let equipment = &definition.equipment;
     let colors = &definition.colors;
     resolve_appearance(AppearanceInput {
@@ -502,6 +509,53 @@ pub(super) fn resolve_character_definition(
             .or(Some(fallback.outfit.stable_id())),
         equipment,
         colors,
+        legacy_colors,
+        revision: definition.revision,
+    })
+}
+
+fn project_v2_definition(definition: &CharacterDefinition) -> Option<LegacyAppearance> {
+    let loadout = MorphLoadout {
+        version: 2,
+        base: definition.base.as_deref()?.parse().ok()?,
+        parts: definition
+            .parts
+            .iter()
+            .map(|part| part.parse().ok())
+            .collect::<Option<Vec<_>>>()?,
+        face: definition
+            .face
+            .as_deref()
+            .map(|face| face.parse().ok())
+            .flatten(),
+        parameters: definition.parameters.clone(),
+        revision: definition.revision,
+    };
+    let catalog = parse_catalog(include_str!("../../assets/characters/morph_catalog.json")).ok()?;
+    project_v2_to_v1(&catalog, &loadout).ok()
+}
+
+fn resolve_legacy_definition(
+    definition: &LegacyAppearance,
+    legacy_colors: CharacterColors,
+    fallback: &CharacterAppearance,
+) -> crate::character::definition::AppearanceResolution {
+    resolve_appearance(AppearanceInput {
+        version: definition.version,
+        body: definition
+            .body
+            .as_deref()
+            .or(Some(fallback.body.stable_id())),
+        face: definition
+            .face
+            .as_deref()
+            .or(Some(fallback.face.stable_id())),
+        outfit: definition
+            .outfit
+            .as_deref()
+            .or(Some(fallback.outfit.stable_id())),
+        equipment: &definition.equipment,
+        colors: &definition.colors,
         legacy_colors,
         revision: definition.revision,
     })

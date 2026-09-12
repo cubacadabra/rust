@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use cubacadabra_morphs::MorphParameterValue;
 use serde::Deserialize;
 
 use crate::effects::EffectLibraryDefinition;
@@ -753,6 +754,10 @@ pub(crate) struct CharacterDefinition {
     #[serde(default)]
     pub(crate) version: Option<u16>,
     #[serde(default)]
+    pub(crate) base: Option<String>,
+    #[serde(default)]
+    pub(crate) parts: Vec<String>,
+    #[serde(default)]
     pub(crate) body: Option<String>,
     #[serde(default)]
     pub(crate) face: Option<String>,
@@ -762,6 +767,8 @@ pub(crate) struct CharacterDefinition {
     pub(crate) equipment: BTreeMap<String, String>,
     #[serde(default)]
     pub(crate) colors: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(crate) parameters: BTreeMap<String, MorphParameterValue>,
     #[serde(default)]
     pub(crate) revision: u32,
 }
@@ -783,12 +790,15 @@ impl CharacterDefinition {
     fn asset_strings(&self) -> impl Iterator<Item = &str> {
         self.body
             .iter()
+            .chain(self.base.iter())
+            .chain(self.parts.iter())
             .chain(self.face.iter())
             .chain(self.outfit.iter())
             .chain(self.equipment.keys())
             .chain(self.equipment.values())
             .chain(self.colors.keys())
             .chain(self.colors.values())
+            .chain(self.parameters.keys())
             .map(String::as_str)
     }
 
