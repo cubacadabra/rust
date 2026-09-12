@@ -1,6 +1,6 @@
 use cubacadabra_morphs::{
-    MorphAssetDefinition, MorphAssetId, MorphAssetKind, MorphLoadout, MorphPreset,
-    migrate_v1_appearance,
+    MORPH_CATALOG_SCHEMA_VERSION, MorphAssetDefinition, MorphAssetId, MorphAssetKind, MorphCatalog,
+    MorphLoadout, MorphPreset, migrate_v1_appearance, project_v2_to_v1,
 };
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +49,9 @@ pub struct AppearanceSnapshot {
     pub draft_base: Option<String>,
     pub draft_parts: Vec<String>,
     pub draft_face: Option<String>,
+    pub draft_preset_id: Option<String>,
+    pub selected_render_json: Option<String>,
+    pub draft_render_json: Option<String>,
     pub draft_can_save: bool,
     pub is_loading: bool,
     pub is_saving: bool,
@@ -346,6 +349,23 @@ impl AppearanceState {
         };
         let (selected_base, selected_parts, selected_face) = selections(self.saved.as_ref());
         let (draft_base, draft_parts, draft_face) = selections(self.draft.as_ref());
+        let projection_catalog = MorphCatalog {
+            schema_version: MORPH_CATALOG_SCHEMA_VERSION,
+            content_version: self.release.clone().unwrap_or_else(|| "local".into()),
+            assets: self.catalog.clone(),
+            presets: self.presets.clone(),
+        };
+        let render_json = |loadout: Option<&MorphLoadout>| {
+            loadout
+                .and_then(|loadout| project_v2_to_v1(&projection_catalog, loadout).ok())
+                .and_then(|appearance| serde_json::to_string(&appearance).ok())
+        };
+        let draft_preset_id = self.draft.as_ref().and_then(|draft| {
+            self.presets
+                .iter()
+                .find(|preset| loadout_matches_preset(draft, preset))
+                .map(|preset| preset.id.to_string())
+        });
         AppearanceSnapshot {
             release: self.release.clone(),
             assets: self.assets.clone(),
@@ -356,6 +376,9 @@ impl AppearanceState {
             draft_base,
             draft_parts,
             draft_face,
+            draft_preset_id,
+            selected_render_json: render_json(self.saved.as_ref()),
+            draft_render_json: render_json(self.draft.as_ref()),
             draft_can_save: self.draft.is_some() && self.saved != self.draft,
             is_loading: matches!(
                 self.pending,
@@ -365,6 +388,16 @@ impl AppearanceState {
             feedback: self.feedback.clone(),
         }
     }
+}
+
+fn loadout_matches_preset(loadout: &MorphLoadout, preset: &MorphPreset) -> bool {
+    let mut left = loadout.clone();
+    let mut right = preset.loadout();
+    left.revision = 0;
+    right.revision = 0;
+    left.canonicalize();
+    right.canonicalize();
+    left == right
 }
 
 pub(crate) fn person_one_loadout() -> MorphLoadout {
@@ -389,5 +422,42 @@ fn preset_snapshot(preset: &MorphPreset) -> MorphPresetSnapshot {
         parts: preset.parts.iter().map(ToString::to_string).collect(),
         face: preset.face.as_ref().map(ToString::to_string),
         thumbnail: preset.thumbnail.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cubacadabra_morphs::{LegacyAppearance, parse_catalog};
+
+    #[test]
+    fn snapshot_projects_the_loaded_catalog_and_identifies_one_exact_preset() {
+        let catalog = parse_catalog(include_str!(
+            "../../../assets/characters/morph_catalog.json"
+        ))
+        .unwrap();
+        let preset = catalog.presets[0].clone();
+        let mut state = AppearanceState {
+            release: Some(catalog.content_version.clone()),
+            catalog: catalog.assets,
+            presets: catalog.presets,
+            draft: Some(preset.loadout()),
+            ..Default::default()
+        };
+
+        let snapshot = state.snapshot();
+        assert_eq!(
+            snapshot.draft_preset_id.as_deref(),
+            Some(preset.id.as_str())
+        );
+        let rendered: LegacyAppearance =
+            serde_json::from_str(snapshot.draft_render_json.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            rendered.equipment.get("base"),
+            Some(&preset.base.to_string())
+        );
+
+        state.set_part("cuba:face/curious.v1");
+        assert_eq!(state.snapshot().draft_preset_id, None);
     }
 }

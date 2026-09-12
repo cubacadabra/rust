@@ -230,12 +230,12 @@ impl Renderer {
     }
 
     fn apply_avatar_preview_scene(&mut self) {
-        // Preview is a presentation surface, not a second game world. Keep
-        // the selected avatar at the origin and use a deterministic close-up
-        // orbit so opening the editor never reveals the previous game scene.
-        self.scene.player.position = [0.0, 0.0, 0.0];
-        self.scene.player.yaw = 0.0;
-        self.scene.camera = [0.0, 0.18, 5.8];
+        // Preview is a presentation surface, not a second game world. Replace
+        // game scenery while preserving engine-owned movement and camera state.
+        // The showcase camera looks toward the origin from +Z. Face the
+        // avatar toward it, while preserving the engine camera so Studio's
+        // mouse orbit and zoom input remain effective.
+        self.scene.player.yaw = std::f32::consts::PI;
         self.scene.world = RenderWorld {
             ground_size: 12.0,
             grid_size: 0.0,
