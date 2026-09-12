@@ -1080,6 +1080,13 @@ impl CharacterRenderer {
             .iter()
             .take(16)
             .any(|asset_id| self.morphs.is_skinned_base(asset_id));
+        // A native v2 loadout is a complete authored character. Missing packs
+        // must render as missing, never as a procedural body/clothing hybrid.
+        // Legacy equipment that explicitly registers an authored base gets
+        // the same single-path behavior.
+        if entity.authored_morph || authored_base {
+            return;
+        }
         let authored_hair = morph_assets.iter().take(16).any(|id| {
             id.as_str() == "cuba:hair/bald.v1"
                 || self

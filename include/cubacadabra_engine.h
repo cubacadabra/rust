@@ -197,6 +197,11 @@ uint8_t engine_set_local_appearance_json(
     const uint8_t *source,
     uintptr_t length
 );
+uint8_t engine_set_local_morph_loadout_json(
+    CubacadabraEngine *engine,
+    const uint8_t *source,
+    uintptr_t length
+);
 uint8_t engine_appearance_status(const CubacadabraEngine *engine);
 uint32_t engine_appearance_revision(const CubacadabraEngine *engine);
 uint8_t *engine_remote_update_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);

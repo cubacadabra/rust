@@ -102,32 +102,19 @@ fn capture_starters() {
     .unwrap();
     for preset in &catalog.presets {
         let loadout = preset.loadout();
-        let legacy = cubacadabra_morphs::project_v2_to_v1(&catalog, &loadout).unwrap();
-        let resolved = crate::character::resolve_appearance(crate::character::AppearanceInput {
-            version: Some(1),
-            body: legacy.body.as_deref(),
-            face: legacy.face.as_deref(),
-            outfit: legacy.outfit.as_deref(),
-            equipment: &legacy.equipment,
-            colors: &legacy.colors,
-            legacy_colors: Default::default(),
-            revision: 0,
-        });
-        assert!(
-            resolved.issues.is_empty(),
-            "{}: {:?}",
-            preset.id,
-            resolved.issues
+        let appearance = crate::character::definition::appearance_from_morph_loadout(
+            loadout.clone(),
+            Default::default(),
         );
-        let body = BodyId::from_stable_id(legacy.body.as_deref().unwrap()).unwrap();
+        let body = appearance.body;
         let recipe = body_recipe(body);
         let style = AvatarStyle {
             body,
-            skin: color(&legacy.colors["skin"]),
-            shirt: color(&legacy.colors["primary"]),
-            pants: color(&legacy.colors["secondary"]),
-            shoes: color(&legacy.colors["sole"]),
-            face: resolved.appearance.face,
+            skin: appearance.colors.skin,
+            shirt: appearance.colors.primary,
+            pants: appearance.colors.secondary,
+            shoes: appearance.colors.sole,
+            face: appearance.face,
             ..Default::default()
         };
         if reference {
@@ -137,7 +124,11 @@ fn capture_starters() {
                 ("secondary", "#24384e"),
                 ("sole", "#f1ebdf"),
             ] {
-                assert_eq!(legacy.colors[key], expected, "reference palette changed");
+                assert_eq!(
+                    loadout.parameters[key],
+                    cubacadabra_morphs::MorphParameterValue::Text(expected.into()),
+                    "reference palette changed"
+                );
             }
             let mut parts: Vec<_> = loadout.parts.iter().map(|id| id.as_str()).collect();
             parts.sort_unstable();
@@ -195,13 +186,13 @@ fn capture_starters() {
             body,
             outfit: OutfitId::EverydayHoodie,
             pose,
-            face: crate::character::FaceParameters::preset(resolved.appearance.face),
+            face: crate::character::FaceParameters::preset(appearance.face),
             ..Default::default()
         };
-        let assets: Vec<_> = legacy
-            .equipment
-            .values()
-            .map(|id| MorphAssetId::parse(id).unwrap())
+        let assets: Vec<_> = std::iter::once(&loadout.base)
+            .chain(loadout.parts.iter())
+            .chain(loadout.face.iter())
+            .cloned()
             .collect();
         renderer.begin();
         renderer.add_with_quality(
@@ -213,6 +204,22 @@ fn capture_starters() {
             true,
             &assets,
         );
+        let authored_base = assets.iter().any(|id| {
+            renderer
+                .morphs
+                .assets
+                .get(id)
+                .is_some_and(|asset| asset.is_base && asset.canonical_rest)
+        });
+        if authored_base {
+            assert!(
+                renderer
+                    .batches
+                    .iter()
+                    .all(|batch| batch.instances.is_empty()),
+                "schema-5 starters must use zero procedural character parts"
+            );
+        }
         if reference {
             reference_stage::add(&mut renderer, &device);
         }
@@ -302,16 +309,6 @@ fn capture_starters() {
             &output.join(format!("{name}.png")),
         );
     }
-}
-
-fn color(hex: &str) -> [f32; 4] {
-    let value = u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap();
-    [
-        ((value >> 16) & 255) as f32 / 255.,
-        ((value >> 8) & 255) as f32 / 255.,
-        (value & 255) as f32 / 255.,
-        1.,
-    ]
 }
 
 fn render_thumbnail(

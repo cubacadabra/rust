@@ -96,6 +96,9 @@ pub(super) struct RenderEntity {
     /// never reads the legacy snapshot suffix as an assembled flag.
     #[allow(dead_code)]
     pub(super) legacy_assembled: bool,
+    /// Native v2 loadouts never admit procedural character geometry, even
+    /// while a required MorphPack is missing from renderer residency.
+    pub(super) authored_morph: bool,
     pub(super) body: crate::character::BodyId,
     pub(super) outfit: crate::character::OutfitId,
     pub(super) pose: crate::character::Pose,

@@ -195,6 +195,27 @@ pub unsafe extern "C" fn engine_load_appearance_buffer(engine: *mut Engine) -> u
         .unwrap_or(0)
 }
 
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_morph_loadout_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_appearance_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_load_morph_loadout_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.load_morph_loadout_buffer()))
+        .unwrap_or(0)
+}
+
 /// Applies a local appearance supplied as a borrowed UTF-8 JSON span. This is
 /// a convenience for hosts that do not need the persistent engine buffer.
 #[unsafe(no_mangle)]
@@ -223,6 +244,36 @@ pub unsafe extern "C" fn engine_set_local_appearance_json(
         return 0;
     };
     engine.set_local_appearance_json(source)
+}
+
+#[unsafe(no_mangle)]
+/// Applies a schema-2 morph loadout directly, without projecting through the
+/// legacy body/outfit/equipment representation.
+///
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create` and
+/// `source` must be null only when `length` is zero or otherwise point to
+/// `length` readable bytes for the duration of this call.
+pub unsafe extern "C" fn engine_set_local_morph_loadout_json(
+    engine: *mut Engine,
+    source: *const u8,
+    length: usize,
+) -> u8 {
+    let Some(engine) = (unsafe { engine.as_mut() }) else {
+        return 0;
+    };
+    if source.is_null() && length != 0 {
+        return 0;
+    }
+    let bytes = if length == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(source, length) }
+    };
+    let Ok(source) = std::str::from_utf8(bytes) else {
+        return 0;
+    };
+    engine.set_local_morph_loadout_json(source)
 }
 
 #[unsafe(no_mangle)]

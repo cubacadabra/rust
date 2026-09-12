@@ -1,6 +1,8 @@
 use glam::{Vec2, Vec3};
 use std::collections::BTreeMap;
 
+use cubacadabra_morphs::{MorphLoadout, MorphParameterValue};
+
 use super::face::FaceAnchors;
 use super::rig::{JointId, RigDefinition, common_rest_rig};
 
@@ -248,6 +250,7 @@ pub(crate) struct CharacterAppearance {
     pub(crate) face: crate::character::FacePreset,
     pub(crate) outfit: OutfitId,
     pub(crate) equipment: Vec<EquipmentItem>,
+    pub(crate) morph_loadout: Option<MorphLoadout>,
     pub(crate) colors: CharacterColors,
     pub(crate) revision: u32,
 }
@@ -404,10 +407,40 @@ pub(crate) fn resolve_appearance(input: AppearanceInput<'_>) -> AppearanceResolu
         face,
         outfit,
         equipment,
+        morph_loadout: None,
         colors,
         revision: input.revision,
     };
     AppearanceResolution { appearance, issues }
+}
+
+pub(crate) fn appearance_from_morph_loadout(
+    loadout: MorphLoadout,
+    fallback_colors: CharacterColors,
+) -> CharacterAppearance {
+    let mut colors = fallback_colors;
+    apply_morph_color(&mut colors.skin, loadout.parameters.get("skin"));
+    apply_morph_color(&mut colors.primary, loadout.parameters.get("primary"));
+    apply_morph_color(&mut colors.secondary, loadout.parameters.get("secondary"));
+    apply_morph_color(&mut colors.sole, loadout.parameters.get("sole"));
+    let face = loadout
+        .face
+        .as_ref()
+        .and_then(|id| id.as_str().strip_prefix("cuba:face/"))
+        .and_then(|value| value.strip_suffix(".v1"))
+        .and_then(face_preset_from_id)
+        .unwrap_or(crate::character::FacePreset::Neutral);
+    let revision = loadout.revision;
+    CharacterAppearance {
+        version: loadout.version,
+        body: BodyId::Person,
+        face,
+        outfit: OutfitId::EverydayHoodie,
+        equipment: Vec::new(),
+        morph_loadout: Some(loadout),
+        colors,
+        revision,
+    }
 }
 
 fn valid_asset_id(value: &str) -> bool {
@@ -419,6 +452,15 @@ fn apply_color(target: &mut [f32; 4], value: Option<&String>) {
         return;
     };
     *target = value;
+}
+
+fn apply_morph_color(target: &mut [f32; 4], value: Option<&MorphParameterValue>) {
+    let Some(MorphParameterValue::Text(value)) = value else {
+        return;
+    };
+    if let Some(value) = parse_color(value) {
+        *target = value;
+    }
 }
 
 fn parse_color(value: &str) -> Option<[f32; 4]> {
@@ -596,6 +638,7 @@ pub(crate) fn body_recipe(id: BodyId) -> BodyRecipe {
         face: crate::character::FacePreset::Happy,
         outfit: OutfitId::EverydayHoodie,
         equipment: Vec::new(),
+        morph_loadout: None,
         colors: CharacterColors::default(),
         revision: 0,
     };

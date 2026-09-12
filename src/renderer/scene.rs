@@ -132,6 +132,15 @@ impl Renderer {
                     .unwrap_or_default(),
                 CharacterEntityKind::LocalNpc => Vec::new(),
             };
+            let authored_morph = match sample.key.kind {
+                CharacterEntityKind::LocalPlayer => {
+                    engine.player_appearance().morph_loadout.is_some()
+                }
+                CharacterEntityKind::RemotePlayer => engine
+                    .remote_appearance(sample.key)
+                    .is_some_and(|appearance| appearance.morph_loadout.is_some()),
+                CharacterEntityKind::LocalNpc => false,
+            };
             if !morph_assets.is_empty() {
                 self.scene.morph_assets.insert(sample.key, morph_assets);
             }
@@ -145,16 +154,19 @@ impl Renderer {
             let animation = presentation.evaluate(sample, body, reduced_effects);
             match sample.key.kind {
                 CharacterEntityKind::LocalPlayer => {
-                    self.scene.player = render_entity(sample, style, animation)
+                    self.scene.player = render_entity(sample, style, animation, authored_morph)
                 }
-                CharacterEntityKind::LocalNpc => self
-                    .scene
-                    .agents
-                    .push(render_entity(sample, style, animation)),
-                CharacterEntityKind::RemotePlayer => self
-                    .scene
-                    .remote_players
-                    .push(render_entity(sample, style, animation)),
+                CharacterEntityKind::LocalNpc => {
+                    self.scene
+                        .agents
+                        .push(render_entity(sample, style, animation, authored_morph))
+                }
+                CharacterEntityKind::RemotePlayer => self.scene.remote_players.push(render_entity(
+                    sample,
+                    style,
+                    animation,
+                    authored_morph,
+                )),
             }
             if sample.key.kind == CharacterEntityKind::RemotePlayer {
                 let fallback = format!("PLAYER {}", remote_index + 1);
@@ -265,6 +277,13 @@ impl Renderer {
 }
 
 fn morph_assets_for_appearance(appearance: &CharacterAppearance) -> Vec<MorphAssetId> {
+    if let Some(loadout) = &appearance.morph_loadout {
+        return std::iter::once(&loadout.base)
+            .chain(loadout.parts.iter())
+            .chain(loadout.face.iter())
+            .cloned()
+            .collect();
+    }
     appearance
         .equipment
         .iter()
@@ -292,6 +311,7 @@ fn render_entity(
     sample: CharacterMotionSample,
     style: AvatarStyle,
     animation: AnimationOutput,
+    authored_morph: bool,
 ) -> RenderEntity {
     RenderEntity {
         key: sample.key,
@@ -301,6 +321,7 @@ fn render_entity(
         moving: sample.moving,
         sprinting: sample.sprinting,
         legacy_assembled: false,
+        authored_morph,
         body: style.body,
         outfit: style.outfit,
         pose: animation.pose,
@@ -590,6 +611,7 @@ mod tests {
                     asset_id: "cuba:headwear/headphones.v1".to_owned(),
                 },
             ],
+            morph_loadout: None,
             colors: CharacterColors::default(),
             revision: 1,
         };

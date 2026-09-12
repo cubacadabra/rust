@@ -1,7 +1,8 @@
 //! Remote roster, appearance, and motion synchronization state.
 
 use crate::character::definition::{
-    AppearanceInput, CharacterAppearance, CharacterColors, resolve_appearance,
+    AppearanceInput, CharacterAppearance, CharacterColors, appearance_from_morph_loadout,
+    resolve_appearance,
 };
 use crate::engine::identity::{
     self, STATUS_APPLIED, STATUS_DUPLICATE, STATUS_FALLBACK, STATUS_INVALID, STATUS_STALE,
@@ -9,7 +10,7 @@ use crate::engine::identity::{
 use crate::engine::{Engine, MAX_AGENTS};
 use crate::game_package::CharacterDefinition;
 use crate::types::{CharacterEmote, CharacterEntityKey, CharacterSupport, RemotePlayer};
-use cubacadabra_morphs::{LegacyAppearance, MorphLoadout, parse_catalog, project_v2_to_v1};
+use cubacadabra_morphs::{MorphLoadout, parse_loadout};
 
 impl Engine {
     pub(crate) fn set_remote_player_count(&mut self, count: usize) {
@@ -96,6 +97,17 @@ impl Engine {
         self.apply_local_appearance_json(&source)
     }
 
+    pub(crate) fn load_morph_loadout_buffer(&mut self) -> bool {
+        let Some(source) =
+            identity::bounded_utf8(&self.appearance_buffer, identity::MAX_APPEARANCE_BYTES)
+                .map(str::to_owned)
+        else {
+            self.appearance_status = STATUS_INVALID;
+            return false;
+        };
+        self.set_local_morph_loadout_json(&source) == STATUS_APPLIED
+    }
+
     pub fn set_local_appearance_json(&mut self, source: &str) -> u8 {
         if source.len() > identity::MAX_APPEARANCE_BYTES || !source.is_ascii() {
             self.appearance_status = STATUS_INVALID;
@@ -114,12 +126,12 @@ impl Engine {
             self.appearance_status = STATUS_INVALID;
             return false;
         }
-        if definition.version == Some(2) && project_v2_definition(&definition).is_none() {
-            // V2 is an explicit contract. Never silently reinterpret a broken
-            // loadout as a legacy appearance, because that hides missing packs
-            // and catalog/projection failures from the host UI.
-            self.appearance_status = STATUS_INVALID;
-            return false;
+        if definition.version == Some(2) {
+            let Some(loadout) = morph_loadout_from_definition(&definition) else {
+                self.appearance_status = STATUS_INVALID;
+                return false;
+            };
+            return self.apply_local_morph_loadout(loadout);
         }
         let resolution = resolve_character_definition(
             &definition,
@@ -146,6 +158,35 @@ impl Engine {
         } else {
             STATUS_APPLIED
         };
+        true
+    }
+
+    pub fn set_local_morph_loadout_json(&mut self, source: &str) -> u8 {
+        let Ok(loadout) = parse_loadout(source) else {
+            self.appearance_status = STATUS_INVALID;
+            return self.appearance_status;
+        };
+        self.apply_local_morph_loadout(loadout);
+        self.appearance_status
+    }
+
+    fn apply_local_morph_loadout(&mut self, loadout: MorphLoadout) -> bool {
+        let appearance = appearance_from_morph_loadout(loadout, self.player_appearance.colors);
+        let revision = appearance.revision;
+        if revision < self.player_appearance.revision
+            || (self.player_appearance_persistent
+                && revision == self.player_appearance.revision
+                && appearance != self.player_appearance)
+        {
+            self.appearance_status = STATUS_STALE;
+            return false;
+        }
+        if appearance != self.player_appearance {
+            self.player_appearance = appearance;
+            self.player_appearance_persistent = true;
+            self.appearance_generation = self.appearance_generation.wrapping_add(1).max(1);
+        }
+        self.appearance_status = STATUS_APPLIED;
         true
     }
 
@@ -493,8 +534,11 @@ pub(super) fn resolve_character_definition(
     fallback: &CharacterAppearance,
 ) -> crate::character::definition::AppearanceResolution {
     if definition.version == Some(2) {
-        if let Some(legacy) = project_v2_definition(definition) {
-            return resolve_legacy_definition(&legacy, legacy_colors, fallback);
+        if let Some(loadout) = morph_loadout_from_definition(definition) {
+            return crate::character::definition::AppearanceResolution {
+                appearance: appearance_from_morph_loadout(loadout, legacy_colors),
+                issues: Vec::new(),
+            };
         }
     }
 
@@ -521,8 +565,8 @@ pub(super) fn resolve_character_definition(
     })
 }
 
-fn project_v2_definition(definition: &CharacterDefinition) -> Option<LegacyAppearance> {
-    let loadout = MorphLoadout {
+fn morph_loadout_from_definition(definition: &CharacterDefinition) -> Option<MorphLoadout> {
+    let mut loadout = MorphLoadout {
         version: 2,
         base: definition.base.as_deref()?.parse().ok()?,
         parts: definition
@@ -538,34 +582,11 @@ fn project_v2_definition(definition: &CharacterDefinition) -> Option<LegacyAppea
         parameters: definition.parameters.clone(),
         revision: definition.revision,
     };
-    let catalog = parse_catalog(include_str!("../../assets/characters/morph_catalog.json")).ok()?;
-    project_v2_to_v1(&catalog, &loadout).ok()
-}
-
-fn resolve_legacy_definition(
-    definition: &LegacyAppearance,
-    legacy_colors: CharacterColors,
-    fallback: &CharacterAppearance,
-) -> crate::character::definition::AppearanceResolution {
-    resolve_appearance(AppearanceInput {
-        version: definition.version,
-        body: definition
-            .body
-            .as_deref()
-            .or(Some(fallback.body.stable_id())),
-        face: definition
-            .face
-            .as_deref()
-            .or(Some(fallback.face.stable_id())),
-        outfit: definition
-            .outfit
-            .as_deref()
-            .or(Some(fallback.outfit.stable_id())),
-        equipment: &definition.equipment,
-        colors: &definition.colors,
-        legacy_colors,
-        revision: definition.revision,
-    })
+    if !loadout.validate().is_empty() {
+        return None;
+    }
+    loadout.canonicalize();
+    Some(loadout)
 }
 
 fn remote_spawn_appearance(index: usize, occupied: &[RemotePlayer]) -> CharacterAppearance {
