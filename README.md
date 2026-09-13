@@ -132,14 +132,17 @@ See [docs/effects-runtime.md](docs/effects-runtime.md) for versioned,
 manifest-authored world effects and the small Luau state/play API. Rust owns
 bounded rendering primitives; games own their visual recipes.
 
+See [docs/task-scheduler.md](docs/task-scheduler.md) for deterministic Luau
+tasks, simulation-time waits, cancellation, ordering, and execution limits.
+
 ## Scripting status
 
 All targets execute `game.luau` through the host in `scripting.rs`. Native
 builds use `mlua` with vendored Luau; the `wasm32-unknown-unknown` build uses
 the pure-Rust `luaur-rt` Luau runtime so the browser can run the same lifecycle
 callbacks without a separate JavaScript scripting implementation. Both hosts
-expose the same sandboxed `lobby`, `session`, `interactions`, `effects`, and
-lifecycle API.
+expose the same sandboxed `lobby`, `session`, `interactions`, `effects`, `task`,
+and lifecycle API.
 Packages keep lobby routing enabled by default. Set `"lobby": false` in the
 manifest, or call `api.lobby:set_enabled(false)` from `on_start`, to enter the
 configured experience world directly. Direct worlds use the normal per-world

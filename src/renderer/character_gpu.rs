@@ -21,7 +21,10 @@ pub(super) const MAX_CHARACTERS: usize = 50;
 const MAX_PARTS: usize = 48 + crate::character::hair::MAX_LOCKS;
 pub(super) const MAX_MESHES: usize = 384 + 2 * crate::character::hair::MAX_LOCKS * 3;
 const MAX_RESIDENCY: usize = 32 * 1024 * 1024;
-const MAX_MORPH_PACKS: usize = 32;
+// The starter catalog currently contains 41 schema-5 packs (including
+// expression meshes). Keep a bounded registry, but leave room for the whole
+// catalog so preview capture and local publication cannot fail at 32 assets.
+const MAX_MORPH_PACKS: usize = 64;
 // The reusable starter wardrobe includes 20 baked, three-LOD assets. Keep a
 // bounded registry large enough for the complete catalog, not just one outfit.
 // This is a residency ceiling, not a preallocation or per-frame skinning budget.

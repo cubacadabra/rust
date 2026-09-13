@@ -4,10 +4,12 @@ use std::rc::Rc;
 
 use crate::schema::{ClassSchema, PropertyValue, interaction_zone_registry};
 use crate::ui::{UiEvent, UiRuntime};
+use scheduler::TaskScheduler;
 
 mod audio;
 mod effects;
 mod network;
+mod scheduler;
 
 #[cfg(target_arch = "wasm32")]
 use luaur_rt as lua;
@@ -57,7 +59,18 @@ pub(crate) struct GameScript {
     on_restore: Option<lua::Function>,
     state: Rc<RefCell<ScriptState>>,
     ui: Rc<RefCell<UiRuntime>>,
+    scheduler: Rc<RefCell<TaskScheduler>>,
+    execution_budget: Rc<RefCell<ExecutionBudget>>,
 }
+
+#[derive(Default)]
+struct ExecutionBudget {
+    active: bool,
+    exhausted: bool,
+    safepoints: u32,
+}
+
+const MAX_SCRIPT_SAFEPOINTS_PER_TICK: u32 = 100_000;
 
 impl GameScript {
     pub(crate) fn load(source: &str, ui: Rc<RefCell<UiRuntime>>) -> Result<Self, String> {
@@ -66,9 +79,30 @@ impl GameScript {
 
     fn load_inner(source: &str, ui: Rc<RefCell<UiRuntime>>) -> lua::Result<Self> {
         let lua = lua::Lua::new();
-        lua.sandbox(true)?;
         let state = Rc::new(RefCell::new(ScriptState::default()));
-        let api = create_api(&lua, Rc::clone(&state), Rc::clone(&ui))?;
+        let scheduler = Rc::new(RefCell::new(TaskScheduler::default()));
+        let execution_budget = Rc::new(RefCell::new(ExecutionBudget::default()));
+        let interrupt_budget = Rc::clone(&execution_budget);
+        lua.set_interrupt(move |_| {
+            let mut budget = interrupt_budget.borrow_mut();
+            if !budget.active {
+                return Ok(lua::VmState::Continue);
+            }
+            budget.safepoints = budget.safepoints.saturating_add(1);
+            if budget.safepoints >= MAX_SCRIPT_SAFEPOINTS_PER_TICK {
+                budget.exhausted = true;
+                Ok(lua::VmState::Yield)
+            } else {
+                Ok(lua::VmState::Continue)
+            }
+        });
+        let api = create_api(
+            &lua,
+            Rc::clone(&state),
+            Rc::clone(&ui),
+            Rc::clone(&scheduler),
+        )?;
+        lua.sandbox(true)?;
         let module: lua::Table = lua.load(source).set_name("game.luau").eval()?;
         let on_start: Option<lua::Function> = module.get("on_start")?;
         let on_tick: Option<lua::Function> = module.get("on_tick")?;
@@ -97,10 +131,13 @@ impl GameScript {
             on_restore,
             state,
             ui,
+            scheduler,
+            execution_budget,
         })
     }
 
     pub(crate) fn tick(&self, delta: f32) -> Result<(), String> {
+        self.scheduler.borrow_mut().begin_tick(delta);
         let network_messages = self
             .state
             .borrow_mut()
@@ -119,7 +156,45 @@ impl GameScript {
                 .call::<()>((self.api.clone(), delta))
                 .map_err(|error| error.to_string())?;
         }
+        self.run_tasks();
         Ok(())
+    }
+
+    fn run_tasks(&self) {
+        {
+            let mut budget = self.execution_budget.borrow_mut();
+            budget.active = true;
+            budget.exhausted = false;
+            budget.safepoints = 0;
+        }
+        loop {
+            let Some(run) = self.scheduler.borrow_mut().next() else {
+                break;
+            };
+            let result = if let Some(value) = run.resume_value {
+                run.thread.resume::<lua::MultiValue>((value,))
+            } else {
+                run.thread.resume::<lua::MultiValue>(())
+            };
+            let budget_interrupted = {
+                let mut budget = self.execution_budget.borrow_mut();
+                budget.active = false;
+                let interrupted = budget.exhausted;
+                budget.active = true;
+                interrupted
+            };
+            if let Some(error) = self
+                .scheduler
+                .borrow_mut()
+                .finish(run, result, budget_interrupted)
+            {
+                self.state.borrow_mut().last_error = Some(error);
+            }
+            if self.execution_budget.borrow().exhausted {
+                break;
+            }
+        }
+        self.execution_budget.borrow_mut().active = false;
     }
 
     fn dispatch_network_message(&self, source: &str) -> Result<(), String> {
@@ -439,6 +514,7 @@ fn create_api(
     lua: &lua::Lua,
     state: Rc<RefCell<ScriptState>>,
     ui_runtime: Rc<RefCell<UiRuntime>>,
+    scheduler: Rc<RefCell<TaskScheduler>>,
 ) -> lua::Result<lua::Table> {
     let api = create_table(lua)?;
 
@@ -561,6 +637,8 @@ fn create_api(
         )?,
     )?;
     api.set("interactions", interactions)?;
+
+    scheduler::install(lua, &api, scheduler)?;
 
     network::install(lua, &api, Rc::clone(&state))?;
 
@@ -765,6 +843,95 @@ mod tests {
 
         assert_eq!(script.state().borrow().lobby_status, "ready");
         script.tick(1.0 / 60.0).expect("tick should run");
+    }
+
+    #[test]
+    fn task_scheduler_orders_spawn_defer_delay_and_wait_on_simulation_time() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    task.spawn(function()
+                        api.lobby:set_status("spawn")
+                        local elapsed = task.wait(0.2)
+                        if elapsed >= 0.2 then
+                            api.lobby:set_status("wait")
+                        end
+                    end)
+                    task.defer(function()
+                        api.lobby:set_status("defer")
+                    end)
+                    task.delay(0.3, function()
+                        api.lobby:set_status("delay")
+                    end)
+                end
+                return game
+            "#,
+        );
+
+        script.tick(0.1).unwrap();
+        assert_eq!(script.state().borrow().lobby_status, "defer");
+        script.tick(0.1).unwrap();
+        assert_eq!(script.state().borrow().lobby_status, "defer");
+        script.tick(0.1).unwrap();
+        assert_eq!(script.state().borrow().lobby_status, "delay");
+    }
+
+    #[test]
+    fn failed_task_does_not_stop_other_tasks() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    task.spawn(function()
+                        error("task boom")
+                    end)
+                    task.spawn(function()
+                        api.lobby:set_status("healthy")
+                    end)
+                end
+                return game
+            "#,
+        );
+
+        script.tick(0.0).unwrap();
+        assert_eq!(script.state().borrow().lobby_status, "healthy");
+        assert!(
+            script
+                .state()
+                .borrow()
+                .last_error
+                .as_deref()
+                .unwrap()
+                .contains("task boom")
+        );
+    }
+
+    #[test]
+    fn task_waits_are_cancellable_and_tight_loops_are_budgeted() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    local delayed = task.delay(1, function()
+                        api.lobby:set_status("cancelled task ran")
+                    end)
+                    task.cancel(delayed)
+                    task.spawn(function()
+                        while true do end
+                    end)
+                    task.defer(function()
+                        api.lobby:set_status("healthy after budget")
+                    end)
+                end
+                return game
+            "#,
+        );
+
+        script.tick(0.0).unwrap();
+        assert_eq!(script.state().borrow().lobby_status, "");
+        script.tick(0.0).unwrap();
+        assert_eq!(script.state().borrow().lobby_status, "healthy after budget");
     }
 
     #[test]

@@ -9,6 +9,8 @@
   GPU, renderer, socket, or platform host.
 - [Engine snapshots](snapshots.md): the versioned freeze/restore contract and
   explicit Luau game-state hooks.
+- [Luau task scheduler](task-scheduler.md): deterministic spawn, defer, delay,
+  wait, cancellation, ordering, and execution limits.
 
 Superseded character RFCs, phase plans and historical captures have been
 removed. Keep this folder focused on current decisions and review evidence.
