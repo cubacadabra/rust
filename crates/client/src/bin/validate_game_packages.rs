@@ -59,9 +59,12 @@ fn trace(package: &Path) {
 }
 
 fn main() {
-    let mut args = env::args_os().skip(1);
-    let trace_mode = args.next().is_some_and(|arg| arg == "--trace");
-    let packages: Vec<_> = args.collect();
+    let mut args: Vec<_> = env::args_os().skip(1).collect();
+    let trace_mode = args.first().is_some_and(|arg| arg == "--trace");
+    if trace_mode {
+        args.remove(0);
+    }
+    let packages = args;
     if packages.is_empty() {
         eprintln!("usage: validate_game_packages [--trace] package...");
         std::process::exit(2);
