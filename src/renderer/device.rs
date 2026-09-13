@@ -3,7 +3,7 @@
     not(any(target_os = "android", target_os = "ios"))
 ))]
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use std::ffi::c_void;
 use std::io::Cursor;
 #[cfg(target_os = "android")]
@@ -63,7 +63,7 @@ pub(super) fn android_log(message: impl AsRef<str>) {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(target_os = "ios")]
 pub(super) fn android_log(message: impl AsRef<str>) {
     eprintln!("[RustRenderer] {}", message.as_ref());
 }
@@ -239,7 +239,7 @@ impl Renderer {
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
         if layer.is_null() || width <= 0.0 || height <= 0.0 {
             return None;
@@ -281,12 +281,12 @@ impl Renderer {
             (instance, surface)
         };
 
-        #[cfg(not(target_os = "android"))]
+        #[cfg(target_os = "ios")]
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::METAL,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        #[cfg(not(target_os = "android"))]
+        #[cfg(target_os = "ios")]
         let surface = unsafe {
             instance
                 .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(layer))

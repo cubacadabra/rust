@@ -699,7 +699,10 @@ pub unsafe extern "C" fn engine_destroy(engine: *mut Engine) {
     }
 }
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
+#[cfg(all(
+    any(target_os = "android", target_os = "ios"),
+    feature = "rendering"
+))]
 #[unsafe(no_mangle)]
 pub extern "C" fn engine_renderer_create(
     layer: *mut c_void,
