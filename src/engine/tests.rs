@@ -17,6 +17,41 @@ fn starts_at_the_spawn_pad() {
 }
 
 #[test]
+fn engine_owns_a_generic_data_model_with_an_observable_mutation_path() {
+    let mut engine = Engine::new();
+    let root = engine.data_model().root();
+    assert_eq!(engine.data_model().entity(root).unwrap().name, "game");
+    let mut cursor = engine.data_model().subscribe();
+
+    let beacon = engine
+        .data_model_mut()
+        .create_entity(
+            "Beacon",
+            "Node 1",
+            Some(root),
+            crate::data_model::MutationSource::Script,
+        )
+        .unwrap();
+    engine
+        .data_model_mut()
+        .set_property(
+            beacon,
+            "team",
+            serde_json::json!("red"),
+            crate::data_model::MutationSource::Script,
+        )
+        .unwrap();
+
+    let changes = engine.data_model().changes_since(&mut cursor).unwrap();
+    assert_eq!(changes.len(), 2);
+    assert_eq!(changes[0].source, crate::data_model::MutationSource::Script);
+    assert_eq!(
+        engine.data_model().get_property(beacon, "team").unwrap(),
+        Some(&serde_json::json!("red"))
+    );
+}
+
+#[test]
 fn movement_accelerates_in_view_direction() {
     let mut engine = Engine::new();
     engine.set_input(Input {

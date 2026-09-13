@@ -14,6 +14,7 @@ mod worlds;
 mod tests;
 
 use crate::character::definition::CharacterAppearance;
+use crate::data_model::DataModel;
 use crate::effects::EffectRuntime;
 use crate::game_package::GamePackageDefinition;
 use crate::math::Random;
@@ -61,6 +62,9 @@ pub(crate) const DEFAULT_ORBIT_PITCH: f32 = 0.26;
 pub(crate) const DEFAULT_ORBIT_DISTANCE: f32 = 7.6;
 
 pub struct Engine {
+    /// Generic engine-owned entities and properties. Game-specific meaning
+    /// remains in Luau; Rust exposes only the data-model mechanics.
+    pub(crate) data_model: DataModel,
     pub(crate) player: Player,
     pub(crate) agents: Vec<Agent>,
     pub(crate) remote_players: Vec<RemotePlayer>,
@@ -156,5 +160,19 @@ pub struct Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Engine {
+    /// Returns the generic world model for renderer, networking, save/load,
+    /// editor, and future scripting adapters.
+    pub fn data_model(&self) -> &DataModel {
+        &self.data_model
+    }
+
+    /// Returns the mutation surface for trusted engine integrations. Game
+    /// semantics should still be authored by the scripting layer.
+    pub fn data_model_mut(&mut self) -> &mut DataModel {
+        &mut self.data_model
     }
 }

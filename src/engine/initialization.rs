@@ -17,6 +17,7 @@ impl Engine {
             block_bounds([13.0, 0.5, -17.0], [1.0, 1.0, 1.0]),
         ];
         let mut engine = Self {
+            data_model: crate::data_model::DataModel::new(),
             player: Player::default(),
             agents: Vec::with_capacity(MAX_AGENTS),
             remote_players: Vec::with_capacity(MAX_AGENTS),

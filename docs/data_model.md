@@ -174,3 +174,32 @@ Signal Run understands **Gate, Capture, Team, Score, Round**.
 
 That's why I would absolutely **not undo those commits**. What you built is on the correct side of the boundary. The next Rust work should make that Luau code more powerful and automatic underneath, not absorb it.
 
+## Rust foundation now in place
+
+The first engine increment lives in `src/data_model.rs` and is intentionally
+generic. `DataModel` owns a stable `EntityId` graph rooted at `game`; entities
+have a class, name, parent, and JSON-compatible property bag. The only mutation
+paths are:
+
+- `create_entity`
+- `set_name`
+- `set_parent`
+- `set_property` / `remove_property`
+- `destroy`
+
+Every successful mutation emits a `DataModelChange` with a monotonic sequence,
+the `MutationSource`, and a typed `DataModelEvent`. Setting an equal property,
+keeping the current name/parent, or removing a missing property is a no-op and
+emits nothing. Destroy events carry pre-despawn snapshots so networking, undo,
+and persistence consumers can still inspect the removed object.
+
+Consumers call `subscribe` or `subscribe_from_start`, then independently drain
+the feed with `changes_since`. The retained history is bounded; a stalled
+consumer receives an explicit cursor-too-old error instead of silently missing
+mutations. `Engine::data_model()` and `Engine::data_model_mut()` expose this
+resource to trusted engine integrations while keeping game-specific nouns in
+Luau.
+
+This is the substrate, not yet the Luau `Instance` API or renderer/physics
+bridge. Those should be layered on this mutation path rather than creating
+parallel setters or per-frame scans.

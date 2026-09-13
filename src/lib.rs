@@ -1,4 +1,5 @@
 mod character;
+pub mod data_model;
 mod effects;
 mod engine;
 mod ffi;
