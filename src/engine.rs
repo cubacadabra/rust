@@ -5,7 +5,7 @@ mod initialization;
 mod interactions;
 mod remote;
 mod simulation;
-mod snapshot;
+pub mod snapshot;
 mod state;
 mod ui;
 mod worlds;
@@ -94,6 +94,8 @@ pub struct Engine {
     pub(crate) build_blocks: Vec<BuildBlock>,
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) input: Input,
+    /// Monotonic fixed-step count used by persistence and deterministic hosts.
+    pub(crate) simulation_tick: u64,
     pub(crate) elapsed: f32,
     pub(crate) next_spawn_at: f32,
     pub(crate) view_yaw: f32,
@@ -104,6 +106,9 @@ pub struct Engine {
     pub(crate) target_camera_distance: f32,
     pub(crate) random: Random,
     pub(crate) snapshot: Vec<f32>,
+    pub(crate) snapshot_buffer: Vec<u8>,
+    pub(crate) snapshot_output_buffer: Vec<u8>,
+    pub(crate) snapshot_error_buffer: Vec<u8>,
     pub(crate) motion_sequence: u64,
     pub(crate) remote_generation: u32,
     pub(crate) remote_packet_sequence: u64,

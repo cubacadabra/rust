@@ -66,6 +66,16 @@ pub struct EntitySnapshot {
     pub properties: BTreeMap<String, Value>,
 }
 
+/// Serializable authoritative state for the generic entity/property graph.
+/// Change history is deliberately excluded because it is a live delivery
+/// mechanism, not world state.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DataModelSnapshot {
+    pub entities: Vec<EntitySnapshot>,
+    pub next_entity: u64,
+    pub next_sequence: u64,
+}
+
 /// The semantic part of one mutation. The sequence and source live on the
 /// surrounding [`DataModelChange`] envelope so every event has the same shape.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -129,6 +139,7 @@ pub enum DataModelError {
     InvalidClassName,
     InvalidEntityName,
     InvalidPropertyName,
+    InvalidSnapshot(String),
     CursorTooOld { requested: u64, oldest: u64 },
 }
 
@@ -149,6 +160,9 @@ impl fmt::Display for DataModelError {
             Self::InvalidClassName => formatter.write_str("class name is empty or too long"),
             Self::InvalidEntityName => formatter.write_str("entity name is empty or too long"),
             Self::InvalidPropertyName => formatter.write_str("property name is empty or too long"),
+            Self::InvalidSnapshot(reason) => {
+                write!(formatter, "invalid data-model snapshot: {reason}")
+            }
             Self::CursorTooOld { requested, oldest } => write!(
                 formatter,
                 "change cursor starts at sequence {requested}, but the oldest retained change is {oldest}"
@@ -215,7 +229,7 @@ impl DataModel {
     pub fn entity(&self, entity: EntityId) -> Result<EntitySnapshot, DataModelError> {
         self.entities
             .get(&entity)
-            .map(|value| self.snapshot(entity, value))
+            .map(|value| self.entity_snapshot(entity, value))
             .ok_or(DataModelError::EntityNotFound(entity))
     }
 
@@ -241,11 +255,119 @@ impl DataModel {
         Ok(descendants)
     }
 
+    pub fn snapshot(&self) -> DataModelSnapshot {
+        DataModelSnapshot {
+            entities: self
+                .entities
+                .iter()
+                .map(|(id, entity)| self.entity_snapshot(*id, entity))
+                .collect(),
+            next_entity: self.next_entity,
+            next_sequence: self.next_sequence,
+        }
+    }
+
+    /// Restores the graph atomically and clears the live mutation feed.
+    /// Change consumers must create a new cursor after a restore.
+    pub fn restore(&mut self, snapshot: &DataModelSnapshot) -> Result<(), DataModelError> {
+        let mut entities = BTreeMap::new();
+        let mut max_entity = ROOT_ID;
+        for entity in &snapshot.entities {
+            if entity.id.0 == 0 {
+                return Err(DataModelError::InvalidSnapshot(
+                    "entity IDs must be non-zero".to_owned(),
+                ));
+            }
+            validate_class_name(&entity.class).map_err(|_| {
+                DataModelError::InvalidSnapshot(format!("invalid class for entity {}", entity.id))
+            })?;
+            validate_entity_name(&entity.name).map_err(|_| {
+                DataModelError::InvalidSnapshot(format!("invalid name for entity {}", entity.id))
+            })?;
+            for property in entity.properties.keys() {
+                validate_property_name(property).map_err(|_| {
+                    DataModelError::InvalidSnapshot(format!(
+                        "invalid property name {property} on entity {}",
+                        entity.id
+                    ))
+                })?;
+            }
+            if entities
+                .insert(
+                    entity.id,
+                    Entity {
+                        class: entity.class.clone(),
+                        name: entity.name.clone(),
+                        parent: entity.parent,
+                        properties: entity.properties.clone(),
+                    },
+                )
+                .is_some()
+            {
+                return Err(DataModelError::InvalidSnapshot(format!(
+                    "duplicate entity ID {}",
+                    entity.id
+                )));
+            }
+            max_entity = max_entity.max(entity.id.0);
+        }
+
+        let Some(root) = entities.get(&EntityId::ROOT) else {
+            return Err(DataModelError::InvalidSnapshot(
+                "snapshot must contain the root entity".to_owned(),
+            ));
+        };
+        if root.class != "DataModel" || root.name != "game" || root.parent.is_some() {
+            return Err(DataModelError::InvalidSnapshot(
+                "root entity does not match the engine contract".to_owned(),
+            ));
+        }
+        for (id, entity) in &entities {
+            if let Some(parent) = entity.parent {
+                if !entities.contains_key(&parent) {
+                    return Err(DataModelError::InvalidSnapshot(format!(
+                        "entity {id} refers to missing parent {parent}"
+                    )));
+                }
+                if parent == *id {
+                    return Err(DataModelError::InvalidSnapshot(format!(
+                        "entity {id} is its own parent"
+                    )));
+                }
+            }
+            let mut current = entity.parent;
+            let mut hops = 0usize;
+            while let Some(parent) = current {
+                hops += 1;
+                if hops > entities.len() {
+                    return Err(DataModelError::InvalidSnapshot(
+                        "entity hierarchy contains a cycle".to_owned(),
+                    ));
+                }
+                current = entities.get(&parent).and_then(|value| value.parent);
+            }
+        }
+        if snapshot.next_entity <= max_entity {
+            return Err(DataModelError::InvalidSnapshot(
+                "next_entity must be greater than every entity ID".to_owned(),
+            ));
+        }
+        if snapshot.next_sequence == 0 {
+            return Err(DataModelError::InvalidSnapshot(
+                "next_sequence must be non-zero".to_owned(),
+            ));
+        }
+
+        self.entities = entities;
+        self.next_entity = snapshot.next_entity;
+        self.next_sequence = snapshot.next_sequence;
+        self.changes.clear();
+        Ok(())
+    }
+
+    /// Compatibility view used by diagnostics and the existing state hash.
     pub fn snapshot_state(&self) -> Vec<EntitySnapshot> {
-        self.entities
-            .iter()
-            .map(|(id, entity)| self.snapshot(*id, entity))
-            .collect()
+        self.snapshot().entities
     }
 
     pub fn get_property(
@@ -516,7 +638,7 @@ impl DataModel {
         }
     }
 
-    fn snapshot(&self, id: EntityId, entity: &Entity) -> EntitySnapshot {
+    fn entity_snapshot(&self, id: EntityId, entity: &Entity) -> EntitySnapshot {
         EntitySnapshot {
             id,
             class: entity.class.clone(),
@@ -642,6 +764,34 @@ mod tests {
                 .map(|change| &change.event),
             Some(DataModelEvent::NameChanged { name, .. }) if name == "New"
         ));
+    }
+
+    #[test]
+    fn snapshot_restore_keeps_ids_and_starts_a_fresh_change_feed() {
+        let mut model = DataModel::new();
+        let entity = model
+            .create_entity("Part", "Beacon", Some(model.root()), MutationSource::Load)
+            .unwrap();
+        model
+            .set_property(entity, "enabled", json!(true), MutationSource::Load)
+            .unwrap();
+        let snapshot = model.snapshot();
+
+        model
+            .set_name(entity, "Changed", MutationSource::Editor)
+            .unwrap();
+        model.restore(&snapshot).unwrap();
+
+        assert_eq!(model.entity(entity).unwrap().name, "Beacon");
+        assert_eq!(
+            model
+                .create_entity("Part", "Next", Some(model.root()), MutationSource::Load)
+                .unwrap()
+                .raw(),
+            entity.raw() + 1
+        );
+        let mut cursor = model.subscribe();
+        assert!(model.changes_since(&mut cursor).unwrap().is_empty());
     }
 
     #[test]

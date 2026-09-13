@@ -7,6 +7,7 @@ use crate::types::{
 impl Engine {
     pub fn step(&mut self, delta: f32) {
         let delta = delta.clamp(0.0, 0.05);
+        self.simulation_tick = self.simulation_tick.saturating_add(1);
         self.elapsed += delta;
         self.motion_sequence = self.motion_sequence.saturating_add(1);
         self.player_motion_event = CharacterMotionEvent::None;
@@ -52,6 +53,7 @@ impl Engine {
     pub fn state_hash(&self) -> u64 {
         let mut hash = StableHasher::default();
         hash.bytes(b"cubacadabra-engine-state-v1");
+        hash.u64(self.simulation_tick);
         hash.f32(self.elapsed);
         hash.usize(self.active_world);
         hash.string(self.active_world_id().unwrap_or_default());

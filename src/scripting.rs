@@ -53,6 +53,8 @@ pub(crate) struct GameScript {
     on_interaction: Option<lua::Function>,
     on_player_event: Option<lua::Function>,
     on_network_message: Option<lua::Function>,
+    on_save: Option<lua::Function>,
+    on_restore: Option<lua::Function>,
     state: Rc<RefCell<ScriptState>>,
     ui: Rc<RefCell<UiRuntime>>,
 }
@@ -75,6 +77,8 @@ impl GameScript {
         let on_interaction: Option<lua::Function> = module.get("on_interaction")?;
         let on_player_event: Option<lua::Function> = module.get("on_player_event")?;
         let on_network_message: Option<lua::Function> = module.get("on_network_message")?;
+        let on_save: Option<lua::Function> = module.get("on_save")?;
+        let on_restore: Option<lua::Function> = module.get("on_restore")?;
 
         if let Some(on_start) = on_start {
             on_start.call::<()>((api.clone(),))?;
@@ -89,6 +93,8 @@ impl GameScript {
             on_interaction,
             on_player_event,
             on_network_message,
+            on_save,
+            on_restore,
             state,
             ui,
         })
@@ -186,6 +192,56 @@ impl GameScript {
 
     pub(crate) fn state(&self) -> Rc<RefCell<ScriptState>> {
         Rc::clone(&self.state)
+    }
+
+    /// Calls the explicit game persistence hook. The Lua VM, closures, and
+    /// coroutine internals are never serialized; the hook owns the portable
+    /// JSON-compatible game state contract.
+    pub(crate) fn save_state(&self) -> Result<serde_json::Value, String> {
+        let Some(on_save) = &self.on_save else {
+            return Ok(serde_json::Value::Null);
+        };
+        let value = on_save
+            .call::<lua::Value>((self.api.clone(),))
+            .map_err(|error| error.to_string())?;
+        lua_value_to_json(value, 0)
+    }
+
+    pub(crate) fn pending_network_messages(&self) -> Vec<String> {
+        self.state.borrow().network_inbox.iter().cloned().collect()
+    }
+
+    pub(crate) fn restore_pending_network_messages(
+        &self,
+        messages: &[String],
+    ) -> Result<(), String> {
+        let mut state = self.state.borrow_mut();
+        state.network_inbox.clear();
+        for message in messages {
+            if message.len() > crate::engine::identity::MAX_NETWORK_MESSAGE_BYTES
+                || serde_json::from_str::<serde_json::Value>(message).is_err()
+                || !queue_has_capacity(&state.network_inbox, message.len())
+            {
+                return Err("snapshot contains an invalid or oversized network message".to_owned());
+            }
+            state.network_inbox.push_back(message.clone());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn restore_state(&self, state: &serde_json::Value) -> Result<(), String> {
+        let Some(on_restore) = &self.on_restore else {
+            if state.is_null() {
+                return Ok(());
+            }
+            return Err(
+                "snapshot contains game state but script has no on_restore hook".to_owned(),
+            );
+        };
+        let value = json_to_lua(&self.lua, state, 0).map_err(|error| error.to_string())?;
+        on_restore
+            .call::<()>((self.api.clone(), value))
+            .map_err(|error| error.to_string())
     }
 
     pub(crate) fn lobby_enabled_override(&self) -> Option<bool> {
@@ -709,6 +765,31 @@ mod tests {
 
         assert_eq!(script.state().borrow().lobby_status, "ready");
         script.tick(1.0 / 60.0).expect("tick should run");
+    }
+
+    #[test]
+    fn explicit_save_and_restore_hooks_round_trip_json_state() {
+        let (script, _) = load(
+            r#"
+                local game = { score = 7 }
+                function game.on_save(_api)
+                    return { score = game.score, nested = { ready = true } }
+                end
+                function game.on_restore(_api, state)
+                    game.score = state.score
+                end
+                return game
+            "#,
+        );
+
+        let state = script
+            .save_state()
+            .expect("save hook should return JSON state");
+        assert_eq!(state["score"], 7);
+        script
+            .restore_state(&serde_json::json!({ "score": 42 }))
+            .expect("restore hook should accept JSON state");
+        assert_eq!(script.save_state().unwrap()["score"], 42);
     }
 
     #[test]

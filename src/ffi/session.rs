@@ -427,6 +427,77 @@ pub extern "C" fn engine_snapshot_stride() -> usize {
     SNAPSHOT_STRIDE
 }
 
+/// Captures the versioned persistence snapshot. The result is exposed as
+/// UTF-8 JSON through `engine_persisted_snapshot_ptr/len` until the next
+/// capture or engine destruction.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_capture_snapshot(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.capture_snapshot_buffer()))
+        .unwrap_or(0)
+}
+
+/// Returns an engine-owned serialized persistence snapshot.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_persisted_snapshot_ptr(engine: *const Engine) -> *const u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.snapshot_output_buffer.as_ptr())
+        .unwrap_or(ptr::null())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_persisted_snapshot_len(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }
+        .map_or(0, |engine| engine.snapshot_output_buffer.len())
+}
+
+/// Returns a bounded engine-owned UTF-8 input buffer for a serialized
+/// persistence snapshot. Write exactly `length` bytes before loading.
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_snapshot_buffer_ptr(
+    engine: *mut Engine,
+    length: usize,
+) -> *mut u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| engine.prepare_snapshot_buffer(length))
+        .unwrap_or(ptr::null_mut())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_restore_snapshot_buffer(engine: *mut Engine) -> u8 {
+    unsafe { engine.as_mut() }
+        .map(|engine| u8::from(engine.load_snapshot_buffer()))
+        .unwrap_or(0)
+}
+
+#[unsafe(no_mangle)]
+/// Returns the latest snapshot capture/restore error as UTF-8.
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_snapshot_error_ptr(engine: *const Engine) -> *const u8 {
+    unsafe { engine.as_ref() }
+        .map(|engine| engine.snapshot_error_buffer.as_ptr())
+        .unwrap_or(ptr::null())
+}
+
+#[unsafe(no_mangle)]
+/// # Safety
+/// `engine` must be null or a live pointer returned by `engine_create`.
+pub unsafe extern "C" fn engine_snapshot_error_len(engine: *const Engine) -> usize {
+    unsafe { engine.as_ref() }
+        .map_or(0, |engine| engine.snapshot_error_buffer.len())
+}
+
 #[unsafe(no_mangle)]
 /// # Safety
 /// `engine` must be null or a live pointer returned by `engine_create`.

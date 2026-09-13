@@ -58,6 +58,12 @@ pub use web_renderer::WebRenderer;
 mod world;
 
 pub use engine::Engine;
+pub use engine::snapshot::{
+    AgentSnapshot, BuildBlockSnapshot, CameraSnapshot, ENGINE_SNAPSHOT_FORMAT,
+    ENGINE_SNAPSHOT_VERSION, EngineSnapshot, InputSnapshot, InteractionEventSnapshot,
+    InteractionSnapshot, InteractionZoneSnapshot, LaunchPadSnapshot, MAX_ENGINE_SNAPSHOT_BYTES,
+    PlayerEventSnapshot, PlayerRuntimeSnapshot, PlayerSnapshot, SnapshotError,
+};
 
 #[cfg(all(
     not(target_arch = "wasm32"),

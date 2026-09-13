@@ -215,7 +215,7 @@ impl Engine {
         &self.build_blocks
     }
 
-    fn rebuild_build_obstacles(&mut self) {
+    pub(crate) fn rebuild_build_obstacles(&mut self) {
         self.obstacles = self.base_obstacles.clone();
         self.obstacles.extend(self.build_blocks.iter().map(|block| {
             let size = if block.rotation % 2 == 0 {

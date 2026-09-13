@@ -12,6 +12,8 @@ typedef struct CubacadabraRenderer CubacadabraRenderer;
 #define CUBACADABRA_UI_POINTER_CANCEL 3
 #define CUBACADABRA_MAX_APPEARANCE_BYTES 4096
 #define CUBACADABRA_MAX_REMOTE_UPDATE_BYTES 65536
+#define CUBACADABRA_MAX_ENGINE_SNAPSHOT_BYTES (4u * 1024u * 1024u)
+#define CUBACADABRA_ENGINE_SNAPSHOT_VERSION 1
 #define CUBACADABRA_IDENTITY_INVALID 0
 #define CUBACADABRA_IDENTITY_APPLIED 1
 #define CUBACADABRA_IDENTITY_STALE 2
@@ -218,6 +220,13 @@ uint8_t engine_script_loaded(const CubacadabraEngine *engine);
 const float *engine_snapshot_ptr(const CubacadabraEngine *engine);
 uintptr_t engine_snapshot_len(void);
 uintptr_t engine_snapshot_stride(void);
+uint8_t engine_capture_snapshot(CubacadabraEngine *engine);
+const uint8_t *engine_persisted_snapshot_ptr(const CubacadabraEngine *engine);
+uintptr_t engine_persisted_snapshot_len(const CubacadabraEngine *engine);
+uint8_t *engine_snapshot_buffer_ptr(CubacadabraEngine *engine, uintptr_t length);
+uint8_t engine_restore_snapshot_buffer(CubacadabraEngine *engine);
+const uint8_t *engine_snapshot_error_ptr(const CubacadabraEngine *engine);
+uintptr_t engine_snapshot_error_len(const CubacadabraEngine *engine);
 float engine_camera_yaw(const CubacadabraEngine *engine);
 /* Body heading for replication. Legacy snapshot slot 3 remains camera yaw. */
 float engine_player_facing_yaw(const CubacadabraEngine *engine);

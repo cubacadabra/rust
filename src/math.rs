@@ -54,6 +54,10 @@ impl Random {
     pub(crate) fn state(self) -> u32 {
         self.0
     }
+
+    pub(crate) fn from_state(state: u32) -> Option<Self> {
+        (state != 0).then_some(Self(state))
+    }
 }
 
 pub(crate) fn damp(current: f32, target: f32, smoothing: f32, delta: f32) -> f32 {

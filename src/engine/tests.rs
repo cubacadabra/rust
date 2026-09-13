@@ -17,6 +17,107 @@ fn starts_at_the_spawn_pad() {
 }
 
 #[test]
+fn engine_snapshot_round_trip_continues_deterministically() {
+    let mut uninterrupted = Engine::new();
+    for _ in 0..45 {
+        uninterrupted.set_input(Input {
+            forward: 0.8,
+            strafe: -0.2,
+            sprint: true,
+            jump: false,
+            climb: false,
+            look_x: 0.0,
+            look_y: 0.0,
+            zoom_delta: 0.0,
+        });
+        uninterrupted.step(1.0 / 60.0);
+    }
+    let encoded = uninterrupted.capture_snapshot_json().unwrap();
+
+    let mut restored = Engine::new();
+    restored.restore_snapshot_json(&encoded).unwrap();
+    for _ in 0..45 {
+        restored.set_input(Input {
+            forward: 0.8,
+            strafe: -0.2,
+            sprint: true,
+            jump: false,
+            climb: false,
+            look_x: 0.0,
+            look_y: 0.0,
+            zoom_delta: 0.0,
+        });
+        uninterrupted.step(1.0 / 60.0);
+        restored.step(1.0 / 60.0);
+    }
+
+    assert_eq!(restored.state_hash(), uninterrupted.state_hash());
+    assert_eq!(
+        restored.capture_snapshot().unwrap(),
+        uninterrupted.capture_snapshot().unwrap()
+    );
+}
+
+#[test]
+fn engine_snapshot_rejects_incompatible_content() {
+    let mut source = Engine::new();
+    source.package_buffer = b"package-a".to_vec();
+    let snapshot = source.capture_snapshot().unwrap();
+    let mut target = Engine::new();
+    target.package_buffer = b"package-b".to_vec();
+
+    assert!(matches!(
+        target.restore_snapshot(&snapshot),
+        Err(crate::engine::snapshot::SnapshotError::ContentMismatch { .. })
+    ));
+}
+
+#[test]
+fn engine_snapshot_restores_explicit_luau_state() {
+    let manifest = r#"{
+        "id": "snapshot-test",
+        "lobby": false,
+        "startWorld": "arena",
+        "worlds": { "arena": { "world": { "spawn": [0, 0, 8] } } }
+    }"#;
+    let script = r#"
+        local score = 0
+        return {
+            on_tick = function(api)
+                score = score + 1
+                api.lobby:set_status("score:" .. score)
+            end,
+            on_save = function(_api)
+                return { score = score }
+            end,
+            on_restore = function(_api, state)
+                score = state.score
+            end,
+        }
+    "#;
+
+    let mut uninterrupted = Engine::new();
+    assert!(uninterrupted.load_package_source(manifest));
+    assert!(uninterrupted.load_script_source(script));
+    for _ in 0..12 {
+        uninterrupted.step(1.0 / 60.0);
+    }
+    let snapshot = uninterrupted.capture_snapshot_json().unwrap();
+
+    let mut restored = Engine::new();
+    assert!(restored.load_package_source(manifest));
+    assert!(restored.load_script_source(script));
+    restored.restore_snapshot_json(&snapshot).unwrap();
+    for _ in 0..12 {
+        uninterrupted.step(1.0 / 60.0);
+        restored.step(1.0 / 60.0);
+    }
+
+    assert_eq!(restored.state_hash(), uninterrupted.state_hash());
+    assert_eq!(restored.last_script_error(), None);
+}
+
+#[test]
 fn engine_owns_a_generic_data_model_with_an_observable_mutation_path() {
     let mut engine = Engine::new();
     let root = engine.data_model().root();

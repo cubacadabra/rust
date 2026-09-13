@@ -16,10 +16,10 @@ const NEARBY_PADDING: f32 = 3.0;
 #[derive(Clone, Debug, Default)]
 pub(crate) struct InteractionRuntime {
     pub(crate) world: Vec<InteractionZone>,
-    states: Vec<InteractionRenderState>,
-    was_inside: Vec<bool>,
-    events: Vec<InteractionEvent>,
-    event_id: u32,
+    pub(crate) states: Vec<InteractionRenderState>,
+    pub(crate) was_inside: Vec<bool>,
+    pub(crate) events: Vec<InteractionEvent>,
+    pub(crate) event_id: u32,
 }
 
 impl InteractionRuntime {
