@@ -110,6 +110,16 @@ impl Engine {
         &self.script_error_buffer
     }
 
+    /// Returns the latest script load or runtime error for diagnostics.
+    pub fn last_script_error(&self) -> Option<String> {
+        if !self.script_error_buffer.is_empty() {
+            return Some(String::from_utf8_lossy(&self.script_error_buffer).into_owned());
+        }
+        self.script
+            .as_ref()
+            .and_then(|script| script.state().borrow().last_error.clone())
+    }
+
     pub(crate) fn script_loaded(&self) -> bool {
         self.script.is_some()
     }

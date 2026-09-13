@@ -10,7 +10,13 @@ pub use cubacadabra_engine::Engine;
 
 #[cfg(all(
     not(target_arch = "wasm32"),
-    not(any(target_os = "android", target_os = "ios"))
+    not(any(target_os = "android", target_os = "ios")),
+    any(
+        feature = "metal",
+        feature = "android-backends",
+        feature = "desktop-backends",
+        feature = "studio-ui"
+    )
 ))]
 pub use cubacadabra_engine::native;
 

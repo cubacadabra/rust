@@ -628,7 +628,7 @@ pub unsafe extern "C" fn engine_destroy(engine: *mut Engine) {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn engine_renderer_create(
     layer: *mut c_void,
@@ -640,7 +640,7 @@ pub extern "C" fn engine_renderer_create(
         .unwrap_or(ptr::null_mut())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by `engine_renderer_create`.
@@ -652,7 +652,7 @@ pub unsafe extern "C" fn engine_renderer_resize(renderer: *mut Renderer, width: 
 
 /// Uploads the package-owned world image atlas and its normalized image
 /// regions. The host owns both input buffers for the duration of this call.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by
@@ -689,7 +689,7 @@ pub unsafe extern "C" fn engine_renderer_set_package_image_atlas(
 /// Registers a validated compiled morph pack with the renderer. The pack is
 /// decoded and uploaded as immutable GPU mesh resources; it is not parsed as
 /// GLB or Blender data by the runtime.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by
@@ -719,7 +719,7 @@ pub unsafe extern "C" fn engine_renderer_register_morph_pack(
 /// Selects the reversible character renderer rollout mode. `0` is the
 /// legacy hard-cuboid renderer and `1` is the magic instanced renderer. An
 /// invalid value leaves the current mode unchanged and returns zero.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by
@@ -739,7 +739,7 @@ pub unsafe extern "C" fn engine_renderer_set_appearance_mode(
 }
 
 #[unsafe(no_mangle)]
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by
 /// `engine_renderer_create`.
@@ -749,7 +749,7 @@ pub unsafe extern "C" fn engine_renderer_appearance_mode(renderer: *const Render
         .unwrap_or(super::renderer::CharacterRenderMode::Magic.as_u8())
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by
@@ -765,7 +765,7 @@ pub unsafe extern "C" fn engine_renderer_set_avatar_preview_mode(
     1
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` and `engine` must be null or live pointers returned by their
@@ -778,7 +778,7 @@ pub unsafe extern "C" fn engine_renderer_sync(renderer: *mut Renderer, engine: *
     renderer.sync_engine(engine);
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live pointer returned by `engine_renderer_create`.
@@ -788,7 +788,7 @@ pub unsafe extern "C" fn engine_renderer_draw(renderer: *mut Renderer) {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 /// # Safety
 /// `renderer` must be null or a live renderer pointer and must not be used again.

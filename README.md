@@ -105,6 +105,10 @@ session, follow [web/README.md](../web/README.md) and
 engine binaries but load the deployed package and connect to the deployed
 Worker.
 
+For a screenless simulation proof, run the [headless engine fixture](docs/headless/README.md).
+It compiles without the optional renderer/GPU path, loads a manifest and Luau
+script, advances a deterministic input trace twice, and compares the state hash.
+
 ## Shared in-game UI
 
 Experience HUDs and in-game modals can be declared by Luau and are owned by the

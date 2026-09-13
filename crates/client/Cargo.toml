@@ -8,7 +8,7 @@ publish = false
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [features]
-default = []
+default = ["metal"]
 metal = ["cubacadabra-engine/metal"]
 android-backends = ["cubacadabra-engine/android-backends"]
 desktop-backends = ["cubacadabra-engine/desktop-backends"]

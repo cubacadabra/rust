@@ -96,6 +96,14 @@ impl InteractionRuntime {
         self.states.get(index).copied().unwrap_or_default()
     }
 
+    pub(crate) fn states(&self) -> &[InteractionRenderState] {
+        &self.states
+    }
+
+    pub(crate) fn event_id(&self) -> u32 {
+        self.event_id
+    }
+
     pub(crate) fn take_events(&mut self) -> Vec<InteractionEvent> {
         std::mem::take(&mut self.events)
     }

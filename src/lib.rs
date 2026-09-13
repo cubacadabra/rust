@@ -1,3 +1,7 @@
+// Headless builds intentionally leave presentation-only CPU catalogs in the
+// shared source tree while omitting their renderer consumers.
+#![cfg_attr(not(feature = "rendering"), allow(dead_code, unused_imports))]
+
 mod character;
 pub mod data_model;
 mod effects;
@@ -7,7 +11,10 @@ mod game_package;
 mod math;
 mod npc;
 mod player;
-#[cfg(any(not(target_arch = "wasm32"), feature = "web-renderer"))]
+#[cfg(any(
+    feature = "rendering",
+    all(target_arch = "wasm32", feature = "web-renderer")
+))]
 mod renderer;
 mod schema;
 #[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
@@ -54,7 +61,8 @@ pub use engine::Engine;
 
 #[cfg(all(
     not(target_arch = "wasm32"),
-    not(any(target_os = "android", target_os = "ios"))
+    not(any(target_os = "android", target_os = "ios")),
+    feature = "rendering"
 ))]
 pub mod native {
     use crate::Engine;

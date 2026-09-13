@@ -5,6 +5,8 @@
 - [Character runtime](character_runtime.md): retained engine contracts and reproducible checks.
 - [UI runtime](ui-runtime.md): shared UI implementation.
 - [Application runtime](app-runtime.md): shared product state with native presentation.
+- [Headless engine proof](headless/README.md): run the engine without a screen,
+  GPU, renderer, socket, or platform host.
 
 Superseded character RFCs, phase plans and historical captures have been
 removed. Keep this folder focused on current decisions and review evidence.

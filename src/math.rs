@@ -50,6 +50,10 @@ impl Random {
     pub(crate) fn between(&mut self, min: f32, max: f32) -> f32 {
         min + self.unit() * (max - min)
     }
+
+    pub(crate) fn state(self) -> u32 {
+        self.0
+    }
 }
 
 pub(crate) fn damp(current: f32, target: f32, smoothing: f32, delta: f32) -> f32 {

@@ -13,13 +13,22 @@ build = "build.rs"
 crate-type = ["cdylib", "rlib", "staticlib"]
 
 [features]
-default = ["metal"]
-metal = ["wgpu/metal"]
-android-backends = ["wgpu/vulkan", "wgpu/gles"]
-desktop-backends = ["wgpu/dx12", "wgpu/vulkan", "wgpu/gles"]
-studio-ui = []
-web-renderer = []
-dev-showcase = []
+default = ["rendering", "metal"]
+rendering = [
+    "dep:bytemuck",
+    "dep:fontdue",
+    "dep:png",
+    "dep:pollster",
+    "dep:raw-window-handle",
+    "dep:wgpu",
+]
+metal = ["rendering", "wgpu/metal"]
+android-backends = ["rendering", "wgpu/vulkan", "wgpu/gles"]
+desktop-backends = ["rendering", "wgpu/dx12", "wgpu/vulkan", "wgpu/gles"]
+studio-ui = ["rendering"]
+web-renderer = ["rendering"]
+dev-showcase = ["rendering"]
+headless = []
 
 [[bin]]
 name = "magic_characters_capture"
@@ -31,24 +40,28 @@ name = "validate_character_assets"
 path = "src/bin/validate_character_assets.rs"
 required-features = ["dev-showcase"]
 
+[[bin]]
+name = "headless"
+path = "src/bin/headless.rs"
+required-features = ["headless"]
+
 [dependencies]
 cubacadabra-morphs = { path = "crates/morphs" }
-fontdue = "0.9"
+fontdue = { version = "0.9", optional = true }
 log = "0.4"
-png = "0.17"
+png = { version = "0.17", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-bytemuck = { version = "1.23", features = ["derive"] }
+bytemuck = { version = "1.23", optional = true, features = ["derive"] }
 glam = "0.30"
 mlua = { version = "0.12.1", default-features = false, features = ["luau", "vendored"] }
-pollster = "0.4"
-raw-window-handle = "0.6"
-wgpu = { version = "29.0.1", default-features = false, features = ["wgsl", "metal"] }
+pollster = { version = "0.4", optional = true }
+raw-window-handle = { version = "0.6", optional = true }
+wgpu = { version = "29.0.1", default-features = false, optional = true, features = ["wgsl", "metal"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-bytemuck = { version = "1.23", features = ["derive"] }
 glam = "0.30"
 js-sys = "0.3"
 luaur-rt = { version = "0.1.8", default-features = false }

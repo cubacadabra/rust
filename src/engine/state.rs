@@ -44,6 +44,160 @@ impl Engine {
         &self.snapshot
     }
 
+    /// Returns a stable hash of the observable runtime state.
+    ///
+    /// This is intentionally a diagnostic/conformance surface, not a
+    /// persistence format. It gives headless hosts a cheap way to compare two
+    /// runs without depending on renderer state or pointer identity.
+    pub fn state_hash(&self) -> u64 {
+        let mut hash = StableHasher::default();
+        hash.bytes(b"cubacadabra-engine-state-v1");
+        hash.f32(self.elapsed);
+        hash.usize(self.active_world);
+        hash.string(self.active_world_id().unwrap_or_default());
+        hash.u32(self.random.state());
+        hash.f32(self.next_spawn_at);
+        hash.f32(self.portal_cooldown_until);
+        hash.bool(self.player_dead);
+        hash.u32(self.player_deaths);
+        hash.u32(self.player_respawn_event_id);
+        hash.f32(self.player_respawn_at);
+        hash.f32(self.player_health);
+        hash.f32(self.player_max_health);
+        hash.string(&self.checkpoint_id);
+        hash.usize(self.checkpoint_index);
+        hash.u32(self.launch_event_id);
+        hash.u32(self.world_event_id);
+        hash.usize(self.last_launch_pad);
+        hash.usize(self.last_launch_occupants);
+        hash.usize(self.last_world_source_pad);
+        hash.usize(self.last_world_destination);
+        hash.player(&self.player);
+        hash.input(&self.input);
+        hash.array3(self.pending_reconciliation);
+
+        for value in &self.snapshot {
+            hash.f32(*value);
+        }
+        for pad in &self.launch_pads {
+            hash.f32(pad.x);
+            hash.f32(pad.z);
+            hash.f32(pad.radius);
+            hash.f32(pad.countdown);
+            hash.u8(pad.phase.code());
+            hash.f32(pad.launch_at);
+            hash.usize(pad.occupants);
+            hash.bool(pad.enabled);
+        }
+        for agent in &self.agents {
+            hash.array3(agent.position);
+            hash.f32(agent.target.x);
+            hash.f32(agent.target.z);
+            hash.f32(agent.meeting_target.x);
+            hash.f32(agent.meeting_target.z);
+            hash.usize(agent.meeting_index);
+            hash.u8(agent.phase.code() as u8);
+            hash.f32(agent.spawned_at);
+            hash.f32(agent.next_decision_at);
+            hash.f32(agent.gather_at);
+            hash.f32(agent.next_jump_at);
+            hash.f32(agent.speed);
+            hash.f32(agent.walk_cycle);
+            hash.f32(agent.vertical_velocity);
+            hash.bool(agent.grounded);
+        }
+        for player in &self.remote_players {
+            hash.array3(player.position);
+            hash.f32(player.yaw);
+            hash.f32(player.look_yaw);
+            hash.optional_array2(player.planar_velocity);
+            hash.optional_f32(player.vertical_velocity);
+            hash.bool(player.moving);
+            hash.bool(player.sprinting);
+            hash.f32(player.walk_cycle);
+            hash.string(&player.stable_id);
+            hash.string(&player.display_name);
+            hash.u64(player.identity);
+            hash.u32(player.generation);
+            hash.u64(player.motion_sequence);
+        }
+        for (zone, state) in self
+            .interactions
+            .world
+            .iter()
+            .zip(self.interactions.states())
+        {
+            hash.string(&zone.id);
+            hash.string(&zone.kind);
+            hash.string(&zone.label);
+            hash.array3(zone.position);
+            hash.f32(zone.radius);
+            hash.bool(state.inside);
+            hash.usize(state.players);
+            hash.u32(state.event_id);
+        }
+        hash.u32(self.interactions.event_id());
+        for (key, value) in &self.effects.states {
+            hash.usize(key.0);
+            hash.string(&key.1);
+            hash.string(value);
+        }
+        for instance in &self.effects.instances {
+            hash.string(&instance.template);
+            hash.array3(instance.position);
+            hash.f32(instance.started_at);
+            hash.usize(instance.world);
+        }
+        for event in &self.player_events {
+            hash.player_event(event);
+        }
+
+        if let Some(script) = &self.script {
+            let state = script.state();
+            let state = state.borrow();
+            hash.string(&state.lobby_status);
+            hash.optional_bool(state.lobby_enabled);
+            hash.optional_string(state.session_name.as_deref());
+            hash.optional_string(state.last_error.as_deref());
+            hash.u32(state.interactions.event_id);
+            for zone in &state.interactions.zones {
+                hash.string(&zone.id);
+                hash.string(&zone.kind);
+                hash.string(&zone.label);
+                hash.bool(zone.inside);
+                hash.bool(zone.nearby);
+                hash.usize(zone.players);
+            }
+            for message in &state.network_outbox {
+                hash.string(message);
+            }
+            for message in &state.network_inbox {
+                hash.string(message);
+            }
+            for message in &state.audio_outbox {
+                hash.string(message);
+            }
+            for command in &state.effect_outbox {
+                match command {
+                    crate::effects::EffectCommand::SetState { target, state } => {
+                        hash.u8(0);
+                        hash.string(target);
+                        hash.string(state);
+                    }
+                    crate::effects::EffectCommand::Play { template, position } => {
+                        hash.u8(1);
+                        hash.string(template);
+                        hash.array3(*position);
+                    }
+                }
+            }
+        }
+        if let Ok(model) = serde_json::to_vec(&self.data_model.snapshot_state()) {
+            hash.bytes(&model);
+        }
+        hash.finish()
+    }
+
     pub fn set_reduced_effects(&mut self, reduced: bool) {
         self.reduced_effects = reduced;
     }
@@ -299,5 +453,190 @@ fn player_support(player: Player) -> CharacterSupport {
         }
     } else {
         CharacterSupport::Airborne
+    }
+}
+
+#[derive(Default)]
+struct StableHasher(u64);
+
+impl StableHasher {
+    fn bytes(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 ^= u64::from(*byte);
+            self.0 = self.0.wrapping_mul(0x100000001b3);
+        }
+    }
+
+    fn finish(self) -> u64 {
+        self.0
+    }
+
+    fn u8(&mut self, value: u8) {
+        self.bytes(&[value]);
+    }
+
+    fn u32(&mut self, value: u32) {
+        self.bytes(&value.to_le_bytes());
+    }
+
+    fn u64(&mut self, value: u64) {
+        self.bytes(&value.to_le_bytes());
+    }
+
+    fn usize(&mut self, value: usize) {
+        self.u64(value as u64);
+    }
+
+    fn f32(&mut self, value: f32) {
+        self.u32(value.to_bits());
+    }
+
+    fn bool(&mut self, value: bool) {
+        self.u8(u8::from(value));
+    }
+
+    fn string(&mut self, value: &str) {
+        self.usize(value.len());
+        self.bytes(value.as_bytes());
+    }
+
+    fn optional_string(&mut self, value: Option<&str>) {
+        match value {
+            Some(value) => {
+                self.bool(true);
+                self.string(value);
+            }
+            None => self.bool(false),
+        }
+    }
+
+    fn optional_bool(&mut self, value: Option<bool>) {
+        match value {
+            Some(value) => {
+                self.bool(true);
+                self.bool(value);
+            }
+            None => self.bool(false),
+        }
+    }
+
+    fn optional_f32(&mut self, value: Option<f32>) {
+        match value {
+            Some(value) => {
+                self.bool(true);
+                self.f32(value);
+            }
+            None => self.bool(false),
+        }
+    }
+
+    fn array3(&mut self, value: [f32; 3]) {
+        for value in value {
+            self.f32(value);
+        }
+    }
+
+    fn optional_array2(&mut self, value: Option<[f32; 2]>) {
+        match value {
+            Some(value) => {
+                self.bool(true);
+                for value in value {
+                    self.f32(value);
+                }
+            }
+            None => self.bool(false),
+        }
+    }
+
+    fn player(&mut self, player: &Player) {
+        self.array3(player.position);
+        self.f32(player.facing_yaw);
+        self.array3(player.velocity);
+        self.bool(player.grounded);
+        self.bool(player.climbing);
+        self.bool(player.moving);
+        self.bool(player.sprinting);
+        self.f32(player.walk_cycle);
+    }
+
+    fn input(&mut self, input: &crate::types::Input) {
+        self.f32(input.forward);
+        self.f32(input.strafe);
+        self.bool(input.sprint);
+        self.bool(input.jump);
+        self.bool(input.climb);
+        self.f32(input.look_x);
+        self.f32(input.look_y);
+        self.f32(input.zoom_delta);
+    }
+
+    fn player_event(&mut self, event: &crate::types::PlayerEvent) {
+        match event {
+            crate::types::PlayerEvent::Spawn {
+                health,
+                max_health,
+                deaths,
+            } => {
+                self.u8(0);
+                self.f32(*health);
+                self.f32(*max_health);
+                self.u32(*deaths);
+            }
+            crate::types::PlayerEvent::Checkpoint { id, position } => {
+                self.u8(1);
+                self.string(id);
+                self.array3(*position);
+            }
+            crate::types::PlayerEvent::Death {
+                cause,
+                checkpoint,
+                deaths,
+                health,
+                max_health,
+            } => {
+                self.u8(2);
+                self.string(cause);
+                self.string(checkpoint);
+                self.u32(*deaths);
+                self.f32(*health);
+                self.f32(*max_health);
+            }
+            crate::types::PlayerEvent::Respawn {
+                checkpoint,
+                deaths,
+                health,
+                max_health,
+            } => {
+                self.u8(3);
+                self.string(checkpoint);
+                self.u32(*deaths);
+                self.f32(*health);
+                self.f32(*max_health);
+            }
+            crate::types::PlayerEvent::Damage {
+                source,
+                amount,
+                health,
+                max_health,
+            } => {
+                self.u8(4);
+                self.string(source);
+                self.f32(*amount);
+                self.f32(*health);
+                self.f32(*max_health);
+            }
+            crate::types::PlayerEvent::Heal {
+                source,
+                amount,
+                health,
+                max_health,
+            } => {
+                self.u8(5);
+                self.string(source);
+                self.f32(*amount);
+                self.f32(*health);
+                self.f32(*max_health);
+            }
+        }
     }
 }

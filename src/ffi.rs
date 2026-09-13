@@ -1,14 +1,14 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::engine::{Engine, MAX_AGENTS, SNAPSHOT_STRIDE};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 use super::renderer::Renderer;
 use super::types::Input;
 use super::ui::{UiInsets, UiPointerPhase, UiViewport};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 use std::ffi::c_void;
 use std::ptr;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 use std::slice;
 
 include!("ffi/control.rs");

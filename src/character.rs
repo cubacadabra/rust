@@ -18,6 +18,7 @@ pub(crate) fn foot_is_planted(phase: f32) -> bool {
     phase.rem_euclid(std::f32::consts::TAU) < GAIT_STANCE_PHASE
 }
 
+#[cfg(feature = "rendering")]
 pub(crate) use animation::{AnimationOutput, CharacterPresentationState, SecondaryMotion};
 pub(crate) use definition::{
     AppearanceInput, BodyId, BodyPart, BodyRecipe, CharacterAppearance, CharacterColors, OutfitId,
