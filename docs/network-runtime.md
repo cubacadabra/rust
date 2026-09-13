@@ -51,6 +51,12 @@ Cheat-resistant leaderboards require a future generic server-rules boundary,
 not game-named handlers or client-authored timestamps. Competitive authority
 is intentionally outside the cooperative MVP API.
 
+The current message-by-message authority classification and the first proposed
+`Command -> validate/simulate -> Event/State` boundary are documented in
+[the multiplayer authority map](authority-map.md). `cubacadabra_engine` also
+contains a small headless prototype of that boundary; it is not connected to
+the current backend in this step.
+
 The host adapts the runtime outbox to these WebSocket messages:
 
 ```json

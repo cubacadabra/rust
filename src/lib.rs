@@ -2,6 +2,7 @@
 // shared source tree while omitting their renderer consumers.
 #![cfg_attr(not(feature = "rendering"), allow(dead_code, unused_imports))]
 
+pub mod authority;
 mod character;
 pub mod data_model;
 mod effects;
