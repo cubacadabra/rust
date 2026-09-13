@@ -46,6 +46,7 @@ fi
 mkdir -p "$output_dir"
 $cargo_command build \
   --manifest-path "$crate_dir/crates/client/Cargo.toml" \
+  --locked \
   --target wasm32-unknown-unknown \
   $cargo_profile_args \
   --features web-renderer
@@ -62,6 +63,7 @@ app_output_dir="$web_dir/public/wasm/app"
 mkdir -p "$app_output_dir"
 $cargo_command build \
   --manifest-path "$crate_dir/crates/app/Cargo.toml" \
+  --locked \
   --target wasm32-unknown-unknown \
   $cargo_profile_args
 "$wasm_bindgen_command" \
