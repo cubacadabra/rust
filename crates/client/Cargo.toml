@@ -7,6 +7,10 @@ publish = false
 [lib]
 crate-type = ["cdylib", "rlib", "staticlib"]
 
+[[bin]]
+name = "validate_game_packages"
+path = "src/bin/validate_game_packages.rs"
+
 [features]
 default = ["metal"]
 metal = ["cubacadabra-engine/metal"]
