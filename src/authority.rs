@@ -3,7 +3,9 @@
 //! This module deliberately knows nothing about a game's rules. It provides
 //! the boundary a trusted world implementation can use:
 //!
-//!     Command -> validate -> simulate -> Event/State
+//! ```text
+//! Command -> validate -> simulate -> Event/State
+//! ```
 //!
 //! A game supplies a [`CommandHandler`] that interprets the command name and
 //! payload. The boundary owns envelope validation, event sequencing, and the

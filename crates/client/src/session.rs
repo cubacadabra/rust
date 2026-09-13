@@ -79,9 +79,9 @@ impl ClientSession {
     pub fn load(manifest_source: &str, script_source: &str) -> Result<Self, ClientError> {
         let header: PackageHeader = serde_json::from_str(manifest_source)
             .map_err(|error| ClientError::new(format!("manifest is not valid JSON: {error}")))?;
-        if header.id.trim().is_empty() {
+        if !is_valid_game_id(&header.id) {
             return Err(ClientError::new(
-                "manifest.json is missing a non-empty string id",
+                "manifest.json id must be 3–64 lowercase letters, numbers, and single dashes",
             ));
         }
 
@@ -409,6 +409,17 @@ impl ClientSession {
     }
 }
 
+fn is_valid_game_id(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    (3..=64).contains(&bytes.len())
+        && bytes[0] != b'-'
+        && bytes[bytes.len() - 1] != b'-'
+        && bytes
+            .iter()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
+        && !value.contains("--")
+}
+
 impl Deref for ClientSession {
     type Target = Engine;
 
@@ -441,6 +452,14 @@ mod tests {
         let mut client = ClientSession::load(MANIFEST, SCRIPT).expect("client");
         assert!(!client.receive_text("not json"));
         assert!(!client.receive_text(r#"{"type":"move","id":"p","x":null}"#));
+    }
+
+    #[test]
+    fn rejects_game_ids_outside_the_package_contract() {
+        for game_id in ["a", "A-game", "game--id", &"a".repeat(65)] {
+            let manifest = MANIFEST.replacen("test-game", game_id, 1);
+            assert!(ClientSession::load(&manifest, SCRIPT).is_err(), "{game_id}");
+        }
     }
 
     #[test]

@@ -72,6 +72,31 @@ struct ExecutionBudget {
 
 const MAX_SCRIPT_SAFEPOINTS_PER_TICK: u32 = 100_000;
 
+fn execute_with_budget<T>(
+    execution_budget: &Rc<RefCell<ExecutionBudget>>,
+    operation: impl FnOnce() -> lua::Result<T>,
+) -> lua::Result<T> {
+    {
+        let mut budget = execution_budget.borrow_mut();
+        budget.active = true;
+        budget.exhausted = false;
+        budget.safepoints = 0;
+    }
+    let result = operation();
+    let exhausted = {
+        let mut budget = execution_budget.borrow_mut();
+        budget.active = false;
+        budget.exhausted
+    };
+    if exhausted {
+        Err(lua::Error::RuntimeError(
+            "game script execution budget exceeded".to_owned(),
+        ))
+    } else {
+        result
+    }
+}
+
 impl GameScript {
     pub(crate) fn load(source: &str, ui: Rc<RefCell<UiRuntime>>) -> Result<Self, String> {
         Self::load_inner(source, ui).map_err(|error| error.to_string())
@@ -91,7 +116,9 @@ impl GameScript {
             budget.safepoints = budget.safepoints.saturating_add(1);
             if budget.safepoints >= MAX_SCRIPT_SAFEPOINTS_PER_TICK {
                 budget.exhausted = true;
-                Ok(lua::VmState::Yield)
+                Err(lua::Error::RuntimeError(
+                    "game script execution budget exceeded".to_owned(),
+                ))
             } else {
                 Ok(lua::VmState::Continue)
             }
@@ -103,7 +130,9 @@ impl GameScript {
             Rc::clone(&scheduler),
         )?;
         lua.sandbox(true)?;
-        let module: lua::Table = lua.load(source).set_name("game.luau").eval()?;
+        let module: lua::Table = execute_with_budget(&execution_budget, || {
+            lua.load(source).set_name("game.luau").eval()
+        })?;
         let on_start: Option<lua::Function> = module.get("on_start")?;
         let on_tick: Option<lua::Function> = module.get("on_tick")?;
         let on_launch: Option<lua::Function> = module.get("on_launch")?;
@@ -115,7 +144,7 @@ impl GameScript {
         let on_restore: Option<lua::Function> = module.get("on_restore")?;
 
         if let Some(on_start) = on_start {
-            on_start.call::<()>((api.clone(),))?;
+            execute_with_budget(&execution_budget, || on_start.call::<()>((api.clone(),)))?;
         }
 
         Ok(Self {
@@ -152,12 +181,14 @@ impl GameScript {
             self.dispatch_ui_event(&event)?;
         }
         if let Some(on_tick) = &self.on_tick {
-            on_tick
-                .call::<()>((self.api.clone(), delta))
-                .map_err(|error| error.to_string())?;
+            self.execute_budgeted(|| on_tick.call::<()>((self.api.clone(), delta)))?;
         }
         self.run_tasks();
         Ok(())
+    }
+
+    fn execute_budgeted<T>(&self, operation: impl FnOnce() -> lua::Result<T>) -> Result<T, String> {
+        execute_with_budget(&self.execution_budget, operation).map_err(|error| error.to_string())
     }
 
     fn run_tasks(&self) {
@@ -204,9 +235,7 @@ impl GameScript {
         let value: serde_json::Value = serde_json::from_str(source)
             .map_err(|error| format!("network message is not valid JSON: {error}"))?;
         let value = json_to_lua(&self.lua, &value, 0).map_err(|error| error.to_string())?;
-        on_network_message
-            .call::<()>((self.api.clone(), value))
-            .map_err(|error| error.to_string())
+        self.execute_budgeted(|| on_network_message.call::<()>((self.api.clone(), value)))
     }
 
     pub(crate) fn enqueue_network_message(&self, source: &str) -> bool {
@@ -260,9 +289,7 @@ impl GameScript {
         if let Some(y) = event.y {
             value.set("y", y).map_err(|error| error.to_string())?;
         }
-        on_ui_event
-            .call::<()>((self.api.clone(), value))
-            .map_err(|error| error.to_string())
+        self.execute_budgeted(|| on_ui_event.call::<()>((self.api.clone(), value)))
     }
 
     pub(crate) fn state(&self) -> Rc<RefCell<ScriptState>> {
@@ -276,9 +303,7 @@ impl GameScript {
         let Some(on_save) = &self.on_save else {
             return Ok(serde_json::Value::Null);
         };
-        let value = on_save
-            .call::<lua::Value>((self.api.clone(),))
-            .map_err(|error| error.to_string())?;
+        let value = self.execute_budgeted(|| on_save.call::<lua::Value>((self.api.clone(),)))?;
         lua_value_to_json(value, 0)
     }
 
@@ -314,9 +339,7 @@ impl GameScript {
             );
         };
         let value = json_to_lua(&self.lua, state, 0).map_err(|error| error.to_string())?;
-        on_restore
-            .call::<()>((self.api.clone(), value))
-            .map_err(|error| error.to_string())
+        self.execute_budgeted(|| on_restore.call::<()>((self.api.clone(), value)))
     }
 
     pub(crate) fn lobby_enabled_override(&self) -> Option<bool> {
@@ -341,9 +364,7 @@ impl GameScript {
         value
             .set("players", event.players)
             .map_err(|error| error.to_string())?;
-        on_interaction
-            .call::<()>((self.api.clone(), value))
-            .map_err(|error| error.to_string())
+        self.execute_budgeted(|| on_interaction.call::<()>((self.api.clone(), value)))
     }
 
     pub(crate) fn player_event(&self, event: &crate::types::PlayerEvent) -> Result<(), String> {
@@ -482,9 +503,7 @@ impl GameScript {
                     .map_err(|error| error.to_string())?;
             }
         }
-        on_player_event
-            .call::<()>((self.api.clone(), value))
-            .map_err(|error| error.to_string())
+        self.execute_budgeted(|| on_player_event.call::<()>((self.api.clone(), value)))
     }
 
     #[allow(dead_code)]
@@ -504,9 +523,7 @@ impl GameScript {
                     .map_err(|error| error.to_string())?,
             )
             .map_err(|error| error.to_string())?;
-        on_launch
-            .call::<()>((self.api.clone(), launch))
-            .map_err(|error| error.to_string())
+        self.execute_budgeted(|| on_launch.call::<()>((self.api.clone(), launch)))
     }
 }
 
@@ -843,6 +860,42 @@ mod tests {
 
         assert_eq!(script.state().borrow().lobby_status, "ready");
         script.tick(1.0 / 60.0).expect("tick should run");
+    }
+
+    #[test]
+    fn nonterminating_startup_is_rejected_by_the_execution_budget() {
+        let result = GameScript::load(
+            r#"
+                local game = {}
+                function game.on_start(_api)
+                    while true do end
+                end
+                return game
+            "#,
+            Rc::new(RefCell::new(UiRuntime::default())),
+        );
+
+        let error = match result {
+            Ok(_) => panic!("nonterminating startup should be rejected"),
+            Err(error) => error,
+        };
+        assert!(error.contains("execution budget exceeded"));
+    }
+
+    #[test]
+    fn nonterminating_tick_is_rejected_by_the_execution_budget() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_tick(_api, _delta)
+                    while true do end
+                end
+                return game
+            "#,
+        );
+
+        let error = script.tick(0.0).unwrap_err();
+        assert!(error.contains("execution budget exceeded"));
     }
 
     #[test]
