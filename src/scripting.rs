@@ -546,7 +546,13 @@ fn interaction_class_to_lua(lua: &lua::Lua, class: &ClassSchema) -> lua::Result<
 
 fn property_value_to_lua(lua: &lua::Lua, value: &PropertyValue) -> lua::Result<lua::Value> {
     match value {
-        PropertyValue::String(value) => Ok(lua::Value::String(lua.create_string(value)?)),
+        PropertyValue::String(value) => {
+            #[cfg(not(target_arch = "wasm32"))]
+            let value = lua.create_string(value)?;
+            #[cfg(target_arch = "wasm32")]
+            let value = lua.create_string(value);
+            Ok(lua::Value::String(value))
+        }
         PropertyValue::Number(value) => Ok(lua::Value::Number(f64::from(*value))),
         PropertyValue::Vector3(values) => Ok(lua::Value::Table(
             lua.create_sequence_from(values.iter().copied())?,
