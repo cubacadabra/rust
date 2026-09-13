@@ -1,0 +1,8 @@
+name: Cross-repository compatibility
+on:
+  push:
+  pull_request:
+jobs:
+  compatibility:
+    uses: cubacadabra/tools/.github/workflows/compatibility-reusable.yml@main
+    with: { rust_ref: ${{ github.sha }} }
