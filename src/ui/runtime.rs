@@ -11,6 +11,8 @@ impl Default for UiRuntime {
             script_events: VecDeque::new(),
             event_buffer: Vec::new(),
             dirty: false,
+            #[cfg(feature = "studio-ui")]
+            document_revision: 0,
             shared_authenticated: false,
             shared_modal_progress: 0.0,
             shared_modal_target: 0.0,
@@ -28,6 +30,37 @@ impl UiRuntime {
         }
 
         count(&self.document.nodes)
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn document_revision(&self) -> u64 {
+        self.document_revision
+    }
+
+    #[cfg(feature = "studio-ui")]
+    fn bump_document_revision(&mut self) {
+        self.document_revision = self.document_revision.wrapping_add(1);
+    }
+
+    #[cfg(not(feature = "studio-ui"))]
+    fn bump_document_revision(&mut self) {}
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn studio_nodes(&self) -> Vec<crate::StudioUiNode> {
+        fn collect(nodes: &[UiNode], output: &mut Vec<crate::StudioUiNode>) {
+            for node in nodes {
+                output.push(crate::StudioUiNode {
+                    id: node.id.clone(),
+                    kind: format!("{:?}", node.kind),
+                    text: node.text.clone(),
+                });
+                collect(&node.children, output);
+            }
+        }
+
+        let mut nodes = Vec::new();
+        collect(&self.document.nodes, &mut nodes);
+        nodes
     }
 
     pub(crate) fn set_viewport(&mut self, viewport: UiViewport) {
@@ -70,6 +103,7 @@ impl UiRuntime {
             serde_json::from_str(source).map_err(|error| error.to_string())?;
         validate_document(&document)?;
         self.document = document;
+        self.bump_document_revision();
         self.captures.clear();
         self.dirty = true;
         Ok(())
@@ -77,6 +111,7 @@ impl UiRuntime {
 
     pub(crate) fn clear(&mut self) {
         self.document.nodes.clear();
+        self.bump_document_revision();
         self.captures.clear();
         self.dirty = true;
     }
@@ -86,6 +121,7 @@ impl UiRuntime {
             return false;
         };
         node.text = text.chars().take(256).collect();
+        self.bump_document_revision();
         self.dirty = true;
         true
     }
@@ -95,6 +131,7 @@ impl UiRuntime {
             return false;
         };
         node.value = value.clamp(node.minimum, node.maximum.max(node.minimum));
+        self.bump_document_revision();
         self.dirty = true;
         true
     }
@@ -105,6 +142,7 @@ impl UiRuntime {
         };
         node.checked = checked;
         node.value = f32::from(checked);
+        self.bump_document_revision();
         self.dirty = true;
         true
     }
@@ -114,6 +152,7 @@ impl UiRuntime {
             return false;
         };
         node.visible = visible;
+        self.bump_document_revision();
         self.dirty = true;
         true
     }

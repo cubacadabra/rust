@@ -59,6 +59,8 @@ pub use web_renderer::WebRenderer;
 mod world;
 
 pub use engine::Engine;
+#[cfg(feature = "studio-ui")]
+pub use engine::StudioUiNode;
 pub use engine::snapshot::{
     AgentSnapshot, BuildBlockSnapshot, CameraSnapshot, ENGINE_SNAPSHOT_FORMAT,
     ENGINE_SNAPSHOT_VERSION, EngineSnapshot, InputSnapshot, InteractionEventSnapshot,

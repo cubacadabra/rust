@@ -364,6 +364,8 @@ pub(crate) struct UiRuntime {
     script_events: VecDeque<UiEvent>,
     event_buffer: Vec<u8>,
     dirty: bool,
+    #[cfg(feature = "studio-ui")]
+    document_revision: u64,
     shared_authenticated: bool,
     shared_modal_progress: f32,
     shared_modal_target: f32,

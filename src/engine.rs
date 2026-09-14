@@ -61,6 +61,14 @@ const MAX_CAMERA_DISTANCE: f32 = 120.0;
 pub(crate) const DEFAULT_ORBIT_PITCH: f32 = 0.26;
 pub(crate) const DEFAULT_ORBIT_DISTANCE: f32 = 7.6;
 
+#[cfg(feature = "studio-ui")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StudioUiNode {
+    pub id: String,
+    pub kind: String,
+    pub text: String,
+}
+
 pub struct Engine {
     /// Generic engine-owned entities and properties. Game-specific meaning
     /// remains in Luau; Rust exposes only the data-model mechanics.

@@ -90,6 +90,16 @@ impl Engine {
         self.ui.borrow().document_node_count()
     }
 
+    #[cfg(feature = "studio-ui")]
+    pub fn studio_ui_document_revision(&self) -> u64 {
+        self.ui.borrow().document_revision()
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub fn studio_ui_nodes(&self) -> Vec<crate::StudioUiNode> {
+        self.ui.borrow().studio_nodes()
+    }
+
     pub(crate) fn ui_hit_test(&mut self, x: f32, y: f32) -> bool {
         self.ui.borrow_mut().is_interactive_at(x, y)
     }
