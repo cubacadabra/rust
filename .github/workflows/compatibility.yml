@@ -7,4 +7,5 @@ on:
 jobs:
   compatibility:
     uses: cubacadabra/tools/.github/workflows/compatibility-reusable.yml@main
-    with: { rust_ref: ${{ github.sha }} }
+    with:
+      rust_ref: ${{ github.sha }}
