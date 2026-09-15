@@ -1,6 +1,8 @@
 name: Cross-repository compatibility
 on:
   push:
+    tags:
+      - "v*.*.*"
   pull_request:
 jobs:
   compatibility:
