@@ -135,6 +135,21 @@ pub mod native {
             self.inner.studio_overlay_format()
         }
 
+        #[cfg(feature = "studio-ui")]
+        pub fn studio_project_world_point(&self, point: [f32; 3]) -> Option<[f32; 2]> {
+            self.inner.studio_project_world_point(point)
+        }
+
+        #[cfg(feature = "studio-ui")]
+        pub fn studio_world_point_on_horizontal_plane(
+            &self,
+            screen: [f32; 2],
+            plane_y: f32,
+        ) -> Option<[f32; 3]> {
+            self.inner
+                .studio_world_point_on_horizontal_plane(screen, plane_y)
+        }
+
         pub fn set_package_image_atlas(
             &mut self,
             width: u32,

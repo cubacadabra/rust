@@ -1,5 +1,7 @@
 use super::character_material::CharacterPass;
 use super::character_quality;
+#[cfg(feature = "studio-ui")]
+use glam::Vec4;
 use glam::{Mat4, Vec3};
 
 use super::CharacterRenderMode;
@@ -15,6 +17,72 @@ impl Renderer {
     #[cfg(feature = "studio-ui")]
     pub(crate) fn studio_overlay_format(&self) -> wgpu::TextureFormat {
         super::targets::SCENE_FORMAT
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn studio_project_world_point(&self, point: [f32; 3]) -> Option<[f32; 2]> {
+        let (view_projection, viewport) = self.studio_view_projection();
+        let clip = view_projection * Vec3::from_array(point).extend(1.0);
+        if !clip.is_finite() || clip.w <= 0.0001 {
+            return None;
+        }
+        let ndc = clip.truncate() / clip.w;
+        let (x, y, width, height) = viewport;
+        Some([
+            x + (ndc.x * 0.5 + 0.5) * width,
+            y + (0.5 - ndc.y * 0.5) * height,
+        ])
+        .filter(|point| point.iter().all(|value| value.is_finite()))
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn studio_world_point_on_horizontal_plane(
+        &self,
+        screen: [f32; 2],
+        plane_y: f32,
+    ) -> Option<[f32; 3]> {
+        let (view_projection, (x, y, width, height)) = self.studio_view_projection();
+        if width <= 0.0 || height <= 0.0 || !plane_y.is_finite() {
+            return None;
+        }
+        let ndc_x = ((screen[0] - x) / width) * 2.0 - 1.0;
+        let ndc_y = 1.0 - ((screen[1] - y) / height) * 2.0;
+        let inverse = view_projection.inverse();
+        let near = inverse * Vec4::new(ndc_x, ndc_y, 0.0, 1.0);
+        let far = inverse * Vec4::new(ndc_x, ndc_y, 1.0, 1.0);
+        if !near.is_finite() || !far.is_finite() || near.w.abs() <= 0.0001 || far.w.abs() <= 0.0001
+        {
+            return None;
+        }
+        let near = near.truncate() / near.w;
+        let far = far.truncate() / far.w;
+        let direction = far - near;
+        if direction.y.abs() <= 0.0001 {
+            return None;
+        }
+        let distance = (plane_y - near.y) / direction.y;
+        if !distance.is_finite() || distance < 0.0 {
+            return None;
+        }
+        let point = near + direction * distance;
+        point.is_finite().then(|| point.to_array())
+    }
+
+    #[cfg(feature = "studio-ui")]
+    fn studio_view_projection(&self) -> (Mat4, (f32, f32, f32, f32)) {
+        let player = Vec3::from_array(self.scene.player.position);
+        let [yaw, pitch, distance] = self.scene.camera;
+        let (camera_position, target) =
+            super::camera::orbit(player, self.scene.player.body, yaw, pitch, distance);
+        let viewport = self.world_viewport();
+        let view = Mat4::look_at_rh(camera_position, target, Vec3::Y);
+        let projection = Mat4::perspective_rh(
+            62.0_f32.to_radians(),
+            (viewport.2 / viewport.3.max(1.0)).max(0.1),
+            0.05,
+            240.0,
+        );
+        (projection * view, viewport)
     }
 
     pub fn draw(&mut self) {

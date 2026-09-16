@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use cubacadabra_morphs::MorphParameterValue;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::effects::EffectLibraryDefinition;
 
@@ -77,9 +77,30 @@ fn default_respawn_mode() -> String {
     "checkpoint".to_owned()
 }
 
+pub(crate) const SUPPORTED_SDK_VERSION: &str = "0.3.0";
+
+fn deserialize_sdk_version<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error as _;
+
+    let value = Option::<String>::deserialize(deserializer)?;
+    if let Some(version) = value.as_deref()
+        && version != SUPPORTED_SDK_VERSION
+    {
+        return Err(D::Error::custom(format!(
+            "unsupported sdkVersion {version:?}; runtime supports {SUPPORTED_SDK_VERSION}"
+        )));
+    }
+    Ok(value)
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GamePackageDefinition {
+    #[serde(default, deserialize_with = "deserialize_sdk_version")]
+    pub(crate) _sdk_version: Option<String>,
     #[serde(default = "default_start_world")]
     pub(crate) start_world: String,
     /// Lobbies remain the default for existing packages. A package can opt
@@ -821,6 +842,13 @@ mod tests {
         };
         let source = std::fs::read_to_string(&path).expect("configured game manifest should exist");
         GamePackageDefinition::parse(&source).expect("configured game manifest should parse");
+    }
+
+    #[test]
+    fn rejects_an_unsupported_sdk_version() {
+        let error = GamePackageDefinition::parse(r#"{"sdkVersion":"0.4.0"}"#)
+            .expect_err("unsupported SDK versions must be rejected");
+        assert!(error.to_string().contains("unsupported sdkVersion"));
     }
 
     #[test]
