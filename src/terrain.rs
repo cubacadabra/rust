@@ -391,7 +391,10 @@ impl TerrainGrid {
         Ok(Some(Self { cell_size, chunks }))
     }
 
-    pub(crate) fn for_each_triangle(&self, mut visit: impl FnMut([TerrainVertex; 3])) {
+    pub(crate) fn for_each_chunk_triangle(
+        &self,
+        mut visit: impl FnMut([i32; 3], [TerrainVertex; 3]),
+    ) {
         const CUBE_CORNERS: [[usize; 3]; 8] = [
             [0, 0, 0],
             [1, 0, 0],
@@ -465,7 +468,7 @@ impl TerrainGrid {
                                 count += 1;
                             }
                             if count >= 3 {
-                                emit_polygon(intersections, count, &mut visit);
+                                emit_polygon(intersections, count, chunk.coordinate, &mut visit);
                             }
                         }
                     }
@@ -639,7 +642,8 @@ fn interpolate_vertex(
 fn emit_polygon(
     mut vertices: [Option<TerrainVertex>; 4],
     count: usize,
-    visit: &mut impl FnMut([TerrainVertex; 3]),
+    chunk: [i32; 3],
+    visit: &mut impl FnMut([i32; 3], [TerrainVertex; 3]),
 ) {
     let mut polygon = vertices[..count]
         .iter_mut()
@@ -683,7 +687,7 @@ fn emit_polygon(
         polygon.reverse();
     }
     for index in 1..polygon.len() - 1 {
-        visit([polygon[0], polygon[index], polygon[index + 1]]);
+        visit(chunk, [polygon[0], polygon[index], polygon[index + 1]]);
     }
 }
 
@@ -802,7 +806,7 @@ mod tests {
         assert!(terrain.signed_distance([0.0; 3]) > 0.0);
         assert!(terrain.signed_distance([4.0, 0.0, 0.0]) < 0.0);
         let mut triangles = 0;
-        terrain.for_each_triangle(|triangle| {
+        terrain.for_each_chunk_triangle(|_, triangle| {
             triangles += 1;
             assert!(
                 triangle
@@ -860,7 +864,7 @@ mod tests {
         assert!(terrain.signed_distance([15.5, 0.0, 0.0]) > 0.0);
         assert!(terrain.signed_distance([15.5, -3.9, 0.0]) < 0.0);
         let mut crossing_triangles = 0;
-        terrain.for_each_triangle(|triangle| {
+        terrain.for_each_chunk_triangle(|_, triangle| {
             if triangle
                 .iter()
                 .any(|vertex| (vertex.position[0] - 16.0).abs() < 0.02)

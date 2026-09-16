@@ -772,6 +772,7 @@ impl Renderer {
             static_vertex_buffer,
             static_vertex_capacity,
             static_vertex_count: 0,
+            terrain_meshes: Vec::new(),
             dynamic_vertex_buffer,
             dynamic_vertex_capacity,
             ui_pipeline,

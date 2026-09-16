@@ -254,6 +254,12 @@ pub(super) struct Vertex {
     pub(super) texture_bounds: [f32; 4],
 }
 
+pub(super) struct TerrainRenderChunk {
+    pub(super) vertex_buffer: wgpu::Buffer,
+    pub(super) index_buffer: wgpu::Buffer,
+    pub(super) index_count: u32,
+}
+
 impl Vertex {
     pub(super) const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
@@ -343,6 +349,7 @@ pub struct Renderer {
     pub(super) static_vertex_buffer: wgpu::Buffer,
     pub(super) static_vertex_capacity: usize,
     pub(super) static_vertex_count: usize,
+    pub(super) terrain_meshes: Vec<TerrainRenderChunk>,
     pub(super) dynamic_vertex_buffer: wgpu::Buffer,
     pub(super) dynamic_vertex_capacity: usize,
     pub(super) ui_pipeline: wgpu::RenderPipeline,

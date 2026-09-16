@@ -3,15 +3,17 @@ use super::character_quality;
 #[cfg(feature = "studio-ui")]
 use glam::Vec4;
 use glam::{Mat4, Vec3};
+use std::collections::{BTreeMap, HashMap};
 
 use super::CharacterRenderMode;
 #[cfg(debug_assertions)]
 use super::add_floor_pixel_text;
 use super::{
-    Globals, RenderEntity, Renderer, Vertex, add_billboard, add_cloud, add_cuboid,
-    add_cuboid_outline, add_ladder, add_launch_pad, add_pixel_text, add_spawn_pad,
+    Globals, RenderEntity, Renderer, TerrainRenderChunk, Vertex, add_billboard, add_cloud,
+    add_cuboid, add_cuboid_outline, add_ladder, add_launch_pad, add_pixel_text, add_spawn_pad,
     add_textured_cuboid, faded,
 };
+use crate::terrain::TerrainVertex;
 
 fn vertex_capacity_for(required: usize, max_buffer_size: u64) -> Option<usize> {
     if required == 0 {
@@ -32,6 +34,52 @@ fn vertex_capacity_for(required: usize, max_buffer_size: u64) -> Option<usize> {
         // allocate the exact mesh size rather than crossing wgpu's hard cap.
         required
     })
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+struct TerrainVertexKey {
+    position: [u32; 3],
+    normal: [u32; 3],
+    material: u8,
+}
+
+#[derive(Default)]
+struct TerrainMeshBuilder {
+    vertices: Vec<Vertex>,
+    indices: Vec<u32>,
+    vertex_indices: HashMap<TerrainVertexKey, u32>,
+}
+
+impl TerrainMeshBuilder {
+    fn push_triangle(&mut self, triangle: [TerrainVertex; 3], material_art: bool) {
+        for terrain_vertex in triangle {
+            let key = TerrainVertexKey {
+                position: terrain_vertex.position.map(f32::to_bits),
+                normal: terrain_vertex.normal.map(f32::to_bits),
+                material: terrain_vertex.material,
+            };
+            let index = if let Some(index) = self.vertex_indices.get(&key) {
+                *index
+            } else {
+                let index = u32::try_from(self.vertices.len())
+                    .expect("a terrain chunk mesh must fit in u32 vertex indices");
+                self.vertices.push(Vertex {
+                    position: terrain_vertex.position,
+                    normal: terrain_vertex.normal,
+                    color: [1.0; 4],
+                    tex_coords: [
+                        terrain_vertex.material as f32,
+                        if material_art { 1.0 } else { 0.0 },
+                    ],
+                    image_invert: 2.0,
+                    texture_bounds: [0.0, 0.0, 1.0, 1.0],
+                });
+                self.vertex_indices.insert(key, index);
+                index
+            };
+            self.indices.push(index);
+        }
+    }
 }
 
 impl Renderer {
@@ -393,6 +441,11 @@ impl Renderer {
                 pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
                 pass.draw(0..self.static_vertex_count as u32, 0..1);
             }
+            for chunk in &self.terrain_meshes {
+                pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..chunk.index_count, 0, 0..1);
+            }
             if !self.opaque_vertices.is_empty() {
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
                 pass.draw(0..self.opaque_vertices.len() as u32, 0..1);
@@ -516,23 +569,6 @@ impl Renderer {
                 faded(world.palette.ground_edge, 0.46),
             );
         }
-        if let Some(terrain) = &world.terrain {
-            terrain.for_each_triangle(|triangle| {
-                for vertex in triangle {
-                    mesh.push(Vertex {
-                        position: vertex.position,
-                        normal: vertex.normal,
-                        color: [1.0; 4],
-                        tex_coords: [
-                            vertex.material as f32,
-                            if world.terrain_material_art { 1.0 } else { 0.0 },
-                        ],
-                        image_invert: 2.0,
-                        texture_bounds: [0.0, 0.0, 1.0, 1.0],
-                    });
-                }
-            });
-        }
         for block in &world.blocks {
             if let Some(material) = block
                 .material
@@ -593,6 +629,51 @@ impl Renderer {
             }
         }
         mesh
+    }
+
+    fn build_terrain_meshes(&self) -> Vec<TerrainMeshBuilder> {
+        let Some(terrain) = &self.scene.world.terrain else {
+            return Vec::new();
+        };
+        let mut chunks = BTreeMap::<[i32; 3], TerrainMeshBuilder>::new();
+        terrain.for_each_chunk_triangle(|coordinate, triangle| {
+            chunks
+                .entry(coordinate)
+                .or_default()
+                .push_triangle(triangle, self.scene.world.terrain_material_art);
+        });
+        chunks.into_values().collect()
+    }
+
+    fn upload_terrain_meshes(&self, meshes: Vec<TerrainMeshBuilder>) -> Vec<TerrainRenderChunk> {
+        let mut uploaded = Vec::with_capacity(meshes.len());
+        for mesh in meshes {
+            if mesh.indices.is_empty() {
+                continue;
+            }
+            let vertex_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cubacadabra terrain chunk vertices"),
+                size: std::mem::size_of_val(mesh.vertices.as_slice()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue
+                .write_buffer(&vertex_buffer, 0, bytemuck::cast_slice(&mesh.vertices));
+            let index_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cubacadabra terrain chunk indices"),
+                size: std::mem::size_of_val(mesh.indices.as_slice()) as u64,
+                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue
+                .write_buffer(&index_buffer, 0, bytemuck::cast_slice(&mesh.indices));
+            uploaded.push(TerrainRenderChunk {
+                vertex_buffer,
+                index_buffer,
+                index_count: mesh.indices.len() as u32,
+            });
+        }
+        uploaded
     }
 
     fn build_dynamic_vertices(&mut self) -> Vec<Vertex> {
@@ -815,16 +896,19 @@ impl Renderer {
             );
             self.static_vertex_count = 0;
             self.static_translucent_vertices.clear();
-            return;
+        } else {
+            self.static_vertex_count = vertices.len();
         }
-        self.static_vertex_count = vertices.len();
-        if !vertices.is_empty() {
+        if self.static_vertex_count > 0 {
             self.queue.write_buffer(
                 &self.static_vertex_buffer,
                 0,
                 bytemuck::cast_slice(&vertices),
             );
         }
+        self.terrain_meshes.clear();
+        let meshes = self.build_terrain_meshes();
+        self.terrain_meshes = self.upload_terrain_meshes(meshes);
     }
 
     fn ensure_static_vertex_capacity(&mut self, required: usize) -> bool {
@@ -997,6 +1081,69 @@ pub(super) fn sort_translucent(vertices: &mut [Vertex], camera: Vec3, target: Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn terrain_vertex(position: [f32; 3]) -> TerrainVertex {
+        TerrainVertex {
+            position,
+            normal: [0.0, 1.0, 0.0],
+            material: 1,
+        }
+    }
+
+    #[test]
+    fn terrain_chunk_mesh_reuses_vertices_and_keeps_triangle_indices() {
+        let a = terrain_vertex([0.0, 0.0, 0.0]);
+        let b = terrain_vertex([1.0, 0.0, 0.0]);
+        let c = terrain_vertex([0.0, 0.0, 1.0]);
+        let d = terrain_vertex([1.0, 0.0, 1.0]);
+        let mut mesh = TerrainMeshBuilder::default();
+
+        mesh.push_triangle([a, b, c], true);
+        mesh.push_triangle([b, d, c], true);
+
+        assert_eq!(mesh.vertices.len(), 4);
+        assert_eq!(mesh.indices, [0, 1, 2, 1, 3, 2]);
+    }
+
+    #[test]
+    fn terrain_surface_is_built_as_indexed_chunk_meshes() {
+        let definition: crate::terrain::TerrainDefinition = serde_json::from_str(
+            r#"{
+                "cellSize":0.5,
+                "operations":[{
+                    "shape":"block","operation":"fill","position":[0,0,0],
+                    "size":[8,8,8],"material":"grass"
+                }]
+            }"#,
+        )
+        .unwrap();
+        let terrain = crate::terrain::TerrainGrid::build(&definition)
+            .unwrap()
+            .unwrap();
+        let mut chunks = BTreeMap::<[i32; 3], TerrainMeshBuilder>::new();
+        terrain.for_each_chunk_triangle(|coordinate, triangle| {
+            chunks
+                .entry(coordinate)
+                .or_default()
+                .push_triangle(triangle, true);
+        });
+
+        let indexed_vertices = chunks
+            .values()
+            .map(|chunk| chunk.vertices.len())
+            .sum::<usize>();
+        let index_count = chunks
+            .values()
+            .map(|chunk| chunk.indices.len())
+            .sum::<usize>();
+        assert!(!chunks.is_empty());
+        assert!(index_count > 0 && index_count % 3 == 0);
+        assert!(indexed_vertices < index_count);
+        let indexed_bytes = indexed_vertices * std::mem::size_of::<Vertex>()
+            + index_count * std::mem::size_of::<u32>();
+        let triangle_soup_bytes = index_count * std::mem::size_of::<Vertex>();
+        assert!(indexed_bytes < triangle_soup_bytes);
+    }
 
     #[test]
     fn vertex_capacity_does_not_round_past_device_limit() {
