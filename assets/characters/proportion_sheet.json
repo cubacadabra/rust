@@ -25,7 +25,7 @@
   ],
   "review": {
     "cameraViews": ["front", "side", "back", "black-silhouette"],
-    "legacyComparison": "../docs/evidence/character",
+    "legacyComparison": "../../../docs/evidence/character",
     "captureCommand": "cargo run --features dev-showcase --bin magic_characters_capture -- --phase 2"
   }
 }
