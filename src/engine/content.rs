@@ -18,6 +18,24 @@ impl Engine {
         self.load_script_buffer()
     }
 
+    /// Applies a host-owned username using the same normalization rules as
+    /// the FFI bridge. Desktop uses this when returning to its account menu.
+    pub fn set_username_value(&mut self, source: &str) -> bool {
+        let username = source
+            .trim()
+            .chars()
+            .filter(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, ' ' | '_' | '-')
+            })
+            .take(24)
+            .collect::<String>();
+        if username.len() < 2 {
+            return false;
+        }
+        self.username = username;
+        true
+    }
+
     pub(crate) fn apply_package_default_appearance(&mut self, package: &GamePackageDefinition) {
         if self.player_appearance_persistent {
             return;
@@ -57,22 +75,10 @@ impl Engine {
     }
 
     pub(crate) fn load_username_buffer(&mut self) -> bool {
-        let Ok(source) = std::str::from_utf8(&self.username_buffer) else {
+        let Ok(source) = std::str::from_utf8(&self.username_buffer).map(str::to_owned) else {
             return false;
         };
-        let username = source
-            .trim()
-            .chars()
-            .filter(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, ' ' | '_' | '-')
-            })
-            .take(24)
-            .collect::<String>();
-        if username.len() < 2 {
-            return false;
-        }
-        self.username = username;
-        true
+        self.set_username_value(&source)
     }
 
     pub(crate) fn load_script_buffer(&mut self) -> bool {

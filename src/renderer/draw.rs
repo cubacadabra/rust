@@ -83,7 +83,6 @@ impl TerrainMeshBuilder {
 }
 
 impl Renderer {
-    #[cfg(feature = "studio-ui")]
     pub(crate) fn studio_overlay_format(&self) -> wgpu::TextureFormat {
         super::targets::SCENE_FORMAT
     }
@@ -163,7 +162,6 @@ impl Renderer {
         frame.present();
     }
 
-    #[cfg(feature = "studio-ui")]
     pub(crate) fn draw_with_overlay<F>(&mut self, overlay: F)
     where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),

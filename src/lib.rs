@@ -115,7 +115,6 @@ pub mod native {
             self.inner.draw();
         }
 
-        #[cfg(feature = "studio-ui")]
         pub fn draw_with_overlay<F>(&mut self, overlay: F)
         where
             F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
@@ -128,12 +127,10 @@ pub mod native {
             self.inner.set_studio_viewport(viewport);
         }
 
-        #[cfg(feature = "studio-ui")]
         pub fn device(&self) -> &wgpu::Device {
             &self.inner.device
         }
 
-        #[cfg(feature = "studio-ui")]
         pub fn studio_overlay_format(&self) -> wgpu::TextureFormat {
             self.inner.studio_overlay_format()
         }
