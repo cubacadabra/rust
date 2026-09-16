@@ -13,6 +13,27 @@ use super::{
     add_textured_cuboid, faded,
 };
 
+fn vertex_capacity_for(required: usize, max_buffer_size: u64) -> Option<usize> {
+    if required == 0 {
+        return Some(0);
+    }
+    let vertex_size = std::mem::size_of::<Vertex>() as u64;
+    let required_bytes = (required as u64).checked_mul(vertex_size)?;
+    if required_bytes > max_buffer_size {
+        return None;
+    }
+
+    let rounded = required.checked_next_power_of_two().unwrap_or(required);
+    let rounded_bytes = (rounded as u64).checked_mul(vertex_size)?;
+    Some(if rounded_bytes <= max_buffer_size {
+        rounded
+    } else {
+        // Power-of-two growth is only an optimization. Near the device limit,
+        // allocate the exact mesh size rather than crossing wgpu's hard cap.
+        required
+    })
+}
+
 impl Renderer {
     #[cfg(feature = "studio-ui")]
     pub(crate) fn studio_overlay_format(&self) -> wgpu::TextureFormat {
@@ -138,7 +159,7 @@ impl Renderer {
         };
         let dynamic_vertices = self.build_dynamic_vertices();
         let viewport_aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
-        let shadow_vertices = if self.character_render_mode == CharacterRenderMode::Magic {
+        let mut shadow_vertices = if self.character_render_mode == CharacterRenderMode::Magic {
             self.build_support_shadows(view, viewport_aspect)
         } else {
             Vec::new()
@@ -252,8 +273,20 @@ impl Renderer {
                 self.characters.stats.culled,
             ));
         }
-        self.ensure_dynamic_vertex_capacity(dynamic_count);
-        self.ensure_ui_vertex_capacity(ui_vertices.len());
+        if !self.ensure_dynamic_vertex_capacity(dynamic_count) {
+            log::error!(
+                "dynamic world geometry exceeds this GPU's maximum vertex-buffer size; skipping it"
+            );
+            self.opaque_vertices.clear();
+            self.translucent_vertices.clear();
+            shadow_vertices.clear();
+        }
+        if !self.ensure_ui_vertex_capacity(ui_vertices.len()) {
+            log::error!(
+                "world UI geometry exceeds this GPU's maximum vertex-buffer size; skipping it"
+            );
+            ui_vertices.clear();
+        }
         if !self.opaque_vertices.is_empty() {
             self.queue.write_buffer(
                 &self.dynamic_vertex_buffer,
@@ -776,7 +809,14 @@ impl Renderer {
         let mut vertices = Vec::with_capacity(all.len());
         self.static_translucent_vertices.clear();
         split_world_vertices(&all, &mut vertices, &mut self.static_translucent_vertices);
-        self.ensure_static_vertex_capacity(vertices.len());
+        if !self.ensure_static_vertex_capacity(vertices.len()) {
+            log::error!(
+                "static world geometry exceeds this GPU's maximum vertex-buffer size; skipping it"
+            );
+            self.static_vertex_count = 0;
+            self.static_translucent_vertices.clear();
+            return;
+        }
         self.static_vertex_count = vertices.len();
         if !vertices.is_empty() {
             self.queue.write_buffer(
@@ -787,31 +827,46 @@ impl Renderer {
         }
     }
 
-    fn ensure_static_vertex_capacity(&mut self, required: usize) {
+    fn ensure_static_vertex_capacity(&mut self, required: usize) -> bool {
         if required <= self.static_vertex_capacity {
-            return;
+            return true;
         }
-        self.static_vertex_capacity = required.next_power_of_two();
+        let Some(capacity) = vertex_capacity_for(required, self.device.limits().max_buffer_size)
+        else {
+            return false;
+        };
+        self.static_vertex_capacity = capacity;
         self.static_vertex_buffer =
             super::device::create_vertex_buffer(&self.device, self.static_vertex_capacity);
+        true
     }
 
-    fn ensure_dynamic_vertex_capacity(&mut self, required: usize) {
+    fn ensure_dynamic_vertex_capacity(&mut self, required: usize) -> bool {
         if required <= self.dynamic_vertex_capacity {
-            return;
+            return true;
         }
-        self.dynamic_vertex_capacity = required.next_power_of_two();
+        let Some(capacity) = vertex_capacity_for(required, self.device.limits().max_buffer_size)
+        else {
+            return false;
+        };
+        self.dynamic_vertex_capacity = capacity;
         self.dynamic_vertex_buffer =
             super::device::create_vertex_buffer(&self.device, self.dynamic_vertex_capacity);
+        true
     }
 
-    fn ensure_ui_vertex_capacity(&mut self, required: usize) {
+    fn ensure_ui_vertex_capacity(&mut self, required: usize) -> bool {
         if required <= self.ui_vertex_capacity {
-            return;
+            return true;
         }
-        self.ui_vertex_capacity = required.next_power_of_two();
+        let Some(capacity) = vertex_capacity_for(required, self.device.limits().max_buffer_size)
+        else {
+            return false;
+        };
+        self.ui_vertex_capacity = capacity;
         self.ui_vertex_buffer =
             super::device::create_vertex_buffer(&self.device, self.ui_vertex_capacity);
+        true
     }
 
     fn add_world_labels(
@@ -942,6 +997,21 @@ pub(super) fn sort_translucent(vertices: &mut [Vertex], camera: Vec3, target: Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vertex_capacity_does_not_round_past_device_limit() {
+        let max_buffer_size = 256 * 1024 * 1024;
+        // Maze 101 currently emits this many terrain vertices. Rounding its
+        // capacity to 2^22 used to request 285,212,672 bytes and panic.
+        let maze_vertices = 2_511_408;
+        assert_eq!(
+            vertex_capacity_for(maze_vertices, max_buffer_size),
+            Some(maze_vertices)
+        );
+        assert_eq!(maze_vertices * std::mem::size_of::<Vertex>(), 170_775_744);
+        assert_eq!(vertex_capacity_for(100, max_buffer_size), Some(128));
+        assert_eq!(vertex_capacity_for(4_000_000, max_buffer_size), None);
+    }
 
     #[test]
     fn world_labels_convert_render_pixels_to_ui_points_and_cull_offscreen() {
