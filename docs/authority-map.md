@@ -106,6 +106,17 @@ descriptions remain JSON and runtime media remains separate package assets.
 The client still uses its existing local script/network relay; these tested
 rules are not yet connected to a live two-player session.
 
+`cubacadabra_engine::server_runtime::ServerAuthority` now provides the portable
+host adapter around the same boundary and Luau VM. It creates an initial
+checkpoint from trusted state and processes each intent against a checkpoint
+supplied by the host, returning the outcome with a candidate checkpoint that
+contains the request receipt. This keeps failed storage writes from advancing
+hidden in-memory game state. A wasm32 binding exposes that interface
+synchronously to a JS host. This makes the execution interface available to
+Cloudflare Workers and a future native headless host, but is not itself a
+Durable Object integration: the host still needs a pinned package source,
+authenticated command routing, atomic persistence, and trusted movement facts.
+
 In particular, **do not use the current replicated `move` position as
 anti-cheat evidence**. It is a bounded, server-canonicalized client proposal,
 not a host-simulated Maze trajectory. Before production pickup/finish checks
