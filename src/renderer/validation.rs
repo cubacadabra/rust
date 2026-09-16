@@ -130,6 +130,18 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
         }],
     });
     let world_texture_layout = super::device::world_texture_bind_group_layout(&device);
+    let terrain_texture_layout = super::device::terrain_texture_bind_group_layout(&device);
+    let terrain_texture_bind_group =
+        super::device::create_terrain_texture_bind_group(&device, &queue, &terrain_texture_layout);
+    let placeholder = [255_u8; 4];
+    let world_texture_bind_group = super::device::create_world_texture_bind_group(
+        &device,
+        &queue,
+        &world_texture_layout,
+        1,
+        1,
+        &placeholder,
+    );
     let (ui, atlas) = super::device::ui_resources(&device, &queue);
     let timer = features.contains(wgpu::Features::TIMESTAMP_QUERY).then(|| {
         device.create_query_set(&wgpu::QuerySetDescriptor {
@@ -148,6 +160,9 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
         device: &device,
         queue: &queue,
         world_texture_layout: &world_texture_layout,
+        terrain_texture_layout: &terrain_texture_layout,
+        world_texture_bind_group,
+        terrain_texture_bind_group,
         globals_buffer,
         globals,
         ui,
@@ -367,6 +382,9 @@ struct Context<'a> {
     device: &'a wgpu::Device,
     queue: &'a wgpu::Queue,
     world_texture_layout: &'a wgpu::BindGroupLayout,
+    terrain_texture_layout: &'a wgpu::BindGroupLayout,
+    world_texture_bind_group: wgpu::BindGroup,
+    terrain_texture_bind_group: wgpu::BindGroup,
     globals_buffer: wgpu::Buffer,
     globals: wgpu::BindGroup,
     ui: wgpu::RenderPipeline,
@@ -500,6 +518,7 @@ impl TestScene {
                 device,
                 layout,
                 ctx.world_texture_layout,
+                ctx.terrain_texture_layout,
                 samples,
                 false,
             ),
@@ -507,6 +526,7 @@ impl TestScene {
                 device,
                 layout,
                 ctx.world_texture_layout,
+                ctx.terrain_texture_layout,
                 samples,
                 true,
             ),
@@ -570,6 +590,8 @@ impl TestScene {
             let v = self.viewport;
             pass.set_viewport(v[0], v[1], v[2], v[3], 0.0, 1.0);
             pass.set_bind_group(0, &ctx.globals, &[]);
+            pass.set_bind_group(1, &ctx.world_texture_bind_group, &[]);
+            pass.set_bind_group(2, &ctx.terrain_texture_bind_group, &[]);
             pass.set_pipeline(&self.world);
             pass.set_vertex_buffer(0, self.world_buffer.slice(..));
             pass.draw(0..self.opaque_count, 0..1);

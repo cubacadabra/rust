@@ -35,6 +35,7 @@ pub(crate) struct Portal {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RuntimeWorld {
     pub(crate) spawn: [f32; 3],
+    pub(crate) terrain: Option<crate::terrain::TerrainGrid>,
     pub(crate) physics: PhysicsSettings,
     pub(crate) health: HealthSettings,
     pub(crate) respawn: RespawnSettings,

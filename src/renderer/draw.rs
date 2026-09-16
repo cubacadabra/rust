@@ -355,6 +355,7 @@ impl Renderer {
             );
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
             pass.set_bind_group(1, &self.world_texture_bind_group, &[]);
+            pass.set_bind_group(2, &self.terrain_texture_bind_group, &[]);
             if self.static_vertex_count > 0 {
                 pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
                 pass.draw(0..self.static_vertex_count as u32, 0..1);
@@ -452,10 +453,11 @@ impl Renderer {
     fn build_static_vertices(&self) -> Vec<Vertex> {
         let mut mesh = Vec::with_capacity(16_384);
         let world = &self.scene.world;
-        if let Some(material) = world
-            .ground_material
-            .as_ref()
-            .filter(|material| self.package_image_regions.contains_key(&material.image))
+        if !world.hide_default_ground
+            && let Some(material) = world
+                .ground_material
+                .as_ref()
+                .filter(|material| self.package_image_regions.contains_key(&material.image))
         {
             add_textured_cuboid(
                 &mut mesh,
@@ -464,7 +466,7 @@ impl Renderer {
                 material,
                 self.package_image_regions[&material.image],
             );
-        } else {
+        } else if !world.hide_default_ground {
             add_cuboid(
                 &mut mesh,
                 Vec3::new(0.0, world.ground_y - 0.08, 0.0),
@@ -472,13 +474,32 @@ impl Renderer {
                 world.palette.ground,
             );
         }
-        add_cuboid_outline(
-            &mut mesh,
-            Vec3::new(0.0, world.ground_y - 0.08, 0.0),
-            Vec3::new(world.ground_size, 0.16, world.ground_size),
-            0.035,
-            faded(world.palette.ground_edge, 0.46),
-        );
+        if !world.hide_default_ground {
+            add_cuboid_outline(
+                &mut mesh,
+                Vec3::new(0.0, world.ground_y - 0.08, 0.0),
+                Vec3::new(world.ground_size, 0.16, world.ground_size),
+                0.035,
+                faded(world.palette.ground_edge, 0.46),
+            );
+        }
+        if let Some(terrain) = &world.terrain {
+            terrain.for_each_triangle(|triangle| {
+                for vertex in triangle {
+                    mesh.push(Vertex {
+                        position: vertex.position,
+                        normal: vertex.normal,
+                        color: [1.0; 4],
+                        tex_coords: [
+                            vertex.material as f32,
+                            if world.terrain_material_art { 1.0 } else { 0.0 },
+                        ],
+                        image_invert: 2.0,
+                        texture_bounds: [0.0, 0.0, 1.0, 1.0],
+                    });
+                }
+            });
+        }
         for block in &world.blocks {
             if let Some(material) = block
                 .material

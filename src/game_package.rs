@@ -78,6 +78,7 @@ fn default_respawn_mode() -> String {
 }
 
 pub(crate) const SUPPORTED_SDK_VERSION: &str = "0.3.0";
+pub(crate) const TERRAIN_SDK_VERSION: &str = "0.4.0";
 
 fn deserialize_sdk_version<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
@@ -88,9 +89,10 @@ where
     let value = Option::<String>::deserialize(deserializer)?;
     if let Some(version) = value.as_deref()
         && version != SUPPORTED_SDK_VERSION
+        && version != TERRAIN_SDK_VERSION
     {
         return Err(D::Error::custom(format!(
-            "unsupported sdkVersion {version:?}; runtime supports {SUPPORTED_SDK_VERSION}"
+            "unsupported sdkVersion {version:?}; runtime supports {SUPPORTED_SDK_VERSION} and {TERRAIN_SDK_VERSION}"
         )));
     }
     Ok(value)
@@ -111,6 +113,8 @@ pub(crate) struct GamePackageDefinition {
     pub(crate) launch: LaunchRouteDefinition,
     #[serde(default)]
     pub(crate) palette: BTreeMap<String, String>,
+    #[serde(default)]
+    pub(crate) terrain: crate::terrain::TerrainDefinition,
     #[serde(default)]
     pub(crate) world: WorldSettingsDefinition,
     #[serde(default)]
@@ -170,7 +174,20 @@ fn default_interaction_kind() -> String {
 
 impl GamePackageDefinition {
     pub(crate) fn parse(source: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(source)
+        let package: Self = serde_json::from_str(source)?;
+        if (!package.terrain.operations.is_empty()
+            || package
+                .worlds
+                .values()
+                .any(|world| !world.terrain.operations.is_empty()))
+            && package._sdk_version.as_deref() != Some(TERRAIN_SDK_VERSION)
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("terrain operations require sdkVersion {TERRAIN_SDK_VERSION}"),
+            )));
+        }
+        Ok(package)
     }
 
     pub(crate) fn world_entries(&self) -> Vec<(String, WorldDefinition)> {
@@ -178,6 +195,7 @@ impl GamePackageDefinition {
             palette: self.palette.clone(),
             materials: BTreeMap::new(),
             ground_material: None,
+            terrain: self.terrain.clone(),
             world: self.world.clone(),
             launch_pads: self.launch_pads.clone(),
             blocks: self.blocks.clone(),
@@ -232,6 +250,8 @@ pub(crate) struct WorldDefinition {
     pub(crate) materials: BTreeMap<String, MaterialDefinition>,
     #[serde(default)]
     pub(crate) ground_material: Option<String>,
+    #[serde(default)]
+    pub(crate) terrain: crate::terrain::TerrainDefinition,
     #[serde(default)]
     pub(crate) world: WorldSettingsDefinition,
     #[serde(default)]
@@ -846,9 +866,38 @@ mod tests {
 
     #[test]
     fn rejects_an_unsupported_sdk_version() {
-        let error = GamePackageDefinition::parse(r#"{"sdkVersion":"0.4.0"}"#)
+        let error = GamePackageDefinition::parse(r#"{"sdkVersion":"0.5.0"}"#)
             .expect_err("unsupported SDK versions must be rejected");
         assert!(error.to_string().contains("unsupported sdkVersion"));
+    }
+
+    #[test]
+    fn accepts_terrain_sdk_version_and_requires_it_for_terrain_data() {
+        let supported = GamePackageDefinition::parse(r#"{"sdkVersion":"0.4.0"}"#)
+            .expect("terrain-capable SDK should be accepted");
+        assert_eq!(supported._sdk_version.as_deref(), Some(TERRAIN_SDK_VERSION));
+
+        let top_level = r##"{
+            "sdkVersion":"0.4.0",
+            "terrain":{"operations":[{
+                "shape":"block","operation":"fill","position":[0,0,0],
+                "size":[2,2,2],"material":"builtin:grass"
+            }]}
+        }"##;
+        let package = GamePackageDefinition::parse(top_level)
+            .expect("top-level terrain should be supported for the lobby world");
+        assert_eq!(package.world_entries()[0].1.terrain.operations.len(), 1);
+
+        let terrain = r##"{
+            "sdkVersion":"0.3.0",
+            "worlds":{"maze":{"terrain":{"operations":[{
+                "shape":"block","operation":"fill","position":[0,0,0],
+                "size":[2,2,2],"material":"builtin:grass"
+            }]}}}
+        }"##;
+        let error = GamePackageDefinition::parse(terrain)
+            .expect_err("older packages must not silently ignore terrain semantics");
+        assert!(error.to_string().contains("require sdkVersion 0.4.0"));
     }
 
     #[test]

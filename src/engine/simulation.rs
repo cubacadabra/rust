@@ -135,6 +135,7 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.terrain = world.terrain;
         self.physics = world.physics;
         self.health = world.health;
         self.respawn = world.respawn;

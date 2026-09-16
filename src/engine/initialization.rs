@@ -23,6 +23,7 @@ impl Engine {
             remote_players: Vec::with_capacity(MAX_AGENTS),
             obstacles: obstacles.clone(),
             base_obstacles: obstacles.clone(),
+            terrain: None,
             physics: crate::world::PhysicsSettings::default(),
             health: crate::world::HealthSettings::default(),
             respawn: crate::world::RespawnSettings::default(),

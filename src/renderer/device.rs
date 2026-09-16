@@ -27,6 +27,17 @@ const UI_LOGO_BYTES: &[u8] = include_bytes!("../../assets/images/logo.png");
 const UI_CUBE_BYTES: &[u8] = include_bytes!("../../assets/images/cube.png");
 const UI_CHAT_BYTES: &[u8] = include_bytes!("../../assets/images/chat.png");
 const UI_VOICE_BYTES: &[u8] = include_bytes!("../../assets/images/voice.png");
+const TERRAIN_GRASS_TOP_BYTES: &[u8] =
+    include_bytes!("../../assets/materials/terrain/grass-top.png");
+const TERRAIN_GRASS_SIDE_BYTES: &[u8] =
+    include_bytes!("../../assets/materials/terrain/grass-side.png");
+const TERRAIN_GROUND_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/ground.png");
+const TERRAIN_ROCK_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/rock.png");
+const TERRAIN_SAND_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/sand.png");
+const TERRAIN_MUD_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/mud.png");
+const TERRAIN_SNOW_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/snow.png");
+const TERRAIN_TILE_SIZE: u32 = 512;
+const TERRAIN_LAYER_COUNT: u32 = 7;
 
 #[cfg(target_os = "android")]
 pub(super) static ANDROID_SURFACE_WARNING_REPORTED: std::sync::atomic::AtomicBool =
@@ -111,6 +122,161 @@ fn decode_ui_image(bytes: &[u8]) -> (u32, u32, Vec<u8>) {
     );
     pixels.truncate(info.buffer_size());
     (info.width, info.height, pixels)
+}
+
+fn decode_terrain_image(bytes: &[u8]) -> Vec<u8> {
+    let (width, height, pixels) = decode_ui_image(bytes);
+    assert_eq!(
+        width, TERRAIN_TILE_SIZE,
+        "terrain tiles must be 512 pixels wide"
+    );
+    assert_eq!(
+        height, TERRAIN_TILE_SIZE,
+        "terrain tiles must be 512 pixels high"
+    );
+    pixels
+}
+
+fn downsample_terrain_image(width: usize, pixels: &[u8]) -> Vec<u8> {
+    let next_width = width / 2;
+    let mut result = vec![0; next_width * next_width * 4];
+    for y in 0..next_width {
+        for x in 0..next_width {
+            let destination = (y * next_width + x) * 4;
+            let samples = [
+                ((y * 2) * width + x * 2) * 4,
+                ((y * 2) * width + x * 2 + 1) * 4,
+                ((y * 2 + 1) * width + x * 2) * 4,
+                ((y * 2 + 1) * width + x * 2 + 1) * 4,
+            ];
+            for channel in 0..4 {
+                let total = samples
+                    .iter()
+                    .map(|sample| u16::from(pixels[sample + channel]))
+                    .sum::<u16>();
+                result[destination + channel] = (total / 4) as u8;
+            }
+        }
+    }
+    result
+}
+
+pub(super) fn terrain_texture_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("cubacadabra built-in terrain material layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2Array,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
+pub(super) fn create_terrain_texture_bind_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+) -> wgpu::BindGroup {
+    let mut layers = [
+        decode_terrain_image(TERRAIN_GRASS_TOP_BYTES),
+        decode_terrain_image(TERRAIN_GRASS_SIDE_BYTES),
+        decode_terrain_image(TERRAIN_GROUND_BYTES),
+        decode_terrain_image(TERRAIN_ROCK_BYTES),
+        decode_terrain_image(TERRAIN_SAND_BYTES),
+        decode_terrain_image(TERRAIN_MUD_BYTES),
+        decode_terrain_image(TERRAIN_SNOW_BYTES),
+    ];
+    let mip_level_count = TERRAIN_TILE_SIZE.ilog2() + 1;
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("cubacadabra built-in terrain material maps"),
+        size: wgpu::Extent3d {
+            width: TERRAIN_TILE_SIZE,
+            height: TERRAIN_TILE_SIZE,
+            depth_or_array_layers: TERRAIN_LAYER_COUNT,
+        },
+        mip_level_count,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let mut width = TERRAIN_TILE_SIZE as usize;
+    for mip_level in 0..mip_level_count {
+        let mut pixels = Vec::with_capacity(width * width * 4 * TERRAIN_LAYER_COUNT as usize);
+        for layer in &layers {
+            pixels.extend_from_slice(layer);
+        }
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width as u32 * 4),
+                rows_per_image: Some(width as u32),
+            },
+            wgpu::Extent3d {
+                width: width as u32,
+                height: width as u32,
+                depth_or_array_layers: TERRAIN_LAYER_COUNT,
+            },
+        );
+        if width > 1 {
+            layers = layers.map(|layer| downsample_terrain_image(width, &layer));
+            width /= 2;
+        }
+    }
+    let view = texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("cubacadabra built-in terrain material array view"),
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        base_mip_level: 0,
+        mip_level_count: Some(mip_level_count),
+        base_array_layer: 0,
+        array_layer_count: Some(TERRAIN_LAYER_COUNT),
+        ..Default::default()
+    });
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("cubacadabra built-in terrain material sampler"),
+        address_mode_u: wgpu::AddressMode::Repeat,
+        address_mode_v: wgpu::AddressMode::Repeat,
+        address_mode_w: wgpu::AddressMode::Repeat,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        ..Default::default()
+    });
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("cubacadabra built-in terrain material maps"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    })
 }
 
 fn create_ui_texture_atlas(
@@ -546,6 +712,9 @@ impl Renderer {
         // browser backends retain the validated MSAA path.
         let sample_count = super::targets::select_samples(&adapter, !cfg!(target_os = "android"));
         let world_texture_layout = world_texture_bind_group_layout(&device);
+        let terrain_texture_layout = terrain_texture_bind_group_layout(&device);
+        let terrain_texture_bind_group =
+            create_terrain_texture_bind_group(&device, &queue, &terrain_texture_layout);
         let placeholder_pixel = [255_u8, 255, 255, 255];
         let world_texture_bind_group = create_world_texture_bind_group(
             &device,
@@ -559,6 +728,7 @@ impl Renderer {
             &device,
             &globals_layout,
             &world_texture_layout,
+            &terrain_texture_layout,
             sample_count,
             false,
         );
@@ -566,6 +736,7 @@ impl Renderer {
             &device,
             &globals_layout,
             &world_texture_layout,
+            &terrain_texture_layout,
             sample_count,
             true,
         );
@@ -597,6 +768,7 @@ impl Renderer {
             globals_bind_group,
             world_texture_layout,
             world_texture_bind_group,
+            terrain_texture_bind_group,
             static_vertex_buffer,
             static_vertex_capacity,
             static_vertex_count: 0,
@@ -858,6 +1030,7 @@ pub(super) fn world_pipeline(
     device: &wgpu::Device,
     globals_layout: &wgpu::BindGroupLayout,
     world_texture_layout: &wgpu::BindGroupLayout,
+    terrain_texture_layout: &wgpu::BindGroupLayout,
     samples: u32,
     translucent: bool,
 ) -> wgpu::RenderPipeline {
@@ -867,7 +1040,11 @@ pub(super) fn world_pipeline(
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("cubacadabra pipeline layout"),
-        bind_group_layouts: &[Some(globals_layout), Some(world_texture_layout)],
+        bind_group_layouts: &[
+            Some(globals_layout),
+            Some(world_texture_layout),
+            Some(terrain_texture_layout),
+        ],
         immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -908,6 +1085,36 @@ pub(super) fn world_pipeline(
         multiview_mask: None,
         cache: None,
     })
+}
+
+#[cfg(test)]
+mod terrain_material_tests {
+    use super::*;
+
+    #[test]
+    fn built_in_terrain_maps_are_rgba_512_tiles() {
+        for pixels in [
+            decode_terrain_image(TERRAIN_GRASS_TOP_BYTES),
+            decode_terrain_image(TERRAIN_GRASS_SIDE_BYTES),
+            decode_terrain_image(TERRAIN_GROUND_BYTES),
+            decode_terrain_image(TERRAIN_ROCK_BYTES),
+            decode_terrain_image(TERRAIN_SAND_BYTES),
+            decode_terrain_image(TERRAIN_MUD_BYTES),
+            decode_terrain_image(TERRAIN_SNOW_BYTES),
+        ] {
+            assert_eq!(
+                pixels.len(),
+                TERRAIN_TILE_SIZE as usize * TERRAIN_TILE_SIZE as usize * 4
+            );
+            assert!(pixels.chunks_exact(4).all(|pixel| pixel[3] == 255));
+        }
+    }
+
+    #[test]
+    fn terrain_mip_downsampling_averages_each_four_pixel_footprint() {
+        let source = [0, 0, 0, 255, 4, 4, 4, 255, 8, 8, 8, 255, 12, 12, 12, 255];
+        assert_eq!(downsample_terrain_image(2, &source), [6, 6, 6, 255]);
+    }
 }
 
 pub(super) fn ui_resources(

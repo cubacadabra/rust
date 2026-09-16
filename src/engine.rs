@@ -78,6 +78,7 @@ pub struct Engine {
     pub(crate) remote_players: Vec<RemotePlayer>,
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) base_obstacles: Vec<Aabb>,
+    pub(crate) terrain: Option<crate::terrain::TerrainGrid>,
     pub(crate) physics: PhysicsSettings,
     pub(crate) health: HealthSettings,
     pub(crate) respawn: RespawnSettings,

@@ -2,6 +2,7 @@ use crate::engine::Engine;
 use crate::engine::interactions::InteractionRuntime;
 use crate::game_package::GamePackageDefinition;
 use crate::math::horizontal_distance;
+use crate::terrain::TerrainGrid;
 use crate::types::{AgentPhase, BuildBlock};
 use crate::world::{
     Checkpoint, HazardVolume, HealthSettings, LadderAxis, LadderVolume, LaunchPad, PhysicsSettings,
@@ -137,6 +138,7 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.terrain = world.terrain;
         self.physics = world.physics;
         self.health = world.health;
         self.respawn = world.respawn;
@@ -287,6 +289,13 @@ impl Engine {
             return false;
         };
         let entries = package.world_entries();
+        let terrain_grids = entries
+            .iter()
+            .map(|(_, definition)| TerrainGrid::build(&definition.terrain))
+            .collect::<Result<Vec<_>, _>>();
+        let Ok(terrain_grids) = terrain_grids else {
+            return false;
+        };
         let world_indices = entries
             .iter()
             .enumerate()
@@ -294,7 +303,8 @@ impl Engine {
             .collect::<std::collections::BTreeMap<_, _>>();
         let worlds = entries
             .iter()
-            .map(|(id, definition)| {
+            .zip(terrain_grids)
+            .map(|((id, definition), terrain)| {
                 let launch_pads = definition
                     .launch_pads
                     .iter()
@@ -327,7 +337,8 @@ impl Engine {
                 let physics = PhysicsSettings {
                     gravity: definition.world.physics.gravity.max(0.0),
                     jump_velocity: definition.world.physics.jump_velocity.max(0.0),
-                    ground_collision: definition.world.physics.ground_collision,
+                    ground_collision: definition.world.physics.ground_collision
+                        && !(terrain.is_some() && definition.terrain.hide_default_ground),
                     ground_y: definition.world.physics.ground_y,
                     death_y: definition.world.physics.death_y,
                     respawn_delay: definition.world.physics.respawn_delay.max(0.0),
@@ -435,6 +446,7 @@ impl Engine {
                     InteractionRuntime::from_definitions(&definition.interactions).world;
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
+                    terrain,
                     physics,
                     health,
                     respawn,

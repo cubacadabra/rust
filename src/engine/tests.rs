@@ -1210,6 +1210,61 @@ fn world_transitions_update_ui_visibility_context() {
 }
 
 #[test]
+fn package_terrain_drives_world_collision_and_can_replace_the_flat_floor() {
+    let manifest = r#"{
+        "sdkVersion":"0.4.0",
+        "lobby": false,
+        "startWorld": "maze",
+        "worlds": {
+            "maze": {
+                "world": {"spawn":[0,1,0]},
+                "terrain": {
+                    "cellSize": 1,
+                    "hideDefaultGround": true,
+                    "operations": [
+                        {"operation":"fill","shape":"block","position":[0,-1,0],"size":[20,2,20],"material":"ground"},
+                        {"operation":"fill","shape":"block","position":[0,3,5],"size":[8,6,1],"material":"grass"},
+                        {"operation":"carve","shape":"ball","position":[0,3,5],"radius":1}
+                    ]
+                }
+            }
+        }
+    }"#;
+    let mut engine = Engine::new();
+    engine.package_buffer = manifest.as_bytes().to_vec();
+
+    assert!(engine.load_package_buffer());
+    let terrain = engine
+        .terrain
+        .as_ref()
+        .expect("the active world has terrain");
+    assert!(terrain.signed_distance([0.0, -1.0, 0.0]) < 0.0);
+    assert!(terrain.signed_distance([0.0, 3.0, 5.0]) > 0.0);
+    assert!(!engine.physics.ground_collision);
+}
+
+#[test]
+fn package_loading_rejects_unsupported_terrain_materials() {
+    let manifest = r#"{
+        "sdkVersion":"0.4.0",
+        "lobby": false,
+        "startWorld": "maze",
+        "worlds": {
+            "maze": {
+                "terrain": {
+                    "operations": [
+                        {"shape":"block","position":[0,0,0],"size":[4,4,4],"material":"lava"}
+                    ]
+                }
+            }
+        }
+    }"#;
+    let mut engine = Engine::new();
+    engine.package_buffer = manifest.as_bytes().to_vec();
+    assert!(!engine.load_package_buffer());
+}
+
+#[test]
 fn disabled_lobby_starts_directly_in_the_shared_world() {
     let manifest = r#"{
         "lobby": false,

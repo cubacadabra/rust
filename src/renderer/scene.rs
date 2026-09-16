@@ -355,7 +355,13 @@ fn resolve_world(
             })
         })
     };
+    let terrain = crate::terrain::TerrainGrid::build(&definition.terrain)
+        .ok()
+        .flatten();
     RenderWorld {
+        hide_default_ground: terrain.is_some() && definition.terrain.hide_default_ground,
+        terrain_material_art: definition.terrain.material_art,
+        terrain,
         ground_material: definition
             .ground_material
             .as_deref()

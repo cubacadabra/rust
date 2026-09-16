@@ -195,6 +195,9 @@ pub(super) struct RenderCloud {
 #[derive(Clone)]
 pub(super) struct RenderWorld {
     pub(super) blocks: Vec<RenderBlock>,
+    pub(super) terrain: Option<crate::terrain::TerrainGrid>,
+    pub(super) hide_default_ground: bool,
+    pub(super) terrain_material_art: bool,
     pub(super) ground_material: Option<RenderMaterial>,
     pub(super) ladders: Vec<RenderLadder>,
     pub(super) pads: Vec<RenderPad>,
@@ -217,6 +220,9 @@ impl Default for RenderWorld {
     fn default() -> Self {
         Self {
             blocks: Vec::new(),
+            terrain: None,
+            hide_default_ground: false,
+            terrain_material_art: true,
             ground_material: None,
             ladders: Vec::new(),
             pads: Vec::new(),
@@ -333,6 +339,7 @@ pub struct Renderer {
     pub(super) globals_bind_group: wgpu::BindGroup,
     pub(super) world_texture_layout: wgpu::BindGroupLayout,
     pub(super) world_texture_bind_group: wgpu::BindGroup,
+    pub(super) terrain_texture_bind_group: wgpu::BindGroup,
     pub(super) static_vertex_buffer: wgpu::Buffer,
     pub(super) static_vertex_capacity: usize,
     pub(super) static_vertex_count: usize,

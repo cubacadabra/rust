@@ -251,6 +251,32 @@ impl Engine {
                 self.player.grounded = true;
                 return;
             }
+            if let Some(terrain) = &self.terrain {
+                let mut candidate = self.player.position;
+                candidate[1] = next_feet;
+                if !terrain.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                    let mut blocked = next_feet;
+                    let mut clear = previous_feet;
+                    for _ in 0..14 {
+                        let middle = (blocked + clear) * 0.5;
+                        candidate[1] = middle;
+                        if terrain.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                            clear = middle;
+                        } else {
+                            blocked = middle;
+                        }
+                    }
+                    let normal = terrain.surface_normal([
+                        self.player.position[0],
+                        clear + PLAYER_RADIUS,
+                        self.player.position[2],
+                    ]);
+                    self.player.position[1] = clear;
+                    self.player.velocity[1] = 0.0;
+                    self.player.grounded = normal[1] > 0.45;
+                    return;
+                }
+            }
             if self.physics.ground_collision && next_feet <= self.physics.ground_y {
                 self.player.position[1] = self.physics.ground_y;
                 self.player.velocity[1] = 0.0;
@@ -279,6 +305,27 @@ impl Engine {
                 self.player.grounded = false;
                 return;
             }
+            if let Some(terrain) = &self.terrain {
+                let mut candidate = self.player.position;
+                candidate[1] = next_feet;
+                if !terrain.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                    let mut clear = previous_feet;
+                    let mut blocked = next_feet;
+                    for _ in 0..14 {
+                        let middle = (clear + blocked) * 0.5;
+                        candidate[1] = middle;
+                        if terrain.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                            clear = middle;
+                        } else {
+                            blocked = middle;
+                        }
+                    }
+                    self.player.position[1] = clear;
+                    self.player.velocity[1] = 0.0;
+                    self.player.grounded = false;
+                    return;
+                }
+            }
         }
 
         self.player.position[1] = next_feet;
@@ -293,7 +340,10 @@ impl Engine {
                 return true;
             }
             !overlaps_obstacle(candidate, obstacle, PLAYER_RADIUS)
-        })
+        }) && self
+            .terrain
+            .as_ref()
+            .is_none_or(|terrain| terrain.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT))
     }
 
     fn check_for_void_death(&mut self) {

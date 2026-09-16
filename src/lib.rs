@@ -50,6 +50,7 @@ pub mod dev_showcase {
     }
 }
 mod scripting;
+mod terrain;
 mod types;
 mod ui;
 #[cfg(all(target_arch = "wasm32", feature = "web-renderer"))]
