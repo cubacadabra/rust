@@ -50,6 +50,7 @@ pub mod dev_showcase {
     }
 }
 mod scripting;
+pub use scripting::authority::LuauAuthorityRules;
 mod terrain;
 mod types;
 mod ui;

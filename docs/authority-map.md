@@ -26,7 +26,7 @@ single ordered writer; it does not validate the meaning of the payload.
 | local input, camera, local collision, local animation | client-local | client-local | These are presentation/input concerns and are not sent as state claims. |
 | local player position, health, checkpoints, interaction enter/exit | client simulation | client-predicted | The Rust client simulates these for responsiveness. They are not proof of what happened in a competitive world. |
 | `move` sent by the client | client → server | client-predicted | It is a movement proposal containing the client’s current simulation result. |
-| `move` with `authoritative: true` | server → clients | server-authoritative | The World applies finite-value, respawn, rate, and travel-envelope checks, canonicalizes the position, then replicates it. |
+| `move` with `authoritative: true` | server → clients | server-authoritative projection | The World applies finite-value, respawn, rate, and travel-envelope checks, canonicalizes the proposed position, then replicates it. It does not currently simulate Maze collision or prove that the player traversed the route. |
 | `experience_state`, `experience_launch` | server → client | server-authoritative | Build state, lobby occupancy, launch timing, and the selected session are produced by the Durable Object. |
 | `build_action` / `build_save` | client → server | server-validated | The backend validates bounds, shape, color, block count, and target existence before broadcasting the next build state. |
 
@@ -72,7 +72,7 @@ relay phase, plays a sound, or awards a link. Those remain Signal Run rules.
 The trusted validator only establishes that an actor legitimately interacted
 with an engine interaction target.
 
-## Rust prototype
+## Rust authority and Luau rules prototype
 
 `cubacadabra_engine::authority::AuthorityBoundary` is the first implementation
 of this seam. It owns a JSON state value, calls a game-owned
@@ -80,10 +80,46 @@ of this seam. It owns a JSON state value, calls a game-owned
 returned state atomically, and assigns monotonic event sequences. Its tests
 model the gate action: an in-range `interact` request produces an accepted
 state and `interaction_accepted` event, while an out-of-range request is
-rejected without changing state or sequence.
+rejected without changing state or sequence. The client-facing `Command` has no
+actor field; the trusted host supplies the authenticated actor separately when
+calling `execute`. A bounded per-actor request cache makes retries within one
+live boundary idempotent and rejects reuse of a request ID for a different
+intent. Command, state, event-count, and result-size limits are enforced before
+committing a transition.
 
-The prototype is deliberately not wired to `World`, WebSockets, or
-`second-game`. The current backend has no command handler registry and must not
-be taught Signal Run rules as part of this step. A future integration can carry
-the same generic envelope through a server-owned rules runtime and send the
-resulting event/state back over a new protocol version.
+The scripting layer now has a sandboxed Luau `CommandHandler` adapter. Its
+rules module implements `validate_command(state, command)` and
+`simulate_command(state, command)`, receives the actor ID only after the host
+binds it to authenticated identity, and has an execution budget but no client
+network, persistence, filesystem, or renderer APIs. The builder recognizes
+optional `src/server.luau`, bundles it as a separate `authority.luau` entry,
+and includes it in the package file hashes. This is an experimental artifact
+contract; current clients and the Durable Object do not execute it.
+
+Maze 101 now contains that first game-owned rules module. Tests run the actual
+Luau source through the Rust adapter and cover per-player coin progress,
+duplicate pickups, host-supplied positions, independent finish state, and
+round timeout. The package builder optionally bundles `src/server.luau` as
+`authority.luau` and includes the entry in the JSON manifest/package descriptor
+and file hash list. This adds no binary prefab/scene format: authored world
+descriptions remain JSON and runtime media remains separate package assets.
+The client still uses its existing local script/network relay; these tested
+rules are not yet connected to a live two-player session.
+
+In particular, **do not use the current replicated `move` position as
+anti-cheat evidence**. It is a bounded, server-canonicalized client proposal,
+not a host-simulated Maze trajectory. Before production pickup/finish checks
+can rely on proximity, the trusted authority needs its own validated movement
+simulation/collision state (or an equally strong source of canonical position).
+Likewise, request receipts currently live only in the authority snapshot
+prototype, there is no atomic Durable Object persistence integration, profiles
+and durable rewards are not implemented, and confirmed save/restart/rejoin
+behavior remains unproven.
+
+The backend must not be taught Maze World or Signal Run rules as a shortcut.
+Integration should bind authenticated socket identity, use the package's
+game-owned rules in a constrained trusted runtime, validate against trusted
+world and movement context, persist round state and deduplication receipts
+atomically, and only then publish accepted events. A profile reward needs its
+own durable idempotency receipt and must not be described as saved until its
+transaction has committed.

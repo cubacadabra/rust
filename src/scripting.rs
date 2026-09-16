@@ -7,6 +7,7 @@ use crate::ui::{UiEvent, UiRuntime};
 use scheduler::TaskScheduler;
 
 mod audio;
+pub mod authority;
 mod effects;
 mod network;
 mod scheduler;
