@@ -2,7 +2,7 @@
 
 These files describe supported IDs, fits, provenance and validation fixtures.
 They do not lock character proportions or visual direction. Follow
-[Character art direction](../../docs/character_art_direction.md).
+[Character art direction](https://github.com/cubacadabra/docs/blob/main/product/character-direction.md).
 
 The catalog retains person, cat and dragon and six existing outfits for
 compatibility. Expansion is paused while one casual person is reviewed.
@@ -21,5 +21,5 @@ Stored `soft-cubism.v1` examples and proportion fixtures remain compatibility
 data; their toy terminology and joint clearances are not art requirements.
 No external texture payload is currently bundled.
 
-See [runtime and verification](../../docs/character_runtime.md) for capture and
+See [runtime and verification](https://github.com/cubacadabra/docs/blob/main/verification/character-runtime.md) for capture and
 platform checks. Save bulk captures outside docs.

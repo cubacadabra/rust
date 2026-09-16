@@ -25,7 +25,7 @@
   ],
   "review": {
     "cameraViews": ["front", "side", "back", "black-silhouette"],
-    "legacyComparison": "docs/baselines/magic-characters/phase0",
+    "legacyComparison": "../docs/evidence/character",
     "captureCommand": "cargo run --features dev-showcase --bin magic_characters_capture -- --phase 2"
   }
 }

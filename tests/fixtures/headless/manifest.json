@@ -1,0 +1,20 @@
+{
+  "id": "headless-proof",
+  "lobby": false,
+  "startWorld": "arena",
+  "worlds": {
+    "arena": {
+      "world": {
+        "spawn": [0, 0, 8]
+      },
+      "interactions": [
+        {
+          "id": "start-zone",
+          "label": "Start zone",
+          "position": [0, 0, 8],
+          "radius": 2.5
+        }
+      ]
+    }
+  }
+}

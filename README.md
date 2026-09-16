@@ -31,13 +31,13 @@ backend       -> multiplayer Worker and world WebSockets
 Rust deliberately does not fetch packages or open sockets. Each host provides
 manifest/script text and transports the `SetWorld` and `SendText` actions
 returned by `ClientSession`; every received socket text frame is passed back to
-that session. See [docs/client-runtime.md](docs/client-runtime.md) for the
+that session. See the canonical [client runtime](https://github.com/cubacadabra/docs/blob/main/architecture/client-runtime.md) for the
 boundary and integration contract.
 
 The app crate follows the same host-driven boundary for product features: a
 host dispatches typed actions, renders a serializable snapshot, performs queued
 effects with its native services, and returns typed results. See
-[docs/app-runtime.md](docs/app-runtime.md) for the current username/profile
+[app runtime](https://github.com/cubacadabra/docs/blob/main/architecture/app-runtime.md) for the current username/profile
 slice and migration order.
 
 ## Build the browser renderer
@@ -105,9 +105,11 @@ session, follow [web/README.md](../web/README.md) and
 engine binaries but load the deployed package and connect to the deployed
 Worker.
 
-For a screenless simulation proof, run the [headless engine fixture](docs/headless/README.md).
-It compiles without the optional renderer/GPU path, loads a manifest and Luau
-script, advances a deterministic input trace twice, and compares the state hash.
+For a screenless simulation proof, use the canonical
+[headless procedure](https://github.com/cubacadabra/docs/blob/main/verification/headless.md)
+and fixture in `tests/fixtures/headless/`. It compiles without the optional
+renderer/GPU path, loads a manifest and Luau script, advances a deterministic
+input trace twice, and compares the state hash.
 
 ## Shared in-game UI
 
@@ -117,22 +119,22 @@ updates, and an orthographic `wgpu` overlay pass, so the same UI can render on
 iOS, Android, and the browser. Native shells continue to own OS presentation
 and forward host-service actions from the engine's UI event queue.
 
-See [docs/ui-runtime.md](docs/ui-runtime.md) for the Luau document model,
+See the canonical [UI contract](https://github.com/cubacadabra/docs/blob/main/contracts/ui.md) for the Luau document model,
 semantic icons, header and bottom-center regions, menus/modals, responsive
 layout rules, and C ABI integration.
 
-See [docs/network-runtime.md](docs/network-runtime.md) for the generic
+See the canonical [network contract](https://github.com/cubacadabra/docs/blob/main/contracts/network.md) for the generic
 game-owned message and retained-state contract. The runtime transports opaque
 JSON and does not contain rules for a particular game.
 
-See [docs/audio-runtime.md](docs/audio-runtime.md) for package-owned one-shot
+See the canonical [audio contract](https://github.com/cubacadabra/docs/blob/main/contracts/audio.md) for package-owned one-shot
 WAV assets, the Luau playback call, validation limits, and host polling ABI.
 
-See [docs/effects-runtime.md](docs/effects-runtime.md) for versioned,
+See the canonical [effects contract](https://github.com/cubacadabra/docs/blob/main/contracts/effects.md) for versioned,
 manifest-authored world effects and the small Luau state/play API. Rust owns
 bounded rendering primitives; games own their visual recipes.
 
-See [docs/task-scheduler.md](docs/task-scheduler.md) for deterministic Luau
+See the canonical [task contract](https://github.com/cubacadabra/docs/blob/main/contracts/tasks.md) for deterministic Luau
 tasks, simulation-time waits, cancellation, ordering, and execution limits.
 
 ## Scripting status
