@@ -12,11 +12,12 @@ pub(crate) struct Input {
     pub(crate) zoom_delta: f32,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct InteractionEvent {
     pub(crate) id: String,
     pub(crate) phase: String,
     pub(crate) players: usize,
+    pub(crate) position: [f32; 3],
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

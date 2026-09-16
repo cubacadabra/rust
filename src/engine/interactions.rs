@@ -150,6 +150,7 @@ impl Engine {
                     id: zone.id.clone(),
                     phase: if inside { "enter" } else { "exit" }.to_owned(),
                     players,
+                    position: zone.position,
                 });
                 self.interactions.was_inside[index] = inside;
             }

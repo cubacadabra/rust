@@ -171,6 +171,8 @@ pub struct InteractionEventSnapshot {
     pub id: String,
     pub phase: String,
     pub players: u32,
+    #[serde(default)]
+    pub position: [f32; 3],
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -970,6 +972,7 @@ impl From<InteractionEvent> for InteractionEventSnapshot {
             id: value.id,
             phase: value.phase,
             players: value.players as u32,
+            position: value.position,
         }
     }
 }
@@ -980,6 +983,7 @@ impl TryFrom<InteractionEventSnapshot> for InteractionEvent {
             id: value.id,
             phase: value.phase,
             players: value.players as usize,
+            position: value.position,
         })
     }
 }

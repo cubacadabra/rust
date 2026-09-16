@@ -364,6 +364,14 @@ impl GameScript {
         value
             .set("players", event.players)
             .map_err(|error| error.to_string())?;
+        value
+            .set(
+                "position",
+                self.lua
+                    .create_sequence_from(event.position.iter().copied())
+                    .map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
         self.execute_budgeted(|| on_interaction.call::<()>((self.api.clone(), value)))
     }
 
@@ -1057,7 +1065,7 @@ mod tests {
             r#"
                 local game = {}
                 function game.on_interaction(api, event)
-                    api.lobby:set_status(event.id .. ":" .. event.phase)
+                    api.lobby:set_status(event.id .. ":" .. event.phase .. ":" .. event.position[1])
                 end
                 function game.on_tick(api)
                     local state = api.interactions:get_state()
@@ -1085,9 +1093,10 @@ mod tests {
                 id: "button".to_owned(),
                 phase: "enter".to_owned(),
                 players: 2,
+                position: [4.0, 0.5, -2.0],
             })
             .expect("interaction callback should run");
-        assert_eq!(script.state().borrow().lobby_status, "button:enter");
+        assert_eq!(script.state().borrow().lobby_status, "button:enter:4");
         script.tick(0.0).expect("tick should run");
         assert_eq!(script.state().borrow().lobby_status, "inside:2");
     }
