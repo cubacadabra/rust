@@ -672,7 +672,16 @@ fn evaluate_field(
         match operation.kind {
             TerrainOperationKind::Fill(id) => {
                 distance = if has_fill {
-                    smooth_min(distance, shape_distance, smoothing)
+                    // Authored block fills commonly meet or overlap to form a
+                    // single walkable platform. A smooth union grows a ridge
+                    // above otherwise coplanar tops, which can stop the player
+                    // capsule at an invisible seam. Keep block unions exact;
+                    // rounded volumes retain the organic smooth blend.
+                    if matches!(operation.shape, TerrainShape::Block) {
+                        distance.min(shape_distance)
+                    } else {
+                        smooth_min(distance, shape_distance, smoothing)
+                    }
                 } else {
                     shape_distance
                 };
@@ -1036,6 +1045,68 @@ mod tests {
             }
         });
         assert!(crossing_triangles > 0);
+    }
+
+    #[test]
+    fn flat_walkable_surface_remains_clear_across_chunk_edges() {
+        let terrain = TerrainGrid::build(&TerrainDefinition {
+            cell_size: 2.0,
+            operations: vec![operation(
+                "fill",
+                "block",
+                [0.0, -1.0, 0.0],
+                [62.0, 2.0, 6.0],
+                0.0,
+                "ground",
+            )],
+            ..TerrainDefinition::default()
+        })
+        .expect("valid terrain")
+        .expect("filled terrain");
+
+        for step in -120..=120 {
+            let x = step as f32 * 0.25;
+            assert!(
+                terrain.capsule_clear([x, 0.0, 0.0], 0.52, 3.2),
+                "flat terrain blocked the player capsule at x={x}"
+            );
+        }
+    }
+
+    #[test]
+    fn coplanar_walkable_fills_do_not_create_capsule_blocking_ridges() {
+        let terrain = TerrainGrid::build(&TerrainDefinition {
+            cell_size: 2.0,
+            operations: vec![
+                operation(
+                    "fill",
+                    "block",
+                    [0.0, -1.0, 0.0],
+                    [28.0, 2.0, 20.0],
+                    0.0,
+                    "grass",
+                ),
+                operation(
+                    "fill",
+                    "block",
+                    [-20.5, -1.0, 2.0],
+                    [21.0, 2.0, 3.0],
+                    0.0,
+                    "ground",
+                ),
+            ],
+            ..TerrainDefinition::default()
+        })
+        .expect("valid terrain")
+        .expect("filled terrain");
+
+        for step in -120..=-36 {
+            let x = step as f32 * 0.25;
+            assert!(
+                terrain.capsule_clear([x, -0.02, 2.0], 0.52, 3.2),
+                "coplanar terrain blocked the player capsule at x={x}"
+            );
+        }
     }
 
     #[test]
