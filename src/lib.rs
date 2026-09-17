@@ -176,6 +176,10 @@ pub mod native {
             self.inner.clear_world_meshes();
         }
 
+        pub fn replace_world_meshes(&mut self, models: &[(&str, &[u8])]) -> Result<(), String> {
+            self.inner.replace_world_meshes(models)
+        }
+
         #[cfg(feature = "studio-ui")]
         pub fn set_avatar_preview_mode(&mut self, enabled: bool) {
             self.inner.set_avatar_preview_mode(enabled);

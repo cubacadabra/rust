@@ -810,6 +810,15 @@ pub unsafe extern "C" fn engine_renderer_register_world_mesh(
         .unwrap_or(0)
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_renderer_clear_world_meshes(
+    renderer: *mut crate::renderer::Renderer,
+) {
+    if let Some(renderer) = unsafe { renderer.as_mut() } {
+        renderer.clear_world_meshes();
+    }
+}
+
 /// Selects the reversible character renderer rollout mode. `0` is the
 /// legacy hard-cuboid renderer and `1` is the magic instanced renderer. An
 /// invalid value leaves the current mode unchanged and returns zero.

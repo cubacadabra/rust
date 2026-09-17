@@ -596,6 +596,57 @@ impl MorphRegistry {
         }
     }
 
+    fn draw_shadow(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline) {
+        if self.draws.is_empty() && self.skinned_draws.is_empty() {
+            return;
+        }
+        pass.set_pipeline(pipeline);
+        for draw in &self.draws {
+            let Some(asset) = self.assets.get(&draw.asset_id) else {
+                continue;
+            };
+            let mesh = &asset.lods[draw.lod];
+            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+            let start = (draw.start * size_of::<CharacterInstance>()) as u64;
+            let end = start + (draw.count * size_of::<CharacterInstance>()) as u64;
+            pass.set_vertex_buffer(1, self.buffer.slice(start..end));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            let Some(surface) = mesh.surfaces.get(draw.surface) else {
+                continue;
+            };
+            pass.draw_indexed(
+                surface.index_start..surface.index_start + surface.index_count,
+                0,
+                0..draw.count as u32,
+            );
+        }
+        let Some(skinned_buffer) = self.skinned_buffer.as_ref() else {
+            return;
+        };
+        for draw in &self.skinned_draws {
+            let Some(asset) = self.assets.get(&draw.asset_id) else {
+                continue;
+            };
+            let mesh = &asset.lods[draw.lod];
+            let vertex_start = (draw.vertex_start * size_of::<CharacterVertex>()) as u64;
+            let vertex_end =
+                vertex_start + (draw.vertex_count * size_of::<CharacterVertex>()) as u64;
+            pass.set_vertex_buffer(0, skinned_buffer.slice(vertex_start..vertex_end));
+            let instance_start = (draw.instance_start * size_of::<CharacterInstance>()) as u64;
+            let instance_end = instance_start + size_of::<CharacterInstance>() as u64;
+            pass.set_vertex_buffer(1, self.buffer.slice(instance_start..instance_end));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            let Some(surface) = mesh.surfaces.get(draw.surface) else {
+                continue;
+            };
+            pass.draw_indexed(
+                surface.index_start..surface.index_start + surface.index_count,
+                0,
+                0..1,
+            );
+        }
+    }
+
     fn is_skinned_base(&self, asset_id: &MorphAssetId) -> bool {
         self.assets
             .get(asset_id)
@@ -1415,5 +1466,22 @@ impl CharacterRenderer {
         if kind == CharacterPass::Opaque {
             self.morphs.draw(pass, &self.opaque, &self.textured);
         }
+    }
+
+    pub fn draw_shadow(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline) {
+        pass.set_pipeline(pipeline);
+        for batch in &self.batches {
+            if batch.instances.is_empty() {
+                continue;
+            }
+            let mesh = &self.meshes[batch.mesh];
+            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+            let start = (batch.start * size_of::<CharacterInstance>()) as u64;
+            let end = start + size_of_val(batch.instances.as_slice()) as u64;
+            pass.set_vertex_buffer(1, self.buffer.slice(start..end));
+            pass.set_index_buffer(mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..mesh.index_count, 0, 0..batch.instances.len() as u32);
+        }
+        self.morphs.draw_shadow(pass, pipeline);
     }
 }

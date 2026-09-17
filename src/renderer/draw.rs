@@ -215,6 +215,16 @@ impl Renderer {
                 0.0,
             ],
         };
+        let shadow_view_projection = self.shadow_view_projection(target);
+        let shadow_globals = super::ShadowGlobals {
+            view_projection: shadow_view_projection.to_cols_array_2d(),
+            texel_size: [
+                1.0 / super::device::SHADOW_MAP_SIZE as f32,
+                1.0 / super::device::SHADOW_MAP_SIZE as f32,
+                0.0,
+                0.0,
+            ],
+        };
         let dynamic_vertices = self.build_dynamic_vertices();
         let viewport_aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
         let mut shadow_vertices = if self.character_render_mode == CharacterRenderMode::Magic {
@@ -376,6 +386,11 @@ impl Renderer {
         }
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
+        self.queue.write_buffer(
+            &self.shadow_globals_buffer,
+            0,
+            bytemuck::bytes_of(&shadow_globals),
+        );
 
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame)
@@ -416,6 +431,53 @@ impl Renderer {
             });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("cubacadabra directional shadow pass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow_depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, &self.shadow_globals_bind_group, &[]);
+            pass.set_viewport(
+                0.0,
+                0.0,
+                super::device::SHADOW_MAP_SIZE as f32,
+                super::device::SHADOW_MAP_SIZE as f32,
+                0.0,
+                1.0,
+            );
+            pass.set_pipeline(&self.shadow_pipeline);
+            if self.static_vertex_count > 0 {
+                pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
+                pass.draw(0..self.static_vertex_count as u32, 0..1);
+            }
+            for chunk in &self.terrain_meshes {
+                pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..chunk.index_count, 0, 0..1);
+            }
+            self.world_meshes
+                .draw_shadow(&mut pass, &self.world_mesh_shadow_pipeline);
+            if !self.opaque_vertices.is_empty() {
+                pass.set_pipeline(&self.shadow_pipeline);
+                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
+                pass.draw(0..self.opaque_vertices.len() as u32, 0..1);
+            }
+            if magic_mode {
+                self.characters
+                    .draw_shadow(&mut pass, &self.character_shadow_pipeline);
+            }
+        }
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra world pass"),
                 color_attachments: &[Some(self.targets.attachment(wgpu::Color {
                     r: self.scene.world.palette.sky[0] as f64,
@@ -447,6 +509,7 @@ impl Renderer {
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
             pass.set_bind_group(1, &self.world_texture_bind_group, &[]);
             pass.set_bind_group(2, &self.terrain_texture_bind_group, &[]);
+            pass.set_bind_group(3, &self.shadow_bind_group, &[]);
             if self.static_vertex_count > 0 {
                 pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
                 pass.draw(0..self.static_vertex_count as u32, 0..1);
@@ -456,8 +519,13 @@ impl Renderer {
                 pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..chunk.index_count, 0, 0..1);
             }
-            self.world_meshes.draw(&mut pass, &self.world_mesh_pipeline);
+            self.world_meshes.draw(
+                &mut pass,
+                &self.world_mesh_pipeline,
+                &self.shadow_bind_group,
+            );
             if !self.opaque_vertices.is_empty() {
+                pass.set_pipeline(&self.pipeline);
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
                 pass.draw(0..self.opaque_vertices.len() as u32, 0..1);
             }
@@ -537,6 +605,27 @@ impl Renderer {
             width,
             viewport_height,
         )
+    }
+
+    fn shadow_view_projection(&self, center: Vec3) -> Mat4 {
+        // Keep one stable, player-centered orthographic cascade for the first
+        // shadow milestone. It covers the playable maze and nearby dressing
+        // on mobile/WebGL without requiring a second shadow cascade.
+        let light_direction =
+            (-Vec3::from_array(self.scene.world.sun_direction)).normalize_or_zero();
+        let light_direction = if light_direction.length_squared() > 0.001 {
+            light_direction
+        } else {
+            Vec3::new(0.45, 0.82, -0.32).normalize()
+        };
+        let up = if light_direction.dot(Vec3::Y).abs() > 0.92 {
+            Vec3::Z
+        } else {
+            Vec3::Y
+        };
+        let eye = center - light_direction * 180.0;
+        Mat4::orthographic_rh(-120.0, 120.0, -120.0, 120.0, 0.1, 420.0)
+            * Mat4::look_at_rh(eye, center, up)
     }
 
     #[cfg(feature = "studio-ui")]

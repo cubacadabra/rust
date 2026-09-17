@@ -22,6 +22,18 @@ var terrain_textures: texture_2d_array<f32>;
 @group(2) @binding(1)
 var terrain_sampler: sampler;
 
+struct ShadowGlobals {
+    view_projection: mat4x4<f32>,
+    texel_size: vec4<f32>,
+};
+
+@group(3) @binding(0)
+var<uniform> shadow_globals: ShadowGlobals;
+@group(3) @binding(1)
+var shadow_map: texture_depth_2d;
+@group(3) @binding(2)
+var shadow_sampler: sampler_comparison;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
@@ -121,6 +133,29 @@ fn built_in_terrain_texture(material: f32, position: vec3<f32>, normal: vec3<f32
     return sample_terrain_layer(i32(material), position, normal, lod);
 }
 
+fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let clip = shadow_globals.view_projection * vec4<f32>(world_position, 1.0);
+    if clip.w <= 0.0001 {
+        return 1.0;
+    }
+    let ndc = clip.xyz / clip.w;
+    if ndc.z <= 0.0 || ndc.z >= 1.0 || abs(ndc.x) >= 1.0 || abs(ndc.y) >= 1.0 {
+        return 1.0;
+    }
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    let light_direction = normalize(-globals.sun_direction.xyz);
+    let bias = 0.0015 + (1.0 - max(dot(normal, light_direction), 0.0)) * 0.003;
+    let depth = ndc.z - bias;
+    var visibility = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let offset = vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy;
+            visibility += textureSampleCompare(shadow_map, shadow_sampler, uv + offset, depth);
+        }
+    }
+    return visibility / 9.0;
+}
+
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
@@ -141,6 +176,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let light_direction = normalize(-globals.sun_direction.xyz);
     let direct_light = max(dot(normal, light_direction), 0.0);
     let lighting = 0.72 + direct_light * 0.42;
+    let shadow = shadow_factor(input.world_position, normal);
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.06;
     let lit_color = input.color.rgb * lighting + vec3<f32>(rim);
     let distance_to_camera = distance(input.world_position, globals.camera_position.xyz);
@@ -151,7 +187,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             let terrain_lod = clamp(log2(max(distance_to_camera * 0.04, 1.0)), 0.0, 9.0);
             terrain = built_in_terrain_texture(input.tex_coords.x, input.world_position, normal, terrain_lod);
         }
-        var graded = terrain * lighting + vec3<f32>(rim);
+        var graded = terrain * (0.58 + lighting * shadow) + vec3<f32>(rim);
         graded *= globals.color_grade.x;
         let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
         graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
@@ -164,14 +200,14 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         if image.a < 0.05 {
             discard;
         }
-        var graded = image.rgb * lighting + vec3<f32>(rim);
+        var graded = image.rgb * (0.58 + lighting * shadow) + vec3<f32>(rim);
         graded *= globals.color_grade.x;
         let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
         graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
         graded = (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);
         return vec4<f32>(mix(graded, globals.fog_color.rgb, fog), image.a);
     }
-    var graded = lit_color * globals.color_grade.x;
+    var graded = input.color.rgb * (0.58 + lighting * shadow) + vec3<f32>(rim);
     let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
     graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
     graded = (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);

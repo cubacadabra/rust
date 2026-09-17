@@ -133,6 +133,13 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
     let terrain_texture_layout = super::device::terrain_texture_bind_group_layout(&device);
     let terrain_texture_bind_group =
         super::device::create_terrain_texture_bind_group(&device, &queue, &terrain_texture_layout);
+    let shadow_bind_group_layout = super::device::shadow_bind_group_layout(&device);
+    let shadow_globals_layout = super::device::shadow_globals_layout(&device);
+    let (_, _, shadow_bind_group, _) = super::device::create_shadow_resources(
+        &device,
+        &shadow_globals_layout,
+        &shadow_bind_group_layout,
+    );
     let placeholder = [255_u8; 4];
     let world_texture_bind_group = super::device::create_world_texture_bind_group(
         &device,
@@ -161,8 +168,10 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
         queue: &queue,
         world_texture_layout: &world_texture_layout,
         terrain_texture_layout: &terrain_texture_layout,
+        shadow_bind_group_layout: &shadow_bind_group_layout,
         world_texture_bind_group,
         terrain_texture_bind_group,
+        shadow_bind_group,
         globals_buffer,
         globals,
         ui,
@@ -383,8 +392,10 @@ struct Context<'a> {
     queue: &'a wgpu::Queue,
     world_texture_layout: &'a wgpu::BindGroupLayout,
     terrain_texture_layout: &'a wgpu::BindGroupLayout,
+    shadow_bind_group_layout: &'a wgpu::BindGroupLayout,
     world_texture_bind_group: wgpu::BindGroup,
     terrain_texture_bind_group: wgpu::BindGroup,
+    shadow_bind_group: wgpu::BindGroup,
     globals_buffer: wgpu::Buffer,
     globals: wgpu::BindGroup,
     ui: wgpu::RenderPipeline,
@@ -521,6 +532,7 @@ impl TestScene {
                 layout,
                 ctx.world_texture_layout,
                 ctx.terrain_texture_layout,
+                ctx.shadow_bind_group_layout,
                 samples,
                 false,
             ),
@@ -529,6 +541,7 @@ impl TestScene {
                 layout,
                 ctx.world_texture_layout,
                 ctx.terrain_texture_layout,
+                ctx.shadow_bind_group_layout,
                 samples,
                 true,
             ),
@@ -594,6 +607,7 @@ impl TestScene {
             pass.set_bind_group(0, &ctx.globals, &[]);
             pass.set_bind_group(1, &ctx.world_texture_bind_group, &[]);
             pass.set_bind_group(2, &ctx.terrain_texture_bind_group, &[]);
+            pass.set_bind_group(3, &ctx.shadow_bind_group, &[]);
             pass.set_pipeline(&self.world);
             pass.set_vertex_buffer(0, self.world_buffer.slice(..));
             pass.draw(0..self.opaque_count, 0..1);

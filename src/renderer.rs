@@ -31,3 +31,10 @@ const DEBUG_GIT_SHA: &str = env!("CUBACADABRA_GIT_SHA");
 include!("renderer/types.rs");
 include!("renderer/geometry.rs");
 include!("renderer/world_geometry.rs");
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub(super) struct ShadowGlobals {
+    pub(super) view_projection: [[f32; 4]; 4],
+    pub(super) texel_size: [f32; 4],
+}

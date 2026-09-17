@@ -39,6 +39,7 @@ const TERRAIN_MUD_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/
 const TERRAIN_SNOW_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/snow.png");
 const TERRAIN_TILE_SIZE: u32 = 512;
 const TERRAIN_LAYER_COUNT: u32 = 7;
+pub(super) const SHADOW_MAP_SIZE: u32 = 1024;
 
 #[cfg(target_os = "android")]
 pub(super) static ANDROID_SURFACE_WARNING_REPORTED: std::sync::atomic::AtomicBool =
@@ -725,11 +726,14 @@ impl Renderer {
             1,
             &placeholder_pixel,
         );
+        let shadow_globals_layout = shadow_globals_layout(&device);
+        let shadow_bind_group_layout = shadow_bind_group_layout(&device);
         let pipeline = world_pipeline(
             &device,
             &globals_layout,
             &world_texture_layout,
             &terrain_texture_layout,
+            &shadow_bind_group_layout,
             sample_count,
             false,
         );
@@ -738,12 +742,29 @@ impl Renderer {
             &globals_layout,
             &world_texture_layout,
             &terrain_texture_layout,
+            &shadow_bind_group_layout,
             sample_count,
             true,
         );
-        let world_mesh_pipeline = world_mesh_pipeline(&device, &globals_layout, sample_count);
+        let world_mesh_pipeline = world_mesh_pipeline(
+            &device,
+            &globals_layout,
+            &shadow_bind_group_layout,
+            sample_count,
+        );
+        let (
+            shadow_globals_buffer,
+            shadow_depth_view,
+            shadow_bind_group,
+            shadow_globals_bind_group,
+        ) = create_shadow_resources(&device, &shadow_globals_layout, &shadow_bind_group_layout);
+        let shadow_pipeline = shadow_pipeline(&device, &shadow_globals_layout);
+        let world_mesh_shadow_pipeline =
+            world_mesh_shadow_pipeline(&device, &shadow_globals_layout);
         let characters =
             super::character_gpu::CharacterRenderer::new(&device, &globals_layout, sample_count);
+        let character_shadow_pipeline =
+            super::character_material::shadow_pipeline(&device, &shadow_globals_layout);
         let presenter = super::targets::Presenter::new(&device, format);
         let targets = super::targets::SceneTargets::new(
             &device,
@@ -767,6 +788,12 @@ impl Renderer {
             pipeline,
             translucent_pipeline,
             world_mesh_pipeline,
+            shadow_pipeline,
+            world_mesh_shadow_pipeline,
+            shadow_bind_group,
+            shadow_globals_bind_group,
+            shadow_globals_buffer,
+            shadow_depth_view,
             globals_buffer,
             globals_bind_group,
             world_texture_layout,
@@ -788,6 +815,7 @@ impl Renderer {
             presenter,
             sample_count,
             characters,
+            character_shadow_pipeline,
             translucent_vertices: Vec::with_capacity(16_384),
             opaque_vertices: Vec::with_capacity(16_384),
             static_translucent_vertices: Vec::new(),
@@ -878,6 +906,12 @@ impl Renderer {
     pub(crate) fn clear_world_meshes(&mut self) {
         self.world_meshes.clear();
         self.rebuild_static_vertices();
+    }
+
+    pub(crate) fn replace_world_meshes(&mut self, models: &[(&str, &[u8])]) -> Result<(), String> {
+        self.world_meshes
+            .replace(&self.device, models, &self.scene.world.mesh_instances)?;
+        Ok(())
     }
 
     pub(crate) fn set_package_image_atlas(
@@ -1043,11 +1077,230 @@ pub(super) fn create_world_texture_bind_group(
     })
 }
 
+pub(super) fn shadow_globals_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("cubacadabra shadow globals layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    })
+}
+
+pub(super) fn shadow_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("cubacadabra shadow sampling layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Depth,
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                count: None,
+            },
+        ],
+    })
+}
+
+pub(crate) fn create_shadow_resources(
+    device: &wgpu::Device,
+    globals_layout: &wgpu::BindGroupLayout,
+    layout: &wgpu::BindGroupLayout,
+) -> (
+    wgpu::Buffer,
+    wgpu::TextureView,
+    wgpu::BindGroup,
+    wgpu::BindGroup,
+) {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("cubacadabra directional shadow map"),
+        size: wgpu::Extent3d {
+            width: SHADOW_MAP_SIZE,
+            height: SHADOW_MAP_SIZE,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth32Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+    let depth_view = texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("cubacadabra directional shadow depth view"),
+        aspect: wgpu::TextureAspect::DepthOnly,
+        ..Default::default()
+    });
+    let sampled_view = texture.create_view(&wgpu::TextureViewDescriptor {
+        label: Some("cubacadabra directional shadow sampled view"),
+        aspect: wgpu::TextureAspect::DepthOnly,
+        ..Default::default()
+    });
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some("cubacadabra soft shadow sampler"),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+        compare: Some(wgpu::CompareFunction::LessEqual),
+        ..Default::default()
+    });
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("cubacadabra shadow globals"),
+        size: size_of::<super::ShadowGlobals>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("cubacadabra shadow sampling bind group"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&sampled_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    });
+    let globals_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("cubacadabra shadow globals bind group"),
+        layout: globals_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
+    });
+    (buffer, depth_view, bind_group, globals_bind_group)
+}
+
+pub(super) fn shadow_pipeline(
+    device: &wgpu::Device,
+    shadow_globals_layout: &wgpu::BindGroupLayout,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("cubacadabra world shadow shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("shadow.wgsl").into()),
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("cubacadabra world shadow pipeline layout"),
+        bind_group_layouts: &[Some(shadow_globals_layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("cubacadabra world shadow pipeline"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[Vertex::LAYOUT],
+        },
+        primitive: wgpu::PrimitiveState {
+            cull_mode: Some(wgpu::Face::Back),
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState {
+                constant: 2,
+                slope_scale: 2.0,
+                clamp: 0.01,
+            },
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        fragment: None,
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+pub(super) fn world_mesh_shadow_pipeline(
+    device: &wgpu::Device,
+    shadow_globals_layout: &wgpu::BindGroupLayout,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("cubacadabra world mesh shadow shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("world_mesh_shadow.wgsl").into()),
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("cubacadabra world mesh shadow pipeline layout"),
+        bind_group_layouts: &[Some(shadow_globals_layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("cubacadabra world mesh shadow pipeline"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[WorldMeshVertex::LAYOUT, WorldMeshInstance::LAYOUT],
+        },
+        primitive: wgpu::PrimitiveState {
+            cull_mode: Some(wgpu::Face::Back),
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState {
+                constant: 2,
+                slope_scale: 2.0,
+                clamp: 0.01,
+            },
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        fragment: None,
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
 pub(super) fn world_pipeline(
     device: &wgpu::Device,
     globals_layout: &wgpu::BindGroupLayout,
     world_texture_layout: &wgpu::BindGroupLayout,
     terrain_texture_layout: &wgpu::BindGroupLayout,
+    shadow_layout: &wgpu::BindGroupLayout,
     samples: u32,
     translucent: bool,
 ) -> wgpu::RenderPipeline {
@@ -1061,6 +1314,7 @@ pub(super) fn world_pipeline(
             Some(globals_layout),
             Some(world_texture_layout),
             Some(terrain_texture_layout),
+            Some(shadow_layout),
         ],
         immediate_size: 0,
     });
@@ -1107,6 +1361,7 @@ pub(super) fn world_pipeline(
 pub(super) fn world_mesh_pipeline(
     device: &wgpu::Device,
     globals_layout: &wgpu::BindGroupLayout,
+    shadow_layout: &wgpu::BindGroupLayout,
     samples: u32,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -1115,7 +1370,7 @@ pub(super) fn world_mesh_pipeline(
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("cubacadabra world mesh pipeline layout"),
-        bind_group_layouts: &[Some(globals_layout)],
+        bind_group_layouts: &[Some(globals_layout), Some(shadow_layout)],
         immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

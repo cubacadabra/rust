@@ -13,6 +13,9 @@ pub(super) struct HeadlessContext {
     pub(super) queue: wgpu::Queue,
     pub(super) pipeline: wgpu::RenderPipeline,
     pub(super) globals_layout: wgpu::BindGroupLayout,
+    pub(super) world_texture_bind_group: wgpu::BindGroup,
+    pub(super) terrain_texture_bind_group: wgpu::BindGroup,
+    pub(super) shadow_bind_group: wgpu::BindGroup,
     pub(super) characters: super::super::character_gpu::CharacterRenderer,
     pub(super) adapter_info: wgpu::AdapterInfo,
     pub(super) samples: u32,
@@ -71,9 +74,38 @@ impl HeadlessContext {
                 count: None,
             }],
         });
+        let shadow_bind_group_layout = super::super::device::shadow_bind_group_layout(&device);
+        let shadow_globals_layout = super::super::device::shadow_globals_layout(&device);
+        let (_, _, shadow_bind_group, _) = super::super::device::create_shadow_resources(
+            &device,
+            &shadow_globals_layout,
+            &shadow_bind_group_layout,
+        );
+        let world_texture_layout = super::super::device::world_texture_bind_group_layout(&device);
+        let terrain_texture_layout =
+            super::super::device::terrain_texture_bind_group_layout(&device);
+        let placeholder = [255_u8, 255, 255, 255];
+        let world_texture_bind_group = super::super::device::create_world_texture_bind_group(
+            &device,
+            &queue,
+            &world_texture_layout,
+            1,
+            1,
+            &placeholder,
+        );
+        let terrain_texture_bind_group = super::super::device::create_terrain_texture_bind_group(
+            &device,
+            &queue,
+            &terrain_texture_layout,
+        );
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("cubacadabra phase 0 pipeline layout"),
-            bind_group_layouts: &[Some(&globals_layout)],
+            bind_group_layouts: &[
+                Some(&globals_layout),
+                Some(&world_texture_layout),
+                Some(&terrain_texture_layout),
+                Some(&shadow_bind_group_layout),
+            ],
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -121,6 +153,9 @@ impl HeadlessContext {
             queue,
             pipeline,
             globals_layout,
+            world_texture_bind_group,
+            terrain_texture_bind_group,
+            shadow_bind_group,
             characters,
             adapter_info,
             samples,
@@ -411,6 +446,9 @@ impl HeadlessContext {
                 1.0,
             );
             pass.set_bind_group(0, &globals_bind_group, &[]);
+            pass.set_bind_group(1, &self.world_texture_bind_group, &[]);
+            pass.set_bind_group(2, &self.terrain_texture_bind_group, &[]);
+            pass.set_bind_group(3, &self.shadow_bind_group, &[]);
             if !vertices.is_empty() {
                 pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 pass.draw(0..vertices.len() as u32, 0..1);

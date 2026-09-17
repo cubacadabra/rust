@@ -77,6 +77,44 @@ struct InstanceBatch {
     count: u32,
 }
 
+fn generated_normals(positions: &[[f32; 3]], indices: &[u32]) -> Result<Vec<[f32; 3]>, String> {
+    if indices.len() % 3 != 0 {
+        return Err("a world mesh primitive without normals must contain triangle indices".into());
+    }
+    let mut normals = vec![Vec3::ZERO; positions.len()];
+    for triangle in indices.chunks_exact(3) {
+        let [a, b, c] = *triangle else { unreachable!() };
+        let pa = positions.get(a as usize).copied().ok_or_else(|| {
+            "a world mesh primitive contains an out-of-range normal index".to_owned()
+        })?;
+        let pb = positions.get(b as usize).copied().ok_or_else(|| {
+            "a world mesh primitive contains an out-of-range normal index".to_owned()
+        })?;
+        let pc = positions.get(c as usize).copied().ok_or_else(|| {
+            "a world mesh primitive contains an out-of-range normal index".to_owned()
+        })?;
+        let face = (Vec3::from_array(pb) - Vec3::from_array(pa))
+            .cross(Vec3::from_array(pc) - Vec3::from_array(pa));
+        if !face.is_finite() || face.length_squared() <= 1e-12 {
+            return Err(
+                "a world mesh primitive contains a degenerate triangle without normals".into(),
+            );
+        }
+        normals[a as usize] += face;
+        normals[b as usize] += face;
+        normals[c as usize] += face;
+    }
+    normals
+        .into_iter()
+        .map(|normal| {
+            normal
+                .try_normalize()
+                .map(|normal| normal.to_array())
+                .ok_or_else(|| "a world mesh vertex has no computable normal".to_owned())
+        })
+        .collect()
+}
+
 #[derive(Default)]
 pub(crate) struct WorldMeshRegistry {
     assets: BTreeMap<String, MeshAsset>,
@@ -110,6 +148,11 @@ impl WorldMeshRegistry {
 
         for mesh in gltf.meshes() {
             for primitive in mesh.primitives() {
+                if primitive.mode() != gltf::mesh::Mode::Triangles {
+                    return Err(format!(
+                        "world mesh asset {id:?} only supports triangle-list primitives"
+                    ));
+                }
                 let reader = primitive.reader(|buffer| match buffer.source() {
                     gltf::buffer::Source::Bin => Some(blob),
                     gltf::buffer::Source::Uri(_) => None,
@@ -123,10 +166,23 @@ impl WorldMeshRegistry {
                 if positions.is_empty() {
                     continue;
                 }
+                let primitive_indices = if let Some(values) = reader.read_indices() {
+                    values.into_u32().collect::<Vec<_>>()
+                } else {
+                    if positions.len() % 3 != 0 {
+                        return Err(format!(
+                            "world mesh asset {id:?} has an unindexed primitive with a non-triangular vertex count"
+                        ));
+                    }
+                    (0..u32::try_from(positions.len())
+                        .map_err(|_| format!("world mesh asset {id:?} has too many vertices"))?)
+                        .collect()
+                };
                 let normals = reader
                     .read_normals()
                     .map(|values| values.collect::<Vec<_>>())
-                    .unwrap_or_else(|| vec![[0.0, 1.0, 0.0]; positions.len()]);
+                    .map(Ok)
+                    .unwrap_or_else(|| generated_normals(&positions, &primitive_indices))?;
                 let uvs = reader
                     .read_tex_coords(0)
                     .map(|values| values.into_f32().collect::<Vec<_>>())
@@ -146,14 +202,7 @@ impl WorldMeshRegistry {
                         uv,
                     },
                 ));
-                if let Some(values) = reader.read_indices() {
-                    indices.extend(values.into_u32().map(|index| base + index));
-                } else {
-                    indices.extend(
-                        (0..u32::try_from(vertices.len()).unwrap() - base)
-                            .map(|index| base + index),
-                    );
-                }
+                indices.extend(primitive_indices.into_iter().map(|index| base + index));
             }
         }
 
@@ -195,6 +244,21 @@ impl WorldMeshRegistry {
         self.batches.clear();
     }
 
+    pub(super) fn replace(
+        &mut self,
+        device: &wgpu::Device,
+        models: &[(&str, &[u8])],
+        instances: &[crate::renderer::RenderMeshInstance],
+    ) -> Result<(), String> {
+        let mut replacement = Self::default();
+        for (id, bytes) in models {
+            replacement.register(device, id, bytes)?;
+        }
+        replacement.rebuild_instances(device, instances);
+        *self = replacement;
+        Ok(())
+    }
+
     pub(super) fn rebuild_instances(
         &mut self,
         device: &wgpu::Device,
@@ -231,6 +295,25 @@ impl WorldMeshRegistry {
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         pipeline: &'a wgpu::RenderPipeline,
+        shadow_bind_group: &'a wgpu::BindGroup,
+    ) {
+        pass.set_pipeline(pipeline);
+        pass.set_bind_group(1, shadow_bind_group, &[]);
+        for (id, batch) in &self.batches {
+            let Some(asset) = self.assets.get(id) else {
+                continue;
+            };
+            pass.set_vertex_buffer(0, asset.vertices.slice(..));
+            pass.set_vertex_buffer(1, batch.buffer.slice(..));
+            pass.set_index_buffer(asset.indices.slice(..), wgpu::IndexFormat::Uint32);
+            pass.draw_indexed(0..asset.index_count, 0, 0..batch.count);
+        }
+    }
+
+    pub(super) fn draw_shadow<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        pipeline: &'a wgpu::RenderPipeline,
     ) {
         pass.set_pipeline(pipeline);
         for (id, batch) in &self.batches {
@@ -242,5 +325,28 @@ impl WorldMeshRegistry {
             pass.set_index_buffer(asset.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..asset.index_count, 0, 0..batch.count);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generated_normals;
+
+    #[test]
+    fn generates_normals_for_triangle_geometry() {
+        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let normals = generated_normals(&positions, &[0, 1, 2]).expect("valid triangle");
+        assert_eq!(normals.len(), 3);
+        for normal in normals {
+            assert_eq!(normal, [0.0, 0.0, 1.0]);
+        }
+    }
+
+    #[test]
+    fn rejects_degenerate_or_out_of_range_triangle_geometry() {
+        let positions = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        assert!(generated_normals(&positions, &[0, 1]).is_err());
+        assert!(generated_normals(&positions, &[0, 1, 3]).is_err());
+        assert!(generated_normals(&positions, &[0, 1, 1]).is_err());
     }
 }
