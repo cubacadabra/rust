@@ -1457,7 +1457,16 @@ pub(super) fn sky_resources(
             buffers: &[],
         },
         primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: None,
+        // The sky is drawn in the world pass, which owns the shared scene
+        // depth attachment. Declare the format for pipeline compatibility,
+        // but never read or write scene depth for the background.
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(false),
+            depth_compare: Some(wgpu::CompareFunction::Always),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState {
             count: samples,
             ..Default::default()
