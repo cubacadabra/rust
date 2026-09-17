@@ -200,14 +200,15 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         if image.a < 0.05 {
             discard;
         }
-        var graded = image.rgb * (0.58 + lighting * shadow) + vec3<f32>(rim);
+        var graded = image.rgb * lighting + vec3<f32>(rim);
         graded *= globals.color_grade.x;
         let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
         graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
         graded = (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);
         return vec4<f32>(mix(graded, globals.fog_color.rgb, fog), image.a);
     }
-    var graded = input.color.rgb * (0.58 + lighting * shadow) + vec3<f32>(rim);
+    var graded = lit_color;
+    graded *= globals.color_grade.x;
     let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
     graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
     graded = (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);

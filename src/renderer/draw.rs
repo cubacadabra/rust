@@ -1382,16 +1382,20 @@ mod tests {
         assert!(eye.y > 0.0, "shadow camera must sit toward the sun");
 
         let first = Renderer::shadow_view_projection_for(Vec3::ZERO, sun);
-        let sub_texel = Renderer::shadow_view_projection_for(Vec3::new(0.001, 0.001, 0.0), sun);
+        let texel = 240.0 / crate::renderer::device::SHADOW_MAP_SIZE as f32;
+        let view = Mat4::look_at_rh(light * 180.0, Vec3::ZERO, Vec3::Y);
+        let sub_texel_world =
+            view.inverse()
+                .transform_vector3(Vec3::new(texel * 0.40, texel * 0.30, 0.0));
+        let sub_texel = Renderer::shadow_view_projection_for(sub_texel_world, sun);
         assert_eq!(
             first, sub_texel,
             "sub-texel motion must not move the shadow map"
         );
 
-        let texel = 240.0 / crate::renderer::device::SHADOW_MAP_SIZE as f32;
-        let light = shadow_light_direction(sun);
-        let view = Mat4::look_at_rh(light * 180.0, Vec3::ZERO, Vec3::Y);
-        let light_space_step = view.inverse().transform_vector3(Vec3::X * texel * 1.5);
+        let light_space_step = view
+            .inverse()
+            .transform_vector3(Vec3::new(texel * 0.60, 0.0, 0.0));
         let moved = Renderer::shadow_view_projection_for(light_space_step, sun);
         assert_ne!(
             first, moved,
