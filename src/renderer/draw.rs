@@ -554,6 +554,13 @@ impl Renderer {
                     .draw(&mut pass, CharacterPass::Effect, &self.shadow_bind_group);
             }
             if !self.translucent_vertices.is_empty() {
+                // Character pipelines use group 1 for their shadow receiver
+                // (and group 2 for textured Morph shadows). Restore the
+                // world pipeline's texture groups before drawing translucent
+                // world geometry.
+                pass.set_bind_group(1, &self.world_texture_bind_group, &[]);
+                pass.set_bind_group(2, &self.terrain_texture_bind_group, &[]);
+                pass.set_bind_group(3, &self.shadow_bind_group, &[]);
                 pass.set_pipeline(&self.translucent_pipeline);
                 let start = (size_of_val(self.opaque_vertices.as_slice())
                     + size_of_val(shadow_vertices.as_slice())) as u64;

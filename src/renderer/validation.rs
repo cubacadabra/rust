@@ -626,6 +626,9 @@ impl TestScene {
             if !self.effects_first {
                 characters.draw(&mut pass, CharacterPass::Effect, &ctx.shadow_bind_group);
             }
+            pass.set_bind_group(1, &ctx.world_texture_bind_group, &[]);
+            pass.set_bind_group(2, &ctx.terrain_texture_bind_group, &[]);
+            pass.set_bind_group(3, &ctx.shadow_bind_group, &[]);
             pass.set_pipeline(&self.translucent);
             pass.set_vertex_buffer(0, self.world_buffer.slice(..));
             pass.draw(self.opaque_count..self.world_count, 0..1);
