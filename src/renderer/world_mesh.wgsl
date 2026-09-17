@@ -14,9 +14,9 @@ struct ShadowGlobals {
     view_projection: mat4x4<f32>,
     texel_size: vec4<f32>,
 };
-@group(1) @binding(0) var<uniform> shadow_globals: ShadowGlobals;
-@group(1) @binding(1) var shadow_map: texture_depth_2d;
-@group(1) @binding(2) var shadow_sampler: sampler_comparison;
+@group(3) @binding(0) var<uniform> shadow_globals: ShadowGlobals;
+@group(3) @binding(1) var shadow_map: texture_depth_2d;
+@group(3) @binding(2) var shadow_sampler: sampler_comparison;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,

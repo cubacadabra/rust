@@ -298,7 +298,7 @@ impl WorldMeshRegistry {
         shadow_bind_group: &'a wgpu::BindGroup,
     ) {
         pass.set_pipeline(pipeline);
-        pass.set_bind_group(1, shadow_bind_group, &[]);
+        pass.set_bind_group(3, shadow_bind_group, &[]);
         for (id, batch) in &self.batches {
             let Some(asset) = self.assets.get(id) else {
                 continue;

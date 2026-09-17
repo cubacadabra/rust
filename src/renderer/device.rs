@@ -749,6 +749,8 @@ impl Renderer {
         let world_mesh_pipeline = world_mesh_pipeline(
             &device,
             &globals_layout,
+            &world_texture_layout,
+            &terrain_texture_layout,
             &shadow_bind_group_layout,
             sample_count,
         );
@@ -1361,6 +1363,8 @@ pub(super) fn world_pipeline(
 pub(super) fn world_mesh_pipeline(
     device: &wgpu::Device,
     globals_layout: &wgpu::BindGroupLayout,
+    world_texture_layout: &wgpu::BindGroupLayout,
+    terrain_texture_layout: &wgpu::BindGroupLayout,
     shadow_layout: &wgpu::BindGroupLayout,
     samples: u32,
 ) -> wgpu::RenderPipeline {
@@ -1370,7 +1374,12 @@ pub(super) fn world_mesh_pipeline(
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("cubacadabra world mesh pipeline layout"),
-        bind_group_layouts: &[Some(globals_layout), Some(shadow_layout)],
+        bind_group_layouts: &[
+            Some(globals_layout),
+            Some(world_texture_layout),
+            Some(terrain_texture_layout),
+            Some(shadow_layout),
+        ],
         immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
