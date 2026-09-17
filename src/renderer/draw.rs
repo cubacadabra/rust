@@ -886,7 +886,11 @@ impl Renderer {
             }
         }
         for decoration in &world.decorations {
-            add_decoration(&mut mesh, decoration, world.palette);
+            // Asset-backed decorations are rendered by WorldMeshRegistry below;
+            // they must not also become fallback procedural spheres here.
+            if !decoration.kind.eq_ignore_ascii_case("mesh") {
+                add_decoration(&mut mesh, decoration, world.palette);
+            }
         }
         for ladder in &world.ladders {
             add_ladder(&mut mesh, ladder);
