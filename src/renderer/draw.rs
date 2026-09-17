@@ -323,6 +323,11 @@ impl Renderer {
             0.05,
             self.camera_far_plane(camera_position, target),
         ) * view;
+        // Authored gameplay fog is useful for play, but it can hide a whole
+        // subject when Studio's Overview/Showcase camera backs away to fit
+        // presentationBounds. Review cameras are diagnostic views, so keep
+        // them clear without changing the package's gameplay atmosphere.
+        let (fog_start, fog_end) = self.review_fog_range();
         let globals = Globals {
             view_projection: view_projection.to_cols_array_2d(),
             camera_position: camera_position.extend(1.0).to_array(),
@@ -337,12 +342,7 @@ impl Renderer {
                 self.scene.world.saturation,
                 0.0,
             ],
-            atmosphere: [
-                self.scene.world.fog_start,
-                self.scene.world.fog_end,
-                0.0,
-                0.0,
-            ],
+            atmosphere: [fog_start, fog_end, 0.0, 0.0],
         };
         let sky = self.scene.world.palette.sky;
         let sky_globals = super::SkyGlobals {
@@ -747,6 +747,14 @@ impl Renderer {
             pass.draw(0..ui_vertices.len() as u32, 0..1);
         }
         Some((frame, encoder, view))
+    }
+
+    fn review_fog_range(&self) -> (f32, f32) {
+        #[cfg(feature = "studio-ui")]
+        if self.studio_camera_preset != crate::StudioCameraPreset::Gameplay {
+            return (1_000_000.0, 1_000_001.0);
+        }
+        (self.scene.world.fog_start, self.scene.world.fog_end)
     }
 
     /// Keep the 3D world in its normal landscape composition when a window
