@@ -868,6 +868,22 @@ mod tests {
     }
 
     #[test]
+    fn ellipsoid_is_a_reusable_volume_for_rounded_terrain_bodies() {
+        let terrain = terrain(vec![operation(
+            "fill",
+            "ellipsoid",
+            [0.0, -2.0, 0.0],
+            [12.0, 6.0, 8.0],
+            0.0,
+            "ground",
+        )]);
+        assert!(terrain.signed_distance([0.0, -2.0, 0.0]) < 0.0);
+        assert!(terrain.signed_distance([0.0, 1.1, 0.0]) > 0.0);
+        assert!(terrain.signed_distance([6.1, -2.0, 0.0]) > 0.0);
+        assert!(terrain.signed_distance([0.0, -2.0, 0.0]) < 0.0);
+    }
+
+    #[test]
     fn allocated_bounds_cover_negative_sparse_and_carved_terrain() {
         let terrain = terrain(vec![
             operation(
