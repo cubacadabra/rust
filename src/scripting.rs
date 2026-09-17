@@ -543,6 +543,14 @@ fn create_api(
     scheduler: Rc<RefCell<TaskScheduler>>,
 ) -> lua::Result<lua::Table> {
     let api = create_table(lua)?;
+    api.set(
+        "build_mode",
+        if cfg!(debug_assertions) {
+            "DEBUG"
+        } else {
+            "RELEASE"
+        },
+    )?;
 
     let lobby = create_table(lua)?;
     let lobby_state = Rc::clone(&state);
@@ -869,6 +877,26 @@ mod tests {
 
         assert_eq!(script.state().borrow().lobby_status, "ready");
         script.tick(1.0 / 60.0).expect("tick should run");
+    }
+
+    #[test]
+    fn luau_receives_the_host_build_mode() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    api.lobby:set_status(api.build_mode)
+                end
+                return game
+            "#,
+        );
+
+        let expected = if cfg!(debug_assertions) {
+            "DEBUG"
+        } else {
+            "RELEASE"
+        };
+        assert_eq!(script.state().borrow().lobby_status, expected);
     }
 
     #[test]
