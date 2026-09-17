@@ -282,10 +282,11 @@ pub(crate) struct TerrainGrid {
 }
 
 impl TerrainGrid {
-    /// Returns the conservative world-space bounds of the allocated terrain
-    /// volume. Review cameras use this to frame authored terrain without
-    /// changing gameplay camera state.
-    pub(crate) fn bounds(&self) -> Option<([f32; 3], [f32; 3])> {
+    /// Returns conservative world-space bounds of allocated terrain chunks.
+    /// These bounds may include empty space left by carving; they are useful
+    /// for framing authored terrain, not a precise visible-surface bounds
+    /// query.
+    pub(crate) fn allocated_bounds(&self) -> Option<([f32; 3], [f32; 3])> {
         let mut low = [i32::MAX; 3];
         let mut high = [i32::MIN; 3];
         for coordinate in self.chunks.keys() {
@@ -814,6 +815,28 @@ mod tests {
         assert!(terrain.signed_distance([0.0, 0.2, 0.0]) > 0.0);
         assert!(terrain.capsule_clear([0.0, 0.0, 0.0], 0.5, 2.0));
         assert!(!terrain.capsule_clear([0.0, -0.4, 0.0], 0.5, 2.0));
+    }
+
+    #[test]
+    fn allocated_bounds_cover_negative_sparse_and_carved_terrain() {
+        let terrain = terrain(vec![
+            operation(
+                "fill",
+                "block",
+                [-20.0, -2.0, -12.0],
+                [4.0, 4.0, 4.0],
+                0.0,
+                "ground",
+            ),
+            operation("carve", "ball", [-20.0, -2.0, -12.0], [0.0; 3], 1.0, "air"),
+        ]);
+        let (low, high) = terrain
+            .allocated_bounds()
+            .expect("the fill allocates a sparse terrain region");
+        assert!(low[0] <= -20.0 && low[2] <= -12.0);
+        assert!(high[0] >= -18.0 && high[2] >= -10.0);
+        assert!(terrain.signed_distance([-20.0, -2.0, -12.0]) > 0.0);
+        assert!(terrain.chunks_len() < 16);
     }
 
     #[test]

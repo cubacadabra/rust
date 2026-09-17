@@ -16,7 +16,7 @@ use cubacadabra_morphs::{MorphDiagnostic, decode_morph_pack};
 use wgpu::util::DeviceExt;
 
 use super::{
-    DEPTH_FORMAT, Globals, Renderer, Vertex,
+    DEPTH_FORMAT, Globals, Renderer, SkyGlobals, Vertex,
     ui::{
         UI_ATLAS_HEIGHT, UI_ATLAS_PADDING, UI_ATLAS_WIDTH, UI_FONT_ATLAS_Y,
         WORLD_LABEL_FONT_ATLAS_Y, ui_atlas_glyphs, world_label_atlas_glyphs,
@@ -29,10 +29,11 @@ const UI_CUBE_BYTES: &[u8] = include_bytes!("../../assets/images/cube.png");
 const UI_CHAT_BYTES: &[u8] = include_bytes!("../../assets/images/chat.png");
 const UI_VOICE_BYTES: &[u8] = include_bytes!("../../assets/images/voice.png");
 const TERRAIN_GRASS_TOP_BYTES: &[u8] =
-    include_bytes!("../../assets/materials/terrain/grass-top.png");
+    include_bytes!("../../assets/materials/terrain/grass-top-soft.png");
 const TERRAIN_GRASS_SIDE_BYTES: &[u8] =
-    include_bytes!("../../assets/materials/terrain/grass-side.png");
-const TERRAIN_GROUND_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/ground.png");
+    include_bytes!("../../assets/materials/terrain/grass-side-soft.png");
+const TERRAIN_GROUND_BYTES: &[u8] =
+    include_bytes!("../../assets/materials/terrain/ground-soft.png");
 const TERRAIN_ROCK_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/rock.png");
 const TERRAIN_SAND_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/sand.png");
 const TERRAIN_MUD_BYTES: &[u8] = include_bytes!("../../assets/materials/terrain/mud.png");
@@ -737,6 +738,8 @@ impl Renderer {
             sample_count,
             false,
         );
+        let (sky_pipeline, sky_globals_buffer, sky_globals_bind_group) =
+            sky_resources(&device, sample_count);
         let translucent_pipeline = world_pipeline(
             &device,
             &globals_layout,
@@ -792,6 +795,9 @@ impl Renderer {
             device,
             queue,
             pipeline,
+            sky_pipeline,
+            sky_globals_buffer,
+            sky_globals_bind_group,
             translucent_pipeline,
             world_mesh_pipeline,
             shadow_pipeline,
@@ -841,7 +847,7 @@ impl Renderer {
             #[cfg(feature = "studio-ui")]
             studio_viewport: None,
             #[cfg(feature = "studio-ui")]
-            studio_camera_preset: 0,
+            studio_camera_preset: crate::StudioCameraPreset::Gameplay,
         }
     }
 
@@ -859,15 +865,11 @@ impl Renderer {
         });
     }
 
-    /// Selects a temporary Studio review camera. `0` keeps the live gameplay
-    /// camera; `1` frames the authored world from above; `2` frames its outer
-    /// island silhouette. This never changes Engine camera state or snapshots.
+    /// Selects a temporary Studio review camera. This never changes Engine
+    /// camera state or snapshots.
     #[cfg(feature = "studio-ui")]
-    pub(crate) fn set_studio_camera_preset(&mut self, preset: u8) {
-        self.studio_camera_preset = match preset {
-            1 | 2 => preset,
-            _ => 0,
-        };
+    pub(crate) fn set_studio_camera_preset(&mut self, preset: crate::StudioCameraPreset) {
+        self.studio_camera_preset = preset;
     }
 
     pub(crate) fn set_package_image(
@@ -1404,6 +1406,76 @@ pub(super) fn world_pipeline(
         multiview_mask: None,
         cache: None,
     })
+}
+
+pub(super) fn sky_resources(
+    device: &wgpu::Device,
+    samples: u32,
+) -> (wgpu::RenderPipeline, wgpu::Buffer, wgpu::BindGroup) {
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("cubacadabra sky globals layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+    let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("cubacadabra sky globals"),
+        contents: bytemuck::bytes_of(&SkyGlobals::zeroed()),
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+    });
+    let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("cubacadabra sky globals bind group"),
+        layout: &layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: buffer.as_entire_binding(),
+        }],
+    });
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("cubacadabra sky shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("sky.wgsl").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("cubacadabra sky pipeline layout"),
+        bind_group_layouts: &[Some(&layout)],
+        immediate_size: 0,
+    });
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("cubacadabra sky pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_sky"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState {
+            count: samples,
+            ..Default::default()
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_sky"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: super::targets::SCENE_FORMAT,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    });
+    (pipeline, buffer, bind_group)
 }
 
 pub(super) fn world_mesh_pipeline(

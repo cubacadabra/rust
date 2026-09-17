@@ -147,56 +147,74 @@ impl Renderer {
 
     #[cfg(feature = "studio-ui")]
     fn studio_view_projection(&self) -> (Mat4, (f32, f32, f32, f32)) {
-        let (camera_position, target) = self.camera_view();
         let viewport = self.world_viewport();
+        let aspect = (viewport.2 / viewport.3.max(1.0)).max(0.1);
+        let (camera_position, target) = self.camera_view(aspect);
         let view = Mat4::look_at_rh(camera_position, target, Vec3::Y);
         let projection = Mat4::perspective_rh(
             62.0_f32.to_radians(),
-            (viewport.2 / viewport.3.max(1.0)).max(0.1),
+            aspect,
             0.05,
-            240.0,
+            self.camera_far_plane(camera_position, target),
         );
         (projection * view, viewport)
     }
 
-    fn camera_view(&self) -> (Vec3, Vec3) {
+    fn camera_view(&self, aspect: f32) -> (Vec3, Vec3) {
         let player = Vec3::from_array(self.scene.player.position);
         let [yaw, pitch, distance] = self.scene.camera;
         let gameplay =
             || super::camera::orbit(player, self.scene.player.body, yaw, pitch, distance);
 
         #[cfg(feature = "studio-ui")]
-        if self.studio_camera_preset != 0 {
+        if self.studio_camera_preset != crate::StudioCameraPreset::Gameplay {
             let (minimum, maximum) = self.presentation_bounds();
             let center = (minimum + maximum) * 0.5;
             let height = (maximum.y - minimum.y).max(1.0);
-            let radius = ((maximum.x - minimum.x).max(maximum.z - minimum.z).max(16.0)) * 0.5;
+            let half_extents = (maximum - minimum) * 0.5;
+            let radius = half_extents.length().max(8.0);
             let target = Vec3::new(
                 center.x,
                 minimum.y
                     + height
-                        * if self.studio_camera_preset == 1 {
+                        * if self.studio_camera_preset == crate::StudioCameraPreset::Overview {
                             0.58
                         } else {
                             0.52
                         },
                 center.z,
             );
-            let camera = if self.studio_camera_preset == 1 {
-                target + Vec3::new(radius * 0.92, radius * 1.18, radius * 0.92)
+            let direction = if self.studio_camera_preset == crate::StudioCameraPreset::Overview {
+                Vec3::new(0.92, 1.18, 0.92).normalize()
             } else {
-                target + Vec3::new(radius * 1.35, height * 0.22, radius * 1.15)
+                Vec3::new(1.35, 0.22, 1.15).normalize()
             };
-            return (camera, target);
+            let vertical_half_fov = 31.0_f32.to_radians();
+            let horizontal_half_fov = (vertical_half_fov.tan() * aspect).atan();
+            let limiting_half_fov = vertical_half_fov.min(horizontal_half_fov);
+            let fit_distance = radius / limiting_half_fov.sin() * 1.14;
+            return (target + direction * fit_distance, target);
         }
 
         gameplay()
     }
 
+    fn camera_far_plane(&self, camera: Vec3, target: Vec3) -> f32 {
+        #[cfg(feature = "studio-ui")]
+        if self.studio_camera_preset != crate::StudioCameraPreset::Gameplay {
+            let (minimum, maximum) = self.presentation_bounds();
+            let radius = ((maximum - minimum) * 0.5).length();
+            return (camera.distance(target) + radius * 2.0 + 32.0).max(240.0);
+        }
+        240.0
+    }
+
     fn presentation_bounds(&self) -> (Vec3, Vec3) {
-        let mut minimum = Vec3::from_array(self.scene.player.position);
-        let mut maximum = minimum;
+        let mut minimum = Vec3::splat(f32::INFINITY);
+        let mut maximum = Vec3::splat(f32::NEG_INFINITY);
+        let mut has_authored_geometry = false;
         let mut include = |low: Vec3, high: Vec3| {
+            has_authored_geometry = true;
             minimum = minimum.min(low);
             maximum = maximum.max(high);
         };
@@ -205,15 +223,17 @@ impl Renderer {
             .world
             .terrain
             .as_ref()
-            .and_then(crate::terrain::TerrainGrid::bounds)
+            .and_then(crate::terrain::TerrainGrid::allocated_bounds)
         {
             include(Vec3::from_array(low), Vec3::from_array(high));
         }
-        let half_ground = self.scene.world.ground_size * 0.5;
-        include(
-            Vec3::new(-half_ground, self.scene.world.ground_y - 0.1, -half_ground),
-            Vec3::new(half_ground, self.scene.world.ground_y + 0.1, half_ground),
-        );
+        if !self.scene.world.hide_default_ground {
+            let half_ground = self.scene.world.ground_size * 0.5;
+            include(
+                Vec3::new(-half_ground, self.scene.world.ground_y - 0.1, -half_ground),
+                Vec3::new(half_ground, self.scene.world.ground_y + 0.1, half_ground),
+            );
+        }
         for block in &self.scene.world.blocks {
             let half = Vec3::from_array(block.size) * 0.5;
             let position = Vec3::from_array(block.position);
@@ -228,6 +248,34 @@ impl Renderer {
             let position = Vec3::from_array(mesh.position);
             let extent = Vec3::splat(mesh.scale.max(0.5) * 2.0);
             include(position - extent, position + extent);
+        }
+        for ladder in &self.scene.world.ladders {
+            let half = Vec3::from_array(ladder.size) * 0.5;
+            let position = Vec3::from_array(ladder.position);
+            include(position - half, position + half);
+        }
+        for pad in &self.scene.world.pads {
+            let position = Vec3::new(pad.x, self.scene.world.ground_y, pad.z);
+            let extent = Vec3::splat(pad.radius.max(0.5));
+            include(position - extent, position + extent);
+        }
+        for sign in &self.scene.world.signs {
+            let position = Vec3::from_array(sign.position);
+            include(position - Vec3::splat(1.0), position + Vec3::splat(1.0));
+        }
+        for billboard in &self.scene.world.billboards {
+            let position = Vec3::from_array(billboard.position);
+            let extent = Vec3::new(billboard.width, billboard.height, billboard.width);
+            include(position - extent, position + extent);
+        }
+        for interaction in &self.scene.world.interactions {
+            let position = Vec3::from_array(interaction.position);
+            let extent = Vec3::splat(interaction.radius.max(0.5));
+            include(position - extent, position + extent);
+        }
+        if !has_authored_geometry {
+            minimum = Vec3::from_array(self.scene.player.position);
+            maximum = minimum;
         }
         (minimum, maximum)
     }
@@ -262,14 +310,15 @@ impl Renderer {
         wgpu::TextureView,
     )> {
         let distance = self.scene.camera[2];
-        let (camera_position, target) = self.camera_view();
         let world_viewport = self.world_viewport();
+        let aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
+        let (camera_position, target) = self.camera_view(aspect);
         let view = Mat4::look_at_rh(camera_position, target, Vec3::Y);
         let view_projection = Mat4::perspective_rh(
             62.0_f32.to_radians(),
-            (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1),
+            aspect,
             0.05,
-            240.0,
+            self.camera_far_plane(camera_position, target),
         ) * view;
         let globals = Globals {
             view_projection: view_projection.to_cols_array_2d(),
@@ -290,6 +339,17 @@ impl Renderer {
                 self.scene.world.fog_end,
                 0.0,
                 0.0,
+            ],
+        };
+        let sky = self.scene.world.palette.sky;
+        let sky_globals = super::SkyGlobals {
+            horizon: sky,
+            zenith: [sky[0] * 0.68, sky[1] * 0.82, (sky[2] * 1.04).min(1.0), 1.0],
+            viewport: [
+                world_viewport.0,
+                world_viewport.1,
+                world_viewport.2,
+                world_viewport.3,
             ],
         };
         let shadow_view_projection = self.shadow_view_projection(target);
@@ -464,6 +524,11 @@ impl Renderer {
         self.queue
             .write_buffer(&self.globals_buffer, 0, bytemuck::bytes_of(&globals));
         self.queue.write_buffer(
+            &self.sky_globals_buffer,
+            0,
+            bytemuck::bytes_of(&sky_globals),
+        );
+        self.queue.write_buffer(
             &self.shadow_globals_buffer,
             0,
             bytemuck::bytes_of(&shadow_globals),
@@ -574,7 +639,6 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            pass.set_pipeline(&self.pipeline);
             pass.set_viewport(
                 world_viewport.0,
                 world_viewport.1,
@@ -583,6 +647,16 @@ impl Renderer {
                 0.0,
                 1.0,
             );
+            pass.set_scissor_rect(
+                world_viewport.0.max(0.0) as u32,
+                world_viewport.1.max(0.0) as u32,
+                world_viewport.2.max(1.0) as u32,
+                world_viewport.3.max(1.0) as u32,
+            );
+            pass.set_pipeline(&self.sky_pipeline);
+            pass.set_bind_group(0, &self.sky_globals_bind_group, &[]);
+            pass.draw(0..3, 0..1);
+            pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &self.globals_bind_group, &[]);
             pass.set_bind_group(1, &self.world_texture_bind_group, &[]);
             pass.set_bind_group(2, &self.terrain_texture_bind_group, &[]);

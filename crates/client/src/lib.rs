@@ -8,6 +8,8 @@ mod web;
 
 pub use cubacadabra_engine::Engine;
 #[cfg(feature = "studio-ui")]
+pub use cubacadabra_engine::StudioCameraPreset;
+#[cfg(feature = "studio-ui")]
 pub use cubacadabra_engine::StudioUiNode;
 
 #[cfg(all(

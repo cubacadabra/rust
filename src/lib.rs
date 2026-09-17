@@ -64,6 +64,15 @@ mod world;
 pub use engine::Engine;
 #[cfg(feature = "studio-ui")]
 pub use engine::StudioUiNode;
+
+#[cfg(feature = "studio-ui")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StudioCameraPreset {
+    #[default]
+    Gameplay,
+    Overview,
+    Showcase,
+}
 pub use engine::snapshot::{
     AgentSnapshot, BuildBlockSnapshot, CameraSnapshot, ENGINE_SNAPSHOT_FORMAT,
     ENGINE_SNAPSHOT_VERSION, EngineSnapshot, InputSnapshot, InteractionEventSnapshot,
@@ -128,7 +137,7 @@ pub mod native {
         }
 
         #[cfg(feature = "studio-ui")]
-        pub fn set_studio_camera_preset(&mut self, preset: u8) {
+        pub fn set_studio_camera_preset(&mut self, preset: crate::StudioCameraPreset) {
             self.inner.set_studio_camera_preset(preset);
         }
 

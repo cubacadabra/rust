@@ -321,6 +321,14 @@ pub(super) struct Globals {
     pub(super) atmosphere: [f32; 4],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub(super) struct SkyGlobals {
+    pub(super) horizon: [f32; 4],
+    pub(super) zenith: [f32; 4],
+    pub(super) viewport: [f32; 4],
+}
+
 pub(super) struct Scene {
     pub(super) world: RenderWorld,
     pub(super) agents: Vec<RenderEntity>,
@@ -377,6 +385,9 @@ pub struct Renderer {
     pub(super) device: wgpu::Device,
     pub(super) queue: wgpu::Queue,
     pub(super) pipeline: wgpu::RenderPipeline,
+    pub(super) sky_pipeline: wgpu::RenderPipeline,
+    pub(super) sky_globals_buffer: wgpu::Buffer,
+    pub(super) sky_globals_bind_group: wgpu::BindGroup,
     pub(super) translucent_pipeline: wgpu::RenderPipeline,
     pub(super) world_mesh_pipeline: wgpu::RenderPipeline,
     pub(super) shadow_pipeline: wgpu::RenderPipeline,
@@ -423,7 +434,7 @@ pub struct Renderer {
     #[cfg(feature = "studio-ui")]
     pub(super) studio_viewport: Option<[f32; 4]>,
     #[cfg(feature = "studio-ui")]
-    pub(super) studio_camera_preset: u8,
+    pub(super) studio_camera_preset: crate::StudioCameraPreset,
 }
 
 fn default_player_style() -> AvatarStyle {
