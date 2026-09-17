@@ -840,6 +840,8 @@ impl Renderer {
             ui_frame: Default::default(),
             #[cfg(feature = "studio-ui")]
             studio_viewport: None,
+            #[cfg(feature = "studio-ui")]
+            studio_camera_preset: 0,
         }
     }
 
@@ -855,6 +857,17 @@ impl Renderer {
                 && *width > 0.0
                 && *height > 0.0
         });
+    }
+
+    /// Selects a temporary Studio review camera. `0` keeps the live gameplay
+    /// camera; `1` frames the authored world from above; `2` frames its outer
+    /// island silhouette. This never changes Engine camera state or snapshots.
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn set_studio_camera_preset(&mut self, preset: u8) {
+        self.studio_camera_preset = match preset {
+            1 | 2 => preset,
+            _ => 0,
+        };
     }
 
     pub(crate) fn set_package_image(

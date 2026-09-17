@@ -127,6 +127,11 @@ pub mod native {
             self.inner.set_studio_viewport(viewport);
         }
 
+        #[cfg(feature = "studio-ui")]
+        pub fn set_studio_camera_preset(&mut self, preset: u8) {
+            self.inner.set_studio_camera_preset(preset);
+        }
+
         pub fn device(&self) -> &wgpu::Device {
             &self.inner.device
         }

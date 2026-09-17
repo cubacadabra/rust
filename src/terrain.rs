@@ -282,6 +282,26 @@ pub(crate) struct TerrainGrid {
 }
 
 impl TerrainGrid {
+    /// Returns the conservative world-space bounds of the allocated terrain
+    /// volume. Review cameras use this to frame authored terrain without
+    /// changing gameplay camera state.
+    pub(crate) fn bounds(&self) -> Option<([f32; 3], [f32; 3])> {
+        let mut low = [i32::MAX; 3];
+        let mut high = [i32::MIN; 3];
+        for coordinate in self.chunks.keys() {
+            for axis in 0..3 {
+                low[axis] = low[axis].min(coordinate[axis]);
+                high[axis] = high[axis].max(coordinate[axis] + 1);
+            }
+        }
+        if low[0] == i32::MAX {
+            return None;
+        }
+        let low = low.map(|value| value as f32 * CHUNK_CELLS as f32 * self.cell_size);
+        let high = high.map(|value| value as f32 * CHUNK_CELLS as f32 * self.cell_size);
+        Some((low, high))
+    }
+
     pub(crate) fn build(definition: &TerrainDefinition) -> Result<Option<Self>, String> {
         if definition.operations.is_empty() {
             return Ok(None);

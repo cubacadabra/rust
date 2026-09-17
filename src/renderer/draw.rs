@@ -147,10 +147,7 @@ impl Renderer {
 
     #[cfg(feature = "studio-ui")]
     fn studio_view_projection(&self) -> (Mat4, (f32, f32, f32, f32)) {
-        let player = Vec3::from_array(self.scene.player.position);
-        let [yaw, pitch, distance] = self.scene.camera;
-        let (camera_position, target) =
-            super::camera::orbit(player, self.scene.player.body, yaw, pitch, distance);
+        let (camera_position, target) = self.camera_view();
         let viewport = self.world_viewport();
         let view = Mat4::look_at_rh(camera_position, target, Vec3::Y);
         let projection = Mat4::perspective_rh(
@@ -160,6 +157,79 @@ impl Renderer {
             240.0,
         );
         (projection * view, viewport)
+    }
+
+    fn camera_view(&self) -> (Vec3, Vec3) {
+        let player = Vec3::from_array(self.scene.player.position);
+        let [yaw, pitch, distance] = self.scene.camera;
+        let gameplay =
+            || super::camera::orbit(player, self.scene.player.body, yaw, pitch, distance);
+
+        #[cfg(feature = "studio-ui")]
+        if self.studio_camera_preset != 0 {
+            let (minimum, maximum) = self.presentation_bounds();
+            let center = (minimum + maximum) * 0.5;
+            let height = (maximum.y - minimum.y).max(1.0);
+            let radius = ((maximum.x - minimum.x).max(maximum.z - minimum.z).max(16.0)) * 0.5;
+            let target = Vec3::new(
+                center.x,
+                minimum.y
+                    + height
+                        * if self.studio_camera_preset == 1 {
+                            0.58
+                        } else {
+                            0.52
+                        },
+                center.z,
+            );
+            let camera = if self.studio_camera_preset == 1 {
+                target + Vec3::new(radius * 0.92, radius * 1.18, radius * 0.92)
+            } else {
+                target + Vec3::new(radius * 1.35, height * 0.22, radius * 1.15)
+            };
+            return (camera, target);
+        }
+
+        gameplay()
+    }
+
+    fn presentation_bounds(&self) -> (Vec3, Vec3) {
+        let mut minimum = Vec3::from_array(self.scene.player.position);
+        let mut maximum = minimum;
+        let mut include = |low: Vec3, high: Vec3| {
+            minimum = minimum.min(low);
+            maximum = maximum.max(high);
+        };
+        if let Some((low, high)) = self
+            .scene
+            .world
+            .terrain
+            .as_ref()
+            .and_then(crate::terrain::TerrainGrid::bounds)
+        {
+            include(Vec3::from_array(low), Vec3::from_array(high));
+        }
+        let half_ground = self.scene.world.ground_size * 0.5;
+        include(
+            Vec3::new(-half_ground, self.scene.world.ground_y - 0.1, -half_ground),
+            Vec3::new(half_ground, self.scene.world.ground_y + 0.1, half_ground),
+        );
+        for block in &self.scene.world.blocks {
+            let half = Vec3::from_array(block.size) * 0.5;
+            let position = Vec3::from_array(block.position);
+            include(position - half, position + half);
+        }
+        for decoration in &self.scene.world.decorations {
+            let position = Vec3::from_array(decoration.position);
+            let extent = Vec3::splat(decoration.scale.max(0.5) * 2.0);
+            include(position - extent, position + extent);
+        }
+        for mesh in &self.scene.world.mesh_instances {
+            let position = Vec3::from_array(mesh.position);
+            let extent = Vec3::splat(mesh.scale.max(0.5) * 2.0);
+            include(position - extent, position + extent);
+        }
+        (minimum, maximum)
     }
 
     pub fn draw(&mut self) {
@@ -191,10 +261,8 @@ impl Renderer {
         wgpu::CommandEncoder,
         wgpu::TextureView,
     )> {
-        let player = Vec3::from_array(self.scene.player.position);
-        let [yaw, pitch, distance] = self.scene.camera;
-        let body = self.scene.player.body;
-        let (camera_position, target) = super::camera::orbit(player, body, yaw, pitch, distance);
+        let distance = self.scene.camera[2];
+        let (camera_position, target) = self.camera_view();
         let world_viewport = self.world_viewport();
         let view = Mat4::look_at_rh(camera_position, target, Vec3::Y);
         let view_projection = Mat4::perspective_rh(

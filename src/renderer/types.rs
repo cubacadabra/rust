@@ -422,6 +422,8 @@ pub struct Renderer {
     pub(super) ui_frame: UiFrame,
     #[cfg(feature = "studio-ui")]
     pub(super) studio_viewport: Option<[f32; 4]>,
+    #[cfg(feature = "studio-ui")]
+    pub(super) studio_camera_preset: u8,
 }
 
 fn default_player_style() -> AvatarStyle {
