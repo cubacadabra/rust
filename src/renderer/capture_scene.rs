@@ -191,7 +191,7 @@ pub(super) fn build_scene(
         }
         Scenario::Orbit { distance, .. } => {
             actors.push(RenderEntity {
-                camera_fade: super::super::camera::fade(distance),
+                camera_fade: crate::camera::fade(distance),
                 face: crate::character::FaceParameters::preset(crate::character::FacePreset::Happy),
                 ..Default::default()
             });
@@ -327,7 +327,7 @@ pub(super) fn build_scene(
         ..
     } = scenario
     {
-        super::super::camera::orbit(
+        crate::camera::orbit(
             Vec3::ZERO,
             crate::character::BodyId::Person,
             yaw,

@@ -164,7 +164,7 @@ impl Renderer {
         let player = Vec3::from_array(self.scene.player.position);
         let [yaw, pitch, distance] = self.scene.camera;
         let gameplay =
-            || super::camera::orbit(player, self.scene.player.body, yaw, pitch, distance);
+            || crate::camera::orbit(player, self.scene.player.body, yaw, pitch, distance);
 
         #[cfg(feature = "studio-ui")]
         if self.studio_camera_preset != crate::StudioCameraPreset::Gameplay {
@@ -424,9 +424,9 @@ impl Renderer {
         if magic_mode {
             // Local player first gives deterministic priority if a development
             // caller supplies more than the bounded render-only crowd capacity.
-            if self.scene.camera[2] > 0.75 {
+            if self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE {
                 let mut local = self.scene.player;
-                local.camera_fade = super::camera::fade(distance);
+                local.camera_fade = crate::camera::fade(distance);
                 add_character(&mut self.characters, local, local.style, 0, reduced_effects);
             }
             for (index, player) in self.scene.remote_players.iter().enumerate() {
@@ -1097,7 +1097,7 @@ impl Renderer {
             // This is the complete rollback path: it uses the established
             // hard-cuboid avatar and legacy package colors, while preserving
             // the typed pose inputs supplied by the current engine.
-            if self.scene.camera[2] > 0.75 {
+            if self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE {
                 super::add_legacy_avatar(
                     &mut mesh,
                     self.scene.player,
@@ -1165,7 +1165,7 @@ impl Renderer {
                 super::faded(self.scene.world.palette.ink, alpha),
             );
         };
-        if self.scene.camera[2] > 0.75 {
+        if self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE {
             add(self.scene.player);
         }
         for entity in &self.scene.remote_players {
@@ -1275,7 +1275,8 @@ impl Renderer {
             super::ui::add_world_label(vertices, &self.ui_frame, x, y, name, font_size);
         };
 
-        if self.scene.camera[2] > 0.75 && !self.avatar_preview_mode {
+        if self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE && !self.avatar_preview_mode
+        {
             add(self.scene.player, &self.scene.username);
         }
         for (index, player) in self.scene.remote_players.iter().enumerate() {

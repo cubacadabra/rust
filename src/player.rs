@@ -76,7 +76,7 @@ impl Engine {
         .normalized();
         // Orbit is independent of the body. Movement turns the character;
         // releasing the stick retains its last heading, even after coasting.
-        if self.camera_distance <= 0.75 {
+        if self.camera_distance <= crate::camera::FIRST_PERSON_DISTANCE {
             self.player.facing_yaw = self.view_yaw;
         } else if moving {
             let heading = (-direction.x).atan2(-direction.z);

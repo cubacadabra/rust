@@ -111,7 +111,9 @@ pub struct Engine {
     pub(crate) view_pitch: f32,
     pub(crate) target_yaw: f32,
     pub(crate) target_pitch: f32,
+    /// Effective orbit distance after smoothing and world occlusion.
     pub(crate) camera_distance: f32,
+    /// Player-requested zoom, preserved while occlusion pulls the camera in.
     pub(crate) target_camera_distance: f32,
     pub(crate) random: Random,
     pub(crate) snapshot: Vec<f32>,

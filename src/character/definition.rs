@@ -60,6 +60,16 @@ impl BodyId {
     }
 }
 
+pub(crate) fn camera_anchors(body: BodyId) -> (Vec3, Vec3) {
+    static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 6]> = std::sync::OnceLock::new();
+    ANCHORS.get_or_init(|| {
+        BodyId::ALL.map(|id| {
+            let recipe = body_recipe(id);
+            (recipe.first_person_anchor, recipe.third_person_target)
+        })
+    })[BodyId::ALL.iter().position(|id| *id == body).unwrap_or(0)]
+}
+
 impl Default for BodyId {
     fn default() -> Self {
         Self::Person

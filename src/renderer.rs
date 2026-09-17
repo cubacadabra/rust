@@ -1,4 +1,3 @@
-mod camera;
 #[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
 pub(crate) mod capture;
 mod character;

@@ -790,6 +790,7 @@ pub unsafe extern "C" fn engine_renderer_register_morph_pack(
     u8::from(renderer.register_morph_pack(bytes).is_ok())
 }
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn engine_renderer_register_world_mesh(
     renderer: *mut crate::renderer::Renderer,
@@ -810,6 +811,7 @@ pub unsafe extern "C" fn engine_renderer_register_world_mesh(
         .unwrap_or(0)
 }
 
+#[cfg(all(not(target_arch = "wasm32"), feature = "rendering"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn engine_renderer_clear_world_meshes(
     renderer: *mut crate::renderer::Renderer,

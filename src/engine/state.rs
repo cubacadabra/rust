@@ -13,8 +13,9 @@ impl Engine {
         self.player_motion_event = CharacterMotionEvent::None;
         self.ui.borrow_mut().advance(delta);
         self.apply_camera_input();
-        self.smooth_camera(delta);
+        self.smooth_camera_orientation(delta);
         self.update_player(delta);
+        self.resolve_camera_distance(delta);
         self.update_hazards(delta);
         self.update_player_checkpoints();
         self.update_interactions();
@@ -241,7 +242,7 @@ impl Engine {
             time: self.elapsed,
             position: self.player.position,
             facing_yaw: self.player.facing_yaw,
-            look_yaw: if self.camera_distance <= 0.75 {
+            look_yaw: if self.camera_distance <= crate::camera::FIRST_PERSON_DISTANCE {
                 self.view_yaw
             } else if self.player.velocity[0].hypot(self.player.velocity[2]) > 0.15 {
                 // Let the gaze lead travel through a turn. Orbiting the

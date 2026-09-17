@@ -233,6 +233,7 @@ float engine_player_facing_yaw(const CubacadabraEngine *engine);
 /* Monotonic signal authorizing a checkpoint-respawn movement teleport. */
 uint32_t engine_player_respawn_event_id(const CubacadabraEngine *engine);
 float engine_camera_pitch(const CubacadabraEngine *engine);
+/* Effective distance after camera smoothing and world occlusion. */
 float engine_camera_distance(const CubacadabraEngine *engine);
 uintptr_t engine_agent_count(const CubacadabraEngine *engine);
 uintptr_t engine_local_agent_count(const CubacadabraEngine *engine);

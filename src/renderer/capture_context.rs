@@ -293,7 +293,7 @@ impl HeadlessContext {
                 } = scenario
                 {
                     let (position, target) =
-                        super::super::camera::orbit(Vec3::ZERO, entity.body, yaw, pitch, distance);
+                        crate::camera::orbit(Vec3::ZERO, entity.body, yaw, pitch, distance);
                     let view = Mat4::look_at_rh(position, target, Vec3::Y);
                     super::super::character_quality::select_lod(
                         super::super::character_quality::projected_height(

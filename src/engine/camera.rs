@@ -1,23 +1,27 @@
 use crate::engine::{Engine, LOOK_SENSITIVITY, MAX_CAMERA_DISTANCE, MAX_PITCH};
 use crate::math::damp;
+use crate::world::Aabb;
+use glam::Vec3;
+
+const CAMERA_COLLISION_RADIUS: f32 = 0.35;
+// Reaching 95% of the requested distance takes about 250 ms. Obstruction
+// clamps do not use this response and therefore still move inward immediately.
+const CAMERA_OUTWARD_RESPONSE: f32 = 12.0;
+const CAMERA_ZOOM_RESPONSE: f32 = 16.0;
 
 impl Engine {
+    /// Restores the normal classic third-person orbit.
     pub fn reset_view(&mut self) {
-        self.view_yaw = 0.0;
-        self.view_pitch = -0.095;
-        self.target_yaw = 0.0;
-        self.target_pitch = -0.095;
-        self.camera_distance = 0.0;
-        self.target_camera_distance = 0.0;
-    }
-
-    pub fn reset_showcase_view(&mut self) {
         self.view_yaw = 0.0;
         self.view_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
         self.target_yaw = 0.0;
         self.target_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
         self.camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
         self.target_camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
+    }
+
+    pub fn reset_showcase_view(&mut self) {
+        self.reset_view();
     }
 
     /// Queue a server correction for the locally predicted player. The server
@@ -58,7 +62,7 @@ impl Engine {
             self.target_pitch = (self.target_pitch + self.input.look_y * LOOK_SENSITIVITY)
                 .clamp(-MAX_PITCH, MAX_PITCH);
         }
-        if self.input.zoom_delta.is_finite() {
+        if self.input.zoom_delta.is_finite() && self.input.zoom_delta != 0.0 {
             // Distance-scaled zoom: precise near the face, fast across the map.
             // The offset lets the same gesture leave first person at zero.
             let factor = (self.input.zoom_delta / 10.0).clamp(-10.0, 10.0).exp();
@@ -67,18 +71,123 @@ impl Engine {
         }
     }
 
-    pub(super) fn smooth_camera(&mut self, delta: f32) {
+    pub(super) fn smooth_camera_orientation(&mut self, delta: f32) {
         // Rebase both together, preserving accumulated multi-turn input.
         let turns = (self.view_yaw / std::f32::consts::TAU).trunc() * std::f32::consts::TAU;
         self.view_yaw -= turns;
         self.target_yaw -= turns;
         self.view_yaw = damp(self.view_yaw, self.target_yaw, 18.0, delta);
         self.view_pitch = damp(self.view_pitch, self.target_pitch, 14.0, delta);
-        self.camera_distance = damp(
+    }
+
+    pub(super) fn resolve_camera_distance(&mut self, delta: f32) {
+        let response = if self.target_camera_distance > self.camera_distance {
+            CAMERA_OUTWARD_RESPONSE
+        } else {
+            CAMERA_ZOOM_RESPONSE
+        };
+        let preferred = damp(
             self.camera_distance,
             self.target_camera_distance,
-            16.0,
+            response,
             delta,
         );
+        self.camera_distance = self.occlusion_distance(preferred);
     }
+
+    fn occlusion_distance(&self, preferred: f32) -> f32 {
+        if preferred <= crate::camera::FIRST_PERSON_DISTANCE {
+            return preferred;
+        }
+
+        let player = Vec3::from_array(self.player.position);
+        let body = self.player_appearance.body;
+        let mut resolved = preferred;
+        // Near the first-person transition the orbit target also eases from
+        // the eyes toward the torso. A few bounded refinements keep the final
+        // camera sphere clear without putting that presentation curve into
+        // terrain or obstacle collision code.
+        for _ in 0..4 {
+            if resolved <= crate::camera::FIRST_PERSON_DISTANCE {
+                return resolved;
+            }
+            let (position, target) =
+                crate::camera::orbit(player, body, self.view_yaw, self.view_pitch, resolved);
+            let segment = position - target;
+            let length = segment.length();
+            if length <= f32::EPSILON || !length.is_finite() {
+                return resolved;
+            }
+            let allowed = self.camera_sweep_distance(target, position, length);
+            if allowed + 0.001 >= length {
+                return resolved;
+            }
+            resolved *= (allowed / length).clamp(0.0, 1.0);
+        }
+        resolved
+    }
+
+    fn camera_sweep_distance(&self, start: Vec3, end: Vec3, length: f32) -> f32 {
+        let mut nearest = length;
+        for obstacle in &self.obstacles {
+            if let Some(distance) =
+                segment_expanded_aabb_distance(start, end, obstacle, CAMERA_COLLISION_RADIUS)
+            {
+                nearest = nearest.min(distance);
+            }
+        }
+        if let Some(distance) = self.terrain.as_ref().and_then(|terrain| {
+            terrain.sweep_sphere(start.to_array(), end.to_array(), CAMERA_COLLISION_RADIUS)
+        }) {
+            nearest = nearest.min(distance);
+        }
+        nearest
+    }
+}
+
+fn segment_expanded_aabb_distance(
+    start: Vec3,
+    end: Vec3,
+    obstacle: &Aabb,
+    radius: f32,
+) -> Option<f32> {
+    let minimum = Vec3::new(
+        obstacle.min_x - radius,
+        obstacle.bottom - radius,
+        obstacle.min_z - radius,
+    );
+    let maximum = Vec3::new(
+        obstacle.max_x + radius,
+        obstacle.top + radius,
+        obstacle.max_z + radius,
+    );
+    let direction = end - start;
+    let length = direction.length();
+    if length <= f32::EPSILON || !length.is_finite() {
+        return None;
+    }
+    let mut entry = 0.0_f32;
+    let mut exit = 1.0_f32;
+    for axis in 0..3 {
+        let origin = start[axis];
+        let delta = direction[axis];
+        if delta.abs() <= f32::EPSILON {
+            if origin < minimum[axis] || origin > maximum[axis] {
+                return None;
+            }
+            continue;
+        }
+        let inverse = delta.recip();
+        let mut near = (minimum[axis] - origin) * inverse;
+        let mut far = (maximum[axis] - origin) * inverse;
+        if near > far {
+            std::mem::swap(&mut near, &mut far);
+        }
+        entry = entry.max(near);
+        exit = exit.min(far);
+        if entry > exit {
+            return None;
+        }
+    }
+    (exit >= 0.0 && entry <= 1.0).then(|| entry.max(0.0) * length)
 }

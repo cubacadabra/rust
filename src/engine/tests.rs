@@ -252,6 +252,113 @@ fn zoom_is_reversible_distance_scaled_and_supports_first_person_and_wide_view() 
 }
 
 #[test]
+fn reset_view_restores_the_default_third_person_orbit() {
+    let mut engine = Engine::new();
+    engine.camera_distance = 0.0;
+    engine.target_camera_distance = 0.0;
+    engine.view_pitch = -0.5;
+    engine.reset_view();
+    assert_eq!(engine.camera_distance, DEFAULT_ORBIT_DISTANCE);
+    assert!((engine.target_camera_distance - DEFAULT_ORBIT_DISTANCE).abs() < 0.0001);
+    assert_eq!(engine.view_pitch, super::DEFAULT_ORBIT_PITCH);
+}
+
+#[test]
+fn camera_occlusion_clamps_effective_distance_without_overwriting_requested_zoom() {
+    let mut engine = Engine::new();
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.obstacles = vec![block_bounds([0.0, 2.0, 4.0], [4.0, 4.0, 1.0])];
+    engine.base_obstacles = engine.obstacles.clone();
+
+    engine.step(1.0 / 60.0);
+
+    assert!(engine.camera_distance > 2.5 && engine.camera_distance < 3.5);
+    assert!((engine.target_camera_distance - DEFAULT_ORBIT_DISTANCE).abs() < 0.0001);
+}
+
+#[test]
+fn camera_occlusion_uses_the_runtime_terrain_field() {
+    let definition: crate::terrain::TerrainDefinition = serde_json::from_str(
+        r#"{
+            "cellSize":0.5,
+            "operations":[{
+                "shape":"block",
+                "operation":"fill",
+                "position":[0,2,4],
+                "size":[4,4,1],
+                "material":"builtin:grass"
+            }]
+        }"#,
+    )
+    .unwrap();
+    let mut engine = Engine::new();
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.obstacles.clear();
+    engine.base_obstacles.clear();
+    engine.terrain = crate::terrain::TerrainGrid::build(&definition).unwrap();
+
+    engine.step(1.0 / 60.0);
+
+    assert!(engine.camera_distance > 2.5 && engine.camera_distance < 3.5);
+    assert_eq!(engine.target_camera_distance, DEFAULT_ORBIT_DISTANCE);
+}
+
+#[test]
+fn camera_sphere_catches_a_narrow_gap_that_a_center_ray_would_clear() {
+    let mut engine = Engine::new();
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.obstacles = vec![
+        block_bounds([-1.1, 2.0, 4.0], [1.8, 4.0, 1.0]),
+        block_bounds([1.1, 2.0, 4.0], [1.8, 4.0, 1.0]),
+    ];
+    engine.base_obstacles = engine.obstacles.clone();
+
+    engine.step(1.0 / 60.0);
+
+    assert!(engine.camera_distance < 3.5);
+}
+
+#[test]
+fn camera_occlusion_handles_corners_and_ceilings() {
+    let mut corner = Engine::new();
+    corner.player.position = [0.0, 0.0, 0.0];
+    corner.obstacles = vec![block_bounds([0.65, 2.0, 4.0], [0.6, 4.0, 1.0])];
+    corner.base_obstacles = corner.obstacles.clone();
+    corner.step(1.0 / 60.0);
+    assert!(corner.camera_distance < 3.5);
+
+    let mut ceiling = Engine::new();
+    ceiling.player.position = [0.0, 0.0, 0.0];
+    ceiling.view_pitch = 0.8;
+    ceiling.target_pitch = 0.8;
+    ceiling.obstacles = vec![block_bounds([0.0, 5.0, 3.0], [5.0, 1.0, 5.0])];
+    ceiling.base_obstacles = ceiling.obstacles.clone();
+    ceiling.step(1.0 / 60.0);
+    assert!(ceiling.camera_distance < DEFAULT_ORBIT_DISTANCE);
+}
+
+#[test]
+fn camera_snaps_inward_and_eases_back_after_an_obstruction_clears() {
+    let mut engine = Engine::new();
+    engine.player.position = [0.0, 0.0, 0.0];
+    engine.obstacles = vec![block_bounds([0.0, 2.0, 1.5], [4.0, 4.0, 1.0])];
+    engine.base_obstacles = engine.obstacles.clone();
+    engine.step(1.0 / 60.0);
+    let obstructed = engine.camera_distance;
+    assert!(obstructed <= crate::camera::FIRST_PERSON_DISTANCE);
+
+    engine.obstacles.clear();
+    engine.base_obstacles.clear();
+    engine.step(1.0 / 60.0);
+    assert!(engine.camera_distance > obstructed);
+    assert!(engine.camera_distance < DEFAULT_ORBIT_DISTANCE);
+    for _ in 0..30 {
+        engine.step(1.0 / 60.0);
+    }
+    assert!((engine.camera_distance - DEFAULT_ORBIT_DISTANCE).abs() < 0.02);
+}
+
+#[test]
 fn jump_returns_to_ground() {
     let mut engine = Engine::new();
     engine.set_input(Input {

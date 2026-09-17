@@ -140,22 +140,6 @@ pub(super) enum Feature {
     Spark(f32),
     Cloth,
 }
-fn camera_anchors(body: BodyId) -> (Vec3, Vec3) {
-    static ANCHORS: std::sync::OnceLock<[(Vec3, Vec3); 6]> = std::sync::OnceLock::new();
-    ANCHORS.get_or_init(|| {
-        BodyId::ALL.map(|id| {
-            let recipe = body_recipe(id);
-            (recipe.first_person_anchor, recipe.third_person_target)
-        })
-    })[BodyId::ALL.iter().position(|id| *id == body).unwrap_or(0)]
-}
-pub(super) fn camera_anchor(body: BodyId) -> Vec3 {
-    camera_anchors(body).0
-}
-pub(super) fn camera_target(body: BodyId) -> Vec3 {
-    camera_anchors(body).1
-}
-
 pub(super) fn world_label_height(body: BodyId) -> f32 {
     static HEIGHTS: std::sync::OnceLock<[f32; 6]> = std::sync::OnceLock::new();
     HEIGHTS.get_or_init(|| {
@@ -1237,8 +1221,11 @@ mod tests {
 
     #[test]
     fn camera_anchors_are_body_defined() {
-        assert_ne!(camera_anchor(BodyId::Person), camera_target(BodyId::Dragon));
-        assert!(camera_anchor(BodyId::Cat).y > camera_target(BodyId::Cat).y);
+        let person = crate::character::definition::camera_anchors(BodyId::Person);
+        let cat = crate::character::definition::camera_anchors(BodyId::Cat);
+        let dragon = crate::character::definition::camera_anchors(BodyId::Dragon);
+        assert_ne!(person.0, dragon.1);
+        assert!(cat.0.y > cat.1.y);
     }
 
     #[test]

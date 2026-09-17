@@ -582,6 +582,44 @@ impl TerrainGrid {
         trilinear(values, fraction)
     }
 
+    /// Returns the distance from `start` to the first point where a swept
+    /// sphere touches solid terrain. The bounded query samples at half the
+    /// smaller of the sphere radius and terrain cell size, then interpolates
+    /// the first clearance crossing.
+    pub(crate) fn sweep_sphere(&self, start: [f32; 3], end: [f32; 3], radius: f32) -> Option<f32> {
+        let delta: [f32; 3] = std::array::from_fn(|axis| end[axis] - start[axis]);
+        let length = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+        if !length.is_finite() || length <= f32::EPSILON || !radius.is_finite() || radius < 0.0 {
+            return None;
+        }
+
+        let spacing = (radius * 0.5).min(self.cell_size * 0.5).max(0.05);
+        let steps = (length / spacing).ceil().max(1.0) as usize;
+        let mut previous_clearance = self.signed_distance(start) - radius;
+        if previous_clearance <= 0.0 {
+            return Some(0.0);
+        }
+        for step in 1..=steps {
+            let fraction = step as f32 / steps as f32;
+            let point = std::array::from_fn(|axis| start[axis] + delta[axis] * fraction);
+            let clearance = self.signed_distance(point) - radius;
+            if clearance <= 0.0 {
+                let previous_fraction = (step - 1) as f32 / steps as f32;
+                let interval = previous_clearance - clearance;
+                let crossing = if interval > f32::EPSILON {
+                    previous_clearance / interval
+                } else {
+                    0.0
+                };
+                return Some(
+                    length * (previous_fraction + crossing.clamp(0.0, 1.0) / steps as f32),
+                );
+            }
+            previous_clearance = clearance;
+        }
+        None
+    }
+
     pub(crate) fn surface_normal(&self, position: [f32; 3]) -> [f32; 3] {
         let delta = self.cell_size * 0.25;
         let mut gradient = [0.0; 3];
@@ -865,6 +903,22 @@ mod tests {
         assert!(terrain.signed_distance([0.0, 0.2, 0.0]) > 0.0);
         assert!(terrain.capsule_clear([0.0, 0.0, 0.0], 0.5, 2.0));
         assert!(!terrain.capsule_clear([0.0, -0.4, 0.0], 0.5, 2.0));
+    }
+
+    #[test]
+    fn sphere_sweep_finds_terrain_before_its_center_enters_the_wall() {
+        let terrain = terrain(vec![operation(
+            "fill",
+            "block",
+            [0.0, 2.0, 4.0],
+            [4.0, 4.0, 1.0],
+            0.0,
+            "builtin:grass",
+        )]);
+        let hit = terrain
+            .sweep_sphere([0.0, 2.0, 0.0], [0.0, 2.0, 8.0], 0.35)
+            .expect("the camera sphere should hit the terrain wall");
+        assert!(hit > 3.0 && hit < 3.5, "unexpected sweep distance: {hit}");
     }
 
     #[test]
