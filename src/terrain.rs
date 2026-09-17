@@ -118,6 +118,7 @@ enum TerrainOperationKind {
 enum TerrainShape {
     Block,
     Ball,
+    Ellipsoid,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -152,6 +153,7 @@ impl TerrainOperation {
         let shape = match definition.shape.to_ascii_lowercase().as_str() {
             "block" | "box" => TerrainShape::Block,
             "ball" | "sphere" => TerrainShape::Ball,
+            "ellipsoid" | "oval" => TerrainShape::Ellipsoid,
             _ => return Err(format!("unsupported terrain shape: {}", definition.shape)),
         };
         let kind = match definition.operation.to_ascii_lowercase().as_str() {
@@ -210,6 +212,23 @@ impl TerrainOperation {
                     std::array::from_fn(|axis| position[axis] + extent[axis]),
                 )
             }
+            TerrainShape::Ellipsoid => {
+                if definition.size.len() != 3
+                    || definition
+                        .size
+                        .iter()
+                        .any(|value| !value.is_finite() || *value <= 0.0)
+                {
+                    return Err(
+                        "terrain ellipsoid size must contain three positive finite numbers".into(),
+                    );
+                }
+                let size = [definition.size[0], definition.size[1], definition.size[2]];
+                let half = size.map(|value| value * 0.5);
+                let low = std::array::from_fn(|axis| position[axis] - half[axis]);
+                let high = std::array::from_fn(|axis| position[axis] + half[axis]);
+                (size, 0.0, low, high)
+            }
         };
         if bounds_min
             .iter()
@@ -249,6 +268,36 @@ impl TerrainOperation {
                     (outside[0] * outside[0] + outside[1] * outside[1] + outside[2] * outside[2])
                         .sqrt();
                 outside_distance + q[0].max(q[1]).max(q[2]).min(0.0)
+            }
+            TerrainShape::Ellipsoid => {
+                let radii = self.size.map(|value| value * 0.5);
+                let delta = [
+                    point[0] - self.position[0],
+                    point[1] - self.position[1],
+                    point[2] - self.position[2],
+                ];
+                let normalized = [
+                    delta[0] / radii[0],
+                    delta[1] / radii[1],
+                    delta[2] / radii[2],
+                ];
+                let k0 = (normalized[0] * normalized[0]
+                    + normalized[1] * normalized[1]
+                    + normalized[2] * normalized[2])
+                    .sqrt();
+                if k0 <= f32::EPSILON {
+                    -radii.into_iter().fold(f32::INFINITY, f32::min)
+                } else {
+                    let scaled = [
+                        delta[0] / (radii[0] * radii[0]),
+                        delta[1] / (radii[1] * radii[1]),
+                        delta[2] / (radii[2] * radii[2]),
+                    ];
+                    let k1 =
+                        (scaled[0] * scaled[0] + scaled[1] * scaled[1] + scaled[2] * scaled[2])
+                            .sqrt();
+                    (k0 - 1.0) * k0 / k1
+                }
             }
         }
     }
@@ -325,6 +374,7 @@ impl TerrainGrid {
             let minimum_feature = match operation.shape {
                 TerrainShape::Block => operation.size.into_iter().fold(f32::INFINITY, f32::min),
                 TerrainShape::Ball => operation.radius * 2.0,
+                TerrainShape::Ellipsoid => operation.size.into_iter().fold(f32::INFINITY, f32::min),
             };
             if minimum_feature < cell_size {
                 return Err(format!(
