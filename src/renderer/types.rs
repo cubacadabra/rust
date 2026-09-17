@@ -241,6 +241,7 @@ pub(super) struct RenderWorld {
     pub(super) fog_start: f32,
     pub(super) fog_end: f32,
     pub(super) sun_direction: [f32; 3],
+    pub(super) presentation_bounds: Option<([f32; 3], [f32; 3])>,
 }
 
 impl Default for RenderWorld {
@@ -274,6 +275,7 @@ impl Default for RenderWorld {
             fog_start: 52.0,
             fog_end: 115.0,
             sun_direction: [-0.45, -0.82, 0.32],
+            presentation_bounds: None,
         }
     }
 }

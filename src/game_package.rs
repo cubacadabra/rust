@@ -187,6 +187,16 @@ impl GamePackageDefinition {
                 format!("terrain operations require sdkVersion {TERRAIN_SDK_VERSION}"),
             )));
         }
+        if std::iter::once(&package.world)
+            .chain(package.worlds.values().map(|world| &world.world))
+            .filter_map(|world| world.presentation_bounds.as_ref())
+            .any(|bounds| !bounds.is_valid())
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "world.presentationBounds minimum and maximum must be finite and ordered on every axis",
+            )));
+        }
         Ok(package)
     }
 
@@ -411,6 +421,25 @@ pub(crate) struct WorldSettingsDefinition {
     pub(crate) respawn: RespawnDefinition,
     #[serde(default)]
     pub(crate) visual: VisualSettingsDefinition,
+    #[serde(default)]
+    pub(crate) presentation_bounds: Option<PresentationBoundsDefinition>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PresentationBoundsDefinition {
+    pub(crate) minimum: [f32; 3],
+    pub(crate) maximum: [f32; 3],
+}
+
+impl PresentationBoundsDefinition {
+    fn is_valid(&self) -> bool {
+        self.minimum
+            .iter()
+            .chain(self.maximum.iter())
+            .all(|value| value.is_finite())
+            && (0..3).all(|axis| self.minimum[axis] < self.maximum[axis])
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -476,6 +505,7 @@ impl Default for WorldSettingsDefinition {
             health: HealthDefinition::default(),
             respawn: RespawnDefinition::default(),
             visual: VisualSettingsDefinition::default(),
+            presentation_bounds: None,
         }
     }
 }
@@ -1000,6 +1030,7 @@ mod tests {
                     "gridDivisions":21,
                     "spawn":[1,2,3],
                     "showSpawnPad":false,
+                    "presentationBounds":{"minimum":[-4,-2,-3],"maximum":[5,7,6]},
                     "clouds":[{"position":[4,5,6],"scale":1.5}]
                 },
                 "launchPads":[{
@@ -1022,9 +1053,21 @@ mod tests {
         assert_eq!(lobby.world.grid_size, 84.0);
         assert_eq!(lobby.world.grid_divisions, 21);
         assert!(!lobby.world.show_spawn_pad);
+        let bounds = lobby.world.presentation_bounds.unwrap();
+        assert_eq!(bounds.minimum, [-4.0, -2.0, -3.0]);
+        assert_eq!(bounds.maximum, [5.0, 7.0, 6.0]);
         assert_eq!(lobby.world.clouds[0].position(), [4.0, 5.0, 6.0]);
         assert_eq!(lobby.launch_pads[0].label, "SUN COURT");
         assert!(!lobby.blocks[0].outline);
+    }
+
+    #[test]
+    fn rejects_invalid_presentation_bounds() {
+        let error = GamePackageDefinition::parse(
+            r#"{"world":{"presentationBounds":{"minimum":[0,0,0],"maximum":[0,2,3]}}}"#,
+        )
+        .expect_err("zero-width presentation bounds must not be accepted");
+        assert!(error.to_string().contains("presentationBounds"));
     }
 
     #[test]

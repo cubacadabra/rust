@@ -210,6 +210,9 @@ impl Renderer {
     }
 
     fn presentation_bounds(&self) -> (Vec3, Vec3) {
+        if let Some((minimum, maximum)) = self.scene.world.presentation_bounds {
+            return (Vec3::from_array(minimum), Vec3::from_array(maximum));
+        }
         let mut minimum = Vec3::splat(f32::INFINITY);
         let mut maximum = Vec3::splat(f32::NEG_INFINITY);
         let mut has_authored_geometry = false;

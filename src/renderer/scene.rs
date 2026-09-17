@@ -502,6 +502,10 @@ fn resolve_world(
             .fog_end
             .max(definition.world.visual.fog_start + 1.0),
         sun_direction: definition.world.visual.sun_direction,
+        presentation_bounds: definition
+            .world
+            .presentation_bounds
+            .map(|bounds| (bounds.minimum, bounds.maximum)),
     }
 }
 
