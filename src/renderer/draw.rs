@@ -15,6 +15,15 @@ use super::{
 };
 use crate::terrain::TerrainVertex;
 
+fn shadow_light_direction(sun_direction: [f32; 3]) -> Vec3 {
+    let light_direction = (-Vec3::from_array(sun_direction)).normalize_or_zero();
+    if light_direction.length_squared() > 0.001 {
+        light_direction
+    } else {
+        Vec3::new(0.45, 0.82, -0.32).normalize()
+    }
+}
+
 fn vertex_capacity_for(required: usize, max_buffer_size: u64) -> Option<usize> {
     if required == 0 {
         return Some(0);
@@ -537,9 +546,12 @@ impl Renderer {
                 pass.draw(0..shadow_vertices.len() as u32, 0..1);
             }
             if magic_mode {
-                self.characters.draw(&mut pass, CharacterPass::Opaque);
-                self.characters.draw(&mut pass, CharacterPass::Face);
-                self.characters.draw(&mut pass, CharacterPass::Effect);
+                self.characters
+                    .draw(&mut pass, CharacterPass::Opaque, &self.shadow_bind_group);
+                self.characters
+                    .draw(&mut pass, CharacterPass::Face, &self.shadow_bind_group);
+                self.characters
+                    .draw(&mut pass, CharacterPass::Effect, &self.shadow_bind_group);
             }
             if !self.translucent_vertices.is_empty() {
                 pass.set_pipeline(&self.translucent_pipeline);
@@ -611,21 +623,34 @@ impl Renderer {
         // Keep one stable, player-centered orthographic cascade for the first
         // shadow milestone. It covers the playable maze and nearby dressing
         // on mobile/WebGL without requiring a second shadow cascade.
-        let light_direction =
-            (-Vec3::from_array(self.scene.world.sun_direction)).normalize_or_zero();
-        let light_direction = if light_direction.length_squared() > 0.001 {
-            light_direction
-        } else {
-            Vec3::new(0.45, 0.82, -0.32).normalize()
-        };
+        Self::shadow_view_projection_for(center, self.scene.world.sun_direction)
+    }
+
+    fn shadow_view_projection_for(center: Vec3, sun_direction: [f32; 3]) -> Mat4 {
+        let light_direction = shadow_light_direction(sun_direction);
         let up = if light_direction.dot(Vec3::Y).abs() > 0.92 {
             Vec3::Z
         } else {
             Vec3::Y
         };
-        let eye = center - light_direction * 180.0;
-        Mat4::orthographic_rh(-120.0, 120.0, -120.0, 120.0, 0.1, 420.0)
-            * Mat4::look_at_rh(eye, center, up)
+        // Keep the light view itself fixed. Only translate its orthographic
+        // projection in light space, then snap that translation to whole shadow
+        // texels. Rebuilding look_at around `center` would reintroduce swimming.
+        let base_view = Mat4::look_at_rh(light_direction * 180.0, Vec3::ZERO, up);
+        let light_space_center = base_view.transform_point3(center);
+        let texel_world_size = 240.0 / crate::renderer::device::SHADOW_MAP_SIZE as f32;
+        let snapped_center = Vec3::new(
+            (light_space_center.x / texel_world_size).round() * texel_world_size,
+            (light_space_center.y / texel_world_size).round() * texel_world_size,
+            light_space_center.z,
+        );
+        // The translation must be derived only from the quantized center. Using
+        // `snapped_center - light_space_center` would still track sub-texel
+        // movement and merely hide the swimming behind a rounded target.
+        let snapped_view =
+            Mat4::from_translation(Vec3::new(-snapped_center.x, -snapped_center.y, 0.0))
+                * base_view;
+        Mat4::orthographic_rh(-120.0, 120.0, -120.0, 120.0, 0.1, 420.0) * snapped_view
     }
 
     #[cfg(feature = "studio-ui")]
@@ -1339,6 +1364,31 @@ mod tests {
         assert_eq!(
             support_receiver(&crate::renderer::RenderWorld::default(), entity),
             None
+        );
+    }
+
+    #[test]
+    fn shadow_camera_is_above_the_maze_and_light_space_center_snaps() {
+        let sun = [-0.45, -0.82, 0.32];
+        let light = shadow_light_direction(sun);
+        let eye = Vec3::ZERO + light * 180.0;
+        assert!(eye.y > 0.0, "shadow camera must sit toward the sun");
+
+        let first = Renderer::shadow_view_projection_for(Vec3::ZERO, sun);
+        let sub_texel = Renderer::shadow_view_projection_for(Vec3::new(0.001, 0.001, 0.0), sun);
+        assert_eq!(
+            first, sub_texel,
+            "sub-texel motion must not move the shadow map"
+        );
+
+        let texel = 240.0 / crate::renderer::device::SHADOW_MAP_SIZE as f32;
+        let light = shadow_light_direction(sun);
+        let view = Mat4::look_at_rh(light * 180.0, Vec3::ZERO, Vec3::Y);
+        let light_space_step = view.inverse().transform_vector3(Vec3::X * texel * 1.5);
+        let moved = Renderer::shadow_view_projection_for(light_space_step, sun);
+        assert_ne!(
+            first, moved,
+            "crossing a shadow texel must update the projection"
         );
     }
 }

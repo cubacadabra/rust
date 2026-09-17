@@ -7,6 +7,14 @@ struct Globals {
 @group(1) @binding(0) var morph_texture: texture_2d<f32>;
 @group(1) @binding(1) var morph_sampler: sampler;
 
+struct ShadowGlobals {
+    view_projection: mat4x4<f32>,
+    texel_size: vec4<f32>,
+};
+@group(2) @binding(0) var<uniform> shadow_globals: ShadowGlobals;
+@group(2) @binding(1) var shadow_map: texture_depth_2d;
+@group(2) @binding(2) var shadow_sampler: sampler_comparison;
+
 struct Input {
     @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>,
     @location(3) row0: vec4<f32>, @location(4) row1: vec4<f32>, @location(5) row2: vec4<f32>,
@@ -24,6 +32,27 @@ fn decode_srgb(v: vec3<f32>) -> vec3<f32> {
 fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
     let c = max(v, vec3<f32>(0.0));
     return select(1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3<f32>(0.0031308));
+}
+fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let clip = shadow_globals.view_projection * vec4<f32>(world_position, 1.0);
+    if clip.w <= 0.0001 { return 1.0; }
+    let ndc = clip.xyz / clip.w;
+    if ndc.z <= 0.0 || ndc.z >= 1.0 || abs(ndc.x) >= 1.0 || abs(ndc.y) >= 1.0 { return 1.0; }
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    let light_direction = normalize(-globals.sun_direction.xyz);
+    let depth = ndc.z - (0.0015 + (1.0 - max(dot(normal, light_direction), 0.0)) * 0.003);
+    var visibility = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            visibility += textureSampleCompare(
+                shadow_map,
+                shadow_sampler,
+                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy,
+                depth,
+            );
+        }
+    }
+    return visibility / 9.0;
 }
 fn grade_color(color: vec3<f32>) -> vec3<f32> {
     var graded = color * globals.color_grade.x;
@@ -49,10 +78,11 @@ fn grade_color(color: vec3<f32>) -> vec3<f32> {
     let light = normalize(-globals.sun_direction.xyz);
     let view = normalize(globals.camera_position.xyz - input.world);
     let half_vector = normalize(light + view);
+    let shadow = shadow_factor(input.world, normal);
     let roughness = clamp(input.material.x, 0.08, 1.0);
     let hemisphere = mix(0.42, 0.72, normal.y * 0.5 + 0.5);
-    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.46;
-    let specular = pow(max(dot(normal, half_vector), 0.0), mix(100.0, 4.0, roughness)) * input.material.y;
+    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.46 * shadow;
+    let specular = pow(max(dot(normal, half_vector), 0.0), mix(100.0, 4.0, roughness)) * input.material.y * shadow;
     let rim = pow(1.0 - max(dot(normal, view), 0.0), 3.0) * 0.025;
     let base = decode_srgb(input.tint.rgb * sampled.rgb);
     var lit = base * diffuse + vec3<f32>(specular + rim);
@@ -61,7 +91,7 @@ fn grade_color(color: vec3<f32>) -> vec3<f32> {
         // Warm key and cool environment response still follow live normals;
         // different cloth/hair/leather responses share the same vertex layout.
         let sky = mix(vec3<f32>(0.17,0.19,0.24), vec3<f32>(0.39,0.46,0.56), normal.y*0.5+0.5);
-        let key = max((dot(normal,light)+0.13)/1.13,0.0);
+        let key = max((dot(normal,light)+0.13)/1.13,0.0) * shadow;
         let fill = max(dot(normal,normalize(vec3<f32>(-0.7,0.35,-0.4))),0.0);
         lit = base * (sky + vec3<f32>(1.0,0.87,0.72)*key*0.86
                           + vec3<f32>(0.65,0.78,1.0)*fill*0.20)

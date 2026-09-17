@@ -85,10 +85,10 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let view_direction = normalize(globals.camera_position.xyz - input.world_position);
     let light_direction = normalize(-globals.sun_direction.xyz);
     let direct = max(dot(normal, light_direction), 0.0);
-    let lighting = 0.72 + direct * 0.42;
     let shadow = shadow_factor(input.world_position, normal);
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.05;
-    var color = input.tint.rgb * (0.58 + lighting * shadow) + vec3<f32>(rim);
+    let lighting = 0.72 + direct * 0.42 * shadow;
+    var color = input.tint.rgb * lighting + vec3<f32>(rim);
     color *= globals.color_grade.x;
     let luminance = dot(color, vec3<f32>(0.2126, 0.7152, 0.0722));
     color = mix(vec3<f32>(luminance), color, globals.color_grade.z);

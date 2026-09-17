@@ -128,6 +128,7 @@ pub(super) enum CharacterPass {
 pub(super) fn pipeline(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
+    shadow_layout: &wgpu::BindGroupLayout,
     sample_count: u32,
     pass: CharacterPass,
 ) -> wgpu::RenderPipeline {
@@ -137,7 +138,7 @@ pub(super) fn pipeline(
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("character layout"),
-        bind_group_layouts: &[Some(layout)],
+        bind_group_layouts: &[Some(layout), Some(shadow_layout)],
         immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -202,6 +203,7 @@ pub(super) fn textured_pipeline(
     device: &wgpu::Device,
     globals_layout: &wgpu::BindGroupLayout,
     texture_layout: &wgpu::BindGroupLayout,
+    shadow_layout: &wgpu::BindGroupLayout,
     sample_count: u32,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -210,7 +212,11 @@ pub(super) fn textured_pipeline(
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("textured morph layout"),
-        bind_group_layouts: &[Some(globals_layout), Some(texture_layout)],
+        bind_group_layouts: &[
+            Some(globals_layout),
+            Some(texture_layout),
+            Some(shadow_layout),
+        ],
         immediate_size: 0,
     });
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

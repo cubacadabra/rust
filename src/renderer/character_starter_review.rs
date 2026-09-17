@@ -66,7 +66,16 @@ fn capture_starters() {
             count: None,
         }],
     });
-    let mut renderer = CharacterRenderer::new(&device, &layout, 1);
+    let shadow_layout = super::super::device::shadow_bind_group_layout(&device);
+    let shadow_globals_layout = super::super::device::shadow_globals_layout(&device);
+    let (_, shadow_depth_view, shadow_bind_group, _) =
+        super::super::device::create_shadow_resources(
+            &device,
+            &shadow_globals_layout,
+            &shadow_layout,
+        );
+    super::super::device::clear_shadow_depth(&device, &queue, &shadow_depth_view);
+    let mut renderer = CharacterRenderer::new(&device, &layout, &shadow_layout, 1);
     for asset in lock["assets"].as_array().unwrap() {
         if let Some(hash) = asset["artifact"]["sha256"].as_str() {
             let path = catalog_path.parent().unwrap().join(format!(
@@ -298,6 +307,7 @@ fn capture_starters() {
             &device,
             &queue,
             &layout,
+            &shadow_bind_group,
             loadout.parts.iter().any(|id| {
                 catalog
                     .asset(id)
@@ -316,6 +326,7 @@ fn render_thumbnail(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
+    shadow_bind_group: &wgpu::BindGroup,
     tall_headwear: bool,
     path: &std::path::Path,
 ) {
@@ -458,7 +469,7 @@ fn render_thumbnail(
         });
         pass.set_bind_group(0, &group, &[]);
         for kind in [CharacterPass::Opaque, CharacterPass::Face] {
-            renderer.draw(&mut pass, kind);
+            renderer.draw(&mut pass, kind, &shadow_bind_group);
         }
     }
     encoder.copy_texture_to_buffer(

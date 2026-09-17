@@ -5,6 +5,14 @@ struct Globals {
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 
+struct ShadowGlobals {
+    view_projection: mat4x4<f32>,
+    texel_size: vec4<f32>,
+};
+@group(1) @binding(0) var<uniform> shadow_globals: ShadowGlobals;
+@group(1) @binding(1) var shadow_map: texture_depth_2d;
+@group(1) @binding(2) var shadow_sampler: sampler_comparison;
+
 struct Input {
     @location(0) position: vec3<f32>, @location(1) normal: vec3<f32>, @location(2) uv: vec2<f32>,
     @location(3) row0: vec4<f32>, @location(4) row1: vec4<f32>, @location(5) row2: vec4<f32>,
@@ -33,6 +41,27 @@ fn grade_color(color: vec3<f32>) -> vec3<f32> {
 }
 fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
     return v*cos(angle) + cross(axis,v)*sin(angle) + axis*dot(axis,v)*(1.0-cos(angle));
+}
+fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
+    let clip = shadow_globals.view_projection * vec4<f32>(world_position, 1.0);
+    if clip.w <= 0.0001 { return 1.0; }
+    let ndc = clip.xyz / clip.w;
+    if ndc.z <= 0.0 || ndc.z >= 1.0 || abs(ndc.x) >= 1.0 || abs(ndc.y) >= 1.0 { return 1.0; }
+    let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    let light_direction = normalize(-globals.sun_direction.xyz);
+    let depth = ndc.z - (0.0015 + (1.0 - max(dot(normal, light_direction), 0.0)) * 0.003);
+    var visibility = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            visibility += textureSampleCompare(
+                shadow_map,
+                shadow_sampler,
+                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy,
+                depth,
+            );
+        }
+    }
+    return visibility / 9.0;
 }
 @vertex fn vs_main(input: Input) -> Output {
     var output: Output;
@@ -215,15 +244,16 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
     let light = normalize(-globals.sun_direction.xyz);
     let view = normalize(globals.camera_position.xyz - input.world);
     let half_vector = normalize(light + view);
+    let shadow = shadow_factor(input.world, normal);
     let roughness = clamp(input.material.x, 0.08, 1.0);
     let hemisphere = mix(0.42, 0.72, normal.y * 0.5 + 0.5);
-    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.46;
-    let specular = pow(max(dot(normal, half_vector), 0.0), mix(100.0, 4.0, roughness)) * input.material.y;
+    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.46 * shadow;
+    let specular = pow(max(dot(normal, half_vector), 0.0), mix(100.0, 4.0, roughness)) * input.material.y * shadow;
     let rim = pow(1.0 - max(dot(normal, view), 0.0), 3.0) * 0.025;
     let base = decode_srgb(input.tint.rgb);
     var lit = base * diffuse + vec3<f32>(specular + rim);
     if input.material.w >= 8.0 {
-        let wrapped = max((dot(normal,light)+0.18)/1.18,0.0);
+        let wrapped = max((dot(normal,light)+0.18)/1.18,0.0) * shadow;
         let sky = mix(vec3<f32>(0.18,0.22,0.28),vec3<f32>(0.43,0.52,0.62),normal.y*0.5+0.5);
         lit = base * (sky + vec3<f32>(1.0,0.89,0.73)*wrapped*0.92) * input.occlusion
             + vec3<f32>(1.0,0.94,0.84)*specular + base*rim*1.4;

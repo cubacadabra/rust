@@ -76,11 +76,13 @@ impl HeadlessContext {
         });
         let shadow_bind_group_layout = super::super::device::shadow_bind_group_layout(&device);
         let shadow_globals_layout = super::super::device::shadow_globals_layout(&device);
-        let (_, _, shadow_bind_group, _) = super::super::device::create_shadow_resources(
-            &device,
-            &shadow_globals_layout,
-            &shadow_bind_group_layout,
-        );
+        let (_, shadow_depth_view, shadow_bind_group, _) =
+            super::super::device::create_shadow_resources(
+                &device,
+                &shadow_globals_layout,
+                &shadow_bind_group_layout,
+            );
+        super::super::device::clear_shadow_depth(&device, &queue, &shadow_depth_view);
         let world_texture_layout = super::super::device::world_texture_bind_group_layout(&device);
         let terrain_texture_layout =
             super::super::device::terrain_texture_bind_group_layout(&device);
@@ -146,8 +148,12 @@ impl HeadlessContext {
             multiview_mask: None,
             cache: None,
         });
-        let characters =
-            super::super::character_gpu::CharacterRenderer::new(&device, &globals_layout, samples);
+        let characters = super::super::character_gpu::CharacterRenderer::new(
+            &device,
+            &globals_layout,
+            &shadow_bind_group_layout,
+            samples,
+        );
         Ok(Self {
             device,
             queue,
@@ -457,14 +463,17 @@ impl HeadlessContext {
                 self.characters.draw(
                     &mut pass,
                     super::super::character_material::CharacterPass::Opaque,
+                    &self.shadow_bind_group,
                 );
                 self.characters.draw(
                     &mut pass,
                     super::super::character_material::CharacterPass::Face,
+                    &self.shadow_bind_group,
                 );
                 self.characters.draw(
                     &mut pass,
                     super::super::character_material::CharacterPass::Effect,
+                    &self.shadow_bind_group,
                 );
             }
         }

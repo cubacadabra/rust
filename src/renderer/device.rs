@@ -763,8 +763,12 @@ impl Renderer {
         let shadow_pipeline = shadow_pipeline(&device, &shadow_globals_layout);
         let world_mesh_shadow_pipeline =
             world_mesh_shadow_pipeline(&device, &shadow_globals_layout);
-        let characters =
-            super::character_gpu::CharacterRenderer::new(&device, &globals_layout, sample_count);
+        let characters = super::character_gpu::CharacterRenderer::new(
+            &device,
+            &globals_layout,
+            &shadow_bind_group_layout,
+            sample_count,
+        );
         let character_shadow_pipeline =
             super::character_material::shadow_pipeline(&device, &shadow_globals_layout);
         let presenter = super::targets::Presenter::new(&device, format);
@@ -1207,6 +1211,35 @@ pub(crate) fn create_shadow_resources(
         }],
     });
     (buffer, depth_view, bind_group, globals_bind_group)
+}
+
+#[cfg(any(feature = "dev-showcase", test))]
+pub(super) fn clear_shadow_depth(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    shadow_depth_view: &wgpu::TextureView,
+) {
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("cubacadabra clear shadow depth"),
+    });
+    {
+        let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("cubacadabra clear shadow depth pass"),
+            color_attachments: &[],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: shadow_depth_view,
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(1.0),
+                    store: wgpu::StoreOp::Store,
+                }),
+                stencil_ops: None,
+            }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+    }
+    queue.submit(Some(encoder.finish()));
 }
 
 pub(super) fn shadow_pipeline(

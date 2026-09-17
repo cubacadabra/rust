@@ -528,6 +528,7 @@ impl MorphRegistry {
         pass: &mut wgpu::RenderPass<'_>,
         solid_pipeline: &wgpu::RenderPipeline,
         textured_pipeline: &wgpu::RenderPipeline,
+        shadow_bind_group: &wgpu::BindGroup,
     ) {
         if self.draws.is_empty() && self.skinned_draws.is_empty() {
             return;
@@ -551,8 +552,10 @@ impl MorphRegistry {
             if let Some(texture) = texture {
                 pass.set_pipeline(textured_pipeline);
                 pass.set_bind_group(1, texture, &[]);
+                pass.set_bind_group(2, shadow_bind_group, &[]);
             } else {
                 pass.set_pipeline(solid_pipeline);
+                pass.set_bind_group(1, shadow_bind_group, &[]);
             }
             pass.draw_indexed(
                 surface.index_start..surface.index_start + surface.index_count,
@@ -585,8 +588,10 @@ impl MorphRegistry {
             if let Some(texture) = texture {
                 pass.set_pipeline(textured_pipeline);
                 pass.set_bind_group(1, texture, &[]);
+                pass.set_bind_group(2, shadow_bind_group, &[]);
             } else {
                 pass.set_pipeline(solid_pipeline);
+                pass.set_bind_group(1, shadow_bind_group, &[]);
             }
             pass.draw_indexed(
                 surface.index_start..surface.index_start + surface.index_count,
@@ -848,7 +853,12 @@ pub(super) struct CharacterRenderer {
 }
 
 impl CharacterRenderer {
-    pub fn new(device: &wgpu::Device, globals: &wgpu::BindGroupLayout, samples: u32) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        globals: &wgpu::BindGroupLayout,
+        shadow_layout: &wgpu::BindGroupLayout,
+        samples: u32,
+    ) -> Self {
         let texture_layout = super::device::world_texture_bind_group_layout(device);
         let mut meshes = Vec::new();
         let mut recipes = Vec::new();
@@ -992,15 +1002,34 @@ impl CharacterRenderer {
             batches,
             instances: Vec::with_capacity(MAX_CHARACTERS * MAX_PARTS),
             buffer,
-            opaque: character_material::pipeline(device, globals, samples, CharacterPass::Opaque),
+            opaque: character_material::pipeline(
+                device,
+                globals,
+                shadow_layout,
+                samples,
+                CharacterPass::Opaque,
+            ),
             textured: character_material::textured_pipeline(
                 device,
                 globals,
                 &texture_layout,
+                shadow_layout,
                 samples,
             ),
-            face: character_material::pipeline(device, globals, samples, CharacterPass::Face),
-            effects: character_material::pipeline(device, globals, samples, CharacterPass::Effect),
+            face: character_material::pipeline(
+                device,
+                globals,
+                shadow_layout,
+                samples,
+                CharacterPass::Face,
+            ),
+            effects: character_material::pipeline(
+                device,
+                globals,
+                shadow_layout,
+                samples,
+                CharacterPass::Effect,
+            ),
             texture_layout,
             stats,
         }
@@ -1444,12 +1473,18 @@ impl CharacterRenderer {
         ));
     }
 
-    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, kind: CharacterPass) {
+    pub fn draw(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        kind: CharacterPass,
+        shadow_bind_group: &wgpu::BindGroup,
+    ) {
         pass.set_pipeline(match kind {
             CharacterPass::Opaque => &self.opaque,
             CharacterPass::Face => &self.face,
             CharacterPass::Effect => &self.effects,
         });
+        pass.set_bind_group(1, shadow_bind_group, &[]);
         for batch in &self.batches {
             if batch.instances.is_empty() || batch.material.pass() != kind {
                 continue;
@@ -1464,7 +1499,8 @@ impl CharacterRenderer {
             pass.draw_indexed(0..mesh.index_count, 0, 0..batch.instances.len() as u32);
         }
         if kind == CharacterPass::Opaque {
-            self.morphs.draw(pass, &self.opaque, &self.textured);
+            self.morphs
+                .draw(pass, &self.opaque, &self.textured, shadow_bind_group);
         }
     }
 

@@ -175,8 +175,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let view_direction = normalize(globals.camera_position.xyz - input.world_position);
     let light_direction = normalize(-globals.sun_direction.xyz);
     let direct_light = max(dot(normal, light_direction), 0.0);
-    let lighting = 0.72 + direct_light * 0.42;
     let shadow = shadow_factor(input.world_position, normal);
+    let lighting = 0.72 + direct_light * 0.42 * shadow;
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.06;
     let lit_color = input.color.rgb * lighting + vec3<f32>(rim);
     let distance_to_camera = distance(input.world_position, globals.camera_position.xyz);
@@ -187,7 +187,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             let terrain_lod = clamp(log2(max(distance_to_camera * 0.04, 1.0)), 0.0, 9.0);
             terrain = built_in_terrain_texture(input.tex_coords.x, input.world_position, normal, terrain_lod);
         }
-        var graded = terrain * (0.58 + lighting * shadow) + vec3<f32>(rim);
+        var graded = terrain * lighting + vec3<f32>(rim);
         graded *= globals.color_grade.x;
         let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
         graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);

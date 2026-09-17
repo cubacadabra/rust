@@ -135,11 +135,12 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
         super::device::create_terrain_texture_bind_group(&device, &queue, &terrain_texture_layout);
     let shadow_bind_group_layout = super::device::shadow_bind_group_layout(&device);
     let shadow_globals_layout = super::device::shadow_globals_layout(&device);
-    let (_, _, shadow_bind_group, _) = super::device::create_shadow_resources(
+    let (_, shadow_depth_view, shadow_bind_group, _) = super::device::create_shadow_resources(
         &device,
         &shadow_globals_layout,
         &shadow_bind_group_layout,
     );
+    super::device::clear_shadow_depth(&device, &queue, &shadow_depth_view);
     let placeholder = [255_u8; 4];
     let world_texture_bind_group = super::device::create_world_texture_bind_group(
         &device,
@@ -180,7 +181,8 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
         query_buffer,
     };
     let cold = Clock::start();
-    let mut characters = CharacterRenderer::new(&device, &globals_layout, 1);
+    let mut characters =
+        CharacterRenderer::new(&device, &globals_layout, &shadow_bind_group_layout, 1);
     let cold_catalog_ms = cold.ms();
     let mut measurements = Vec::new();
     let mut images = Vec::new();
@@ -190,7 +192,12 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
     }
     for sample_count in modes {
         if sample_count != 1 {
-            characters = CharacterRenderer::new(&device, &globals_layout, sample_count);
+            characters = CharacterRenderer::new(
+                &device,
+                &globals_layout,
+                &shadow_bind_group_layout,
+                sample_count,
+            );
         }
         let mesh_uploads = characters.stats.mesh_uploads;
         let resident_bytes = characters.stats.resident_bytes;
@@ -275,7 +282,7 @@ pub async fn validate(adapter: &wgpu::Adapter) -> Result<ValidationOutput, Strin
     }
     // Recreate the renderer and targets at 1x. These comparisons exercise the
     // exact same scene through unorm, sRGB and legacy direct presentation.
-    characters = CharacterRenderer::new(&device, &globals_layout, 1);
+    characters = CharacterRenderer::new(&device, &globals_layout, &shadow_bind_group_layout, 1);
     populate(&mut characters, 3, 0.0);
     characters.upload(&queue);
     let mut unorm = TestScene::new(
@@ -612,12 +619,12 @@ impl TestScene {
             pass.set_vertex_buffer(0, self.world_buffer.slice(..));
             pass.draw(0..self.opaque_count, 0..1);
             if self.effects_first {
-                characters.draw(&mut pass, CharacterPass::Effect);
+                characters.draw(&mut pass, CharacterPass::Effect, &ctx.shadow_bind_group);
             }
-            characters.draw(&mut pass, CharacterPass::Opaque);
-            characters.draw(&mut pass, CharacterPass::Face);
+            characters.draw(&mut pass, CharacterPass::Opaque, &ctx.shadow_bind_group);
+            characters.draw(&mut pass, CharacterPass::Face, &ctx.shadow_bind_group);
             if !self.effects_first {
-                characters.draw(&mut pass, CharacterPass::Effect);
+                characters.draw(&mut pass, CharacterPass::Effect, &ctx.shadow_bind_group);
             }
             pass.set_pipeline(&self.translucent);
             pass.set_vertex_buffer(0, self.world_buffer.slice(..));
