@@ -203,6 +203,15 @@ pub(super) struct RenderDecoration {
 }
 
 #[derive(Clone)]
+pub(super) struct RenderMeshInstance {
+    pub(super) asset: String,
+    pub(super) position: [f32; 3],
+    pub(super) scale: f32,
+    pub(super) yaw: f32,
+    pub(super) color: [f32; 4],
+}
+
+#[derive(Clone)]
 pub(super) struct RenderWorld {
     pub(super) blocks: Vec<RenderBlock>,
     pub(super) terrain: Option<crate::terrain::TerrainGrid>,
@@ -225,6 +234,7 @@ pub(super) struct RenderWorld {
     pub(super) interactions: Vec<RenderInteraction>,
     pub(super) effect_templates: std::collections::BTreeMap<String, RenderEffectTemplate>,
     pub(super) decorations: Vec<RenderDecoration>,
+    pub(super) mesh_instances: Vec<RenderMeshInstance>,
     pub(super) exposure: f32,
     pub(super) contrast: f32,
     pub(super) saturation: f32,
@@ -257,6 +267,7 @@ impl Default for RenderWorld {
             interactions: Vec::new(),
             effect_templates: std::collections::BTreeMap::new(),
             decorations: Vec::new(),
+            mesh_instances: Vec::new(),
             exposure: 1.0,
             contrast: 1.0,
             saturation: 1.0,
@@ -367,6 +378,7 @@ pub struct Renderer {
     pub(super) queue: wgpu::Queue,
     pub(super) pipeline: wgpu::RenderPipeline,
     pub(super) translucent_pipeline: wgpu::RenderPipeline,
+    pub(super) world_mesh_pipeline: wgpu::RenderPipeline,
     pub(super) globals_buffer: wgpu::Buffer,
     pub(super) globals_bind_group: wgpu::BindGroup,
     pub(super) world_texture_layout: wgpu::BindGroupLayout,
@@ -376,6 +388,7 @@ pub struct Renderer {
     pub(super) static_vertex_capacity: usize,
     pub(super) static_vertex_count: usize,
     pub(super) terrain_meshes: Vec<TerrainRenderChunk>,
+    pub(super) world_meshes: world_mesh::WorldMeshRegistry,
     pub(super) dynamic_vertex_buffer: wgpu::Buffer,
     pub(super) dynamic_vertex_capacity: usize,
     pub(super) ui_pipeline: wgpu::RenderPipeline,

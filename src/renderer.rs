@@ -17,6 +17,7 @@ mod targets;
 mod ui;
 #[cfg(feature = "dev-showcase")]
 pub(crate) mod validation;
+mod world_mesh;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Quat, Vec3};

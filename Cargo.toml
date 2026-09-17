@@ -17,6 +17,7 @@ default = ["rendering", "metal"]
 rendering = [
     "dep:bytemuck",
     "dep:fontdue",
+    "dep:gltf",
     "dep:png",
     "dep:pollster",
     "dep:raw-window-handle",
@@ -49,6 +50,7 @@ required-features = ["headless"]
 bytemuck = { version = "1.23", optional = true, features = ["derive"] }
 cubacadabra-morphs = { path = "crates/morphs" }
 fontdue = { version = "0.9", optional = true }
+gltf = { version = "1.4", default-features = false, features = ["utils"], optional = true }
 log = "0.4"
 png = { version = "0.17", optional = true }
 serde = { version = "1", features = ["derive"] }

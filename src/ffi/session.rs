@@ -790,6 +790,26 @@ pub unsafe extern "C" fn engine_renderer_register_morph_pack(
     u8::from(renderer.register_morph_pack(bytes).is_ok())
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn engine_renderer_register_world_mesh(
+    renderer: *mut crate::renderer::Renderer,
+    id: *const std::ffi::c_char,
+    bytes: *const u8,
+    length: usize,
+) -> u8 {
+    if renderer.is_null() || id.is_null() || (bytes.is_null() && length != 0) {
+        return 0;
+    }
+    let Ok(id) = unsafe { std::ffi::CStr::from_ptr(id) }.to_str() else {
+        return 0;
+    };
+    let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
+    unsafe { renderer.as_mut() }
+        .and_then(|renderer| renderer.register_world_mesh(id, bytes).ok())
+        .map(|_| 1)
+        .unwrap_or(0)
+}
+
 /// Selects the reversible character renderer rollout mode. `0` is the
 /// legacy hard-cuboid renderer and `1` is the magic instanced renderer. An
 /// invalid value leaves the current mode unchanged and returns zero.

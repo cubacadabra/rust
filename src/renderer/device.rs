@@ -21,6 +21,7 @@ use super::{
         UI_ATLAS_HEIGHT, UI_ATLAS_PADDING, UI_ATLAS_WIDTH, UI_FONT_ATLAS_Y,
         WORLD_LABEL_FONT_ATLAS_Y, ui_atlas_glyphs, world_label_atlas_glyphs,
     },
+    world_mesh::{WorldMeshInstance, WorldMeshVertex},
 };
 
 const UI_LOGO_BYTES: &[u8] = include_bytes!("../../assets/images/logo.png");
@@ -740,6 +741,7 @@ impl Renderer {
             sample_count,
             true,
         );
+        let world_mesh_pipeline = world_mesh_pipeline(&device, &globals_layout, sample_count);
         let characters =
             super::character_gpu::CharacterRenderer::new(&device, &globals_layout, sample_count);
         let presenter = super::targets::Presenter::new(&device, format);
@@ -764,6 +766,7 @@ impl Renderer {
             queue,
             pipeline,
             translucent_pipeline,
+            world_mesh_pipeline,
             globals_buffer,
             globals_bind_group,
             world_texture_layout,
@@ -773,6 +776,7 @@ impl Renderer {
             static_vertex_capacity,
             static_vertex_count: 0,
             terrain_meshes: Vec::new(),
+            world_meshes: super::world_mesh::WorldMeshRegistry::default(),
             dynamic_vertex_buffer,
             dynamic_vertex_capacity,
             ui_pipeline,
@@ -862,6 +866,18 @@ impl Renderer {
         let pack = decode_morph_pack(bytes)?;
         self.characters
             .register_morph_pack(&self.device, &self.queue, pack)
+    }
+
+    pub(crate) fn register_world_mesh(&mut self, id: &str, bytes: &[u8]) -> Result<(), String> {
+        self.world_meshes.register(&self.device, id, bytes)?;
+        self.world_meshes
+            .rebuild_instances(&self.device, &self.scene.world.mesh_instances);
+        Ok(())
+    }
+
+    pub(crate) fn clear_world_meshes(&mut self) {
+        self.world_meshes.clear();
+        self.rebuild_static_vertices();
     }
 
     pub(crate) fn set_package_image_atlas(
@@ -1080,6 +1096,60 @@ pub(super) fn world_pipeline(
             targets: &[Some(wgpu::ColorTargetState {
                 format: super::targets::SCENE_FORMAT,
                 blend: translucent.then_some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+pub(super) fn world_mesh_pipeline(
+    device: &wgpu::Device,
+    globals_layout: &wgpu::BindGroupLayout,
+    samples: u32,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("world mesh shader"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("world_mesh.wgsl").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("cubacadabra world mesh pipeline layout"),
+        bind_group_layouts: &[Some(globals_layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("cubacadabra world mesh pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[WorldMeshVertex::LAYOUT, WorldMeshInstance::LAYOUT],
+        },
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: samples,
+            ..Default::default()
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: super::targets::SCENE_FORMAT,
+                blend: None,
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),

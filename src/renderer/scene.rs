@@ -15,7 +15,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
     AvatarStyle, RenderBillboard, RenderBlock, RenderCloud, RenderDecoration, RenderEntity,
-    RenderInteraction, RenderLadder, RenderPad, RenderPalette, RenderSign, RenderWorld, Renderer,
+    RenderInteraction, RenderLadder, RenderMeshInstance, RenderPad, RenderPalette, RenderSign,
+    RenderWorld, Renderer,
 };
 
 #[cfg(target_os = "ios")]
@@ -476,6 +477,19 @@ fn resolve_world(
                 yaw: decoration.yaw,
                 color: resolve_color(&definition.palette, &decoration.color, palette.paper),
                 variant: decoration.variant,
+            })
+            .collect(),
+        mesh_instances: definition
+            .decorations
+            .iter()
+            .filter_map(|decoration| {
+                decoration.asset.as_ref().map(|asset| RenderMeshInstance {
+                    asset: asset.clone(),
+                    position: decoration.position(),
+                    scale: decoration.scale.max(0.1),
+                    yaw: decoration.yaw,
+                    color: resolve_color(&definition.palette, &decoration.color, palette.paper),
+                })
             })
             .collect(),
         exposure: definition.world.visual.exposure.clamp(0.25, 3.0),

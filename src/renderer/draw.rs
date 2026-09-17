@@ -456,6 +456,7 @@ impl Renderer {
                 pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..chunk.index_count, 0, 0..1);
             }
+            self.world_meshes.draw(&mut pass, &self.world_mesh_pipeline);
             if !self.opaque_vertices.is_empty() {
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
                 pass.draw(0..self.opaque_vertices.len() as u32, 0..1);
@@ -922,6 +923,8 @@ impl Renderer {
         self.terrain_meshes.clear();
         let meshes = self.build_terrain_meshes();
         self.terrain_meshes = self.upload_terrain_meshes(meshes);
+        self.world_meshes
+            .rebuild_instances(&self.device, &self.scene.world.mesh_instances);
     }
 
     fn ensure_static_vertex_capacity(&mut self, required: usize) -> bool {

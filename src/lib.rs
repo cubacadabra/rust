@@ -168,6 +168,14 @@ pub mod native {
             self.inner.register_morph_pack(bytes)
         }
 
+        pub fn register_world_mesh(&mut self, id: &str, bytes: &[u8]) -> Result<(), String> {
+            self.inner.register_world_mesh(id, bytes)
+        }
+
+        pub fn clear_world_meshes(&mut self) {
+            self.inner.clear_world_meshes();
+        }
+
         #[cfg(feature = "studio-ui")]
         pub fn set_avatar_preview_mode(&mut self, enabled: bool) {
             self.inner.set_avatar_preview_mode(enabled);
