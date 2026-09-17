@@ -1,6 +1,7 @@
 struct Globals {
     view_projection: mat4x4<f32>, camera_position: vec4<f32>,
     sun_direction: vec4<f32>, fog_color: vec4<f32>,
+    color_grade: vec4<f32>, atmosphere: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var morph_texture: texture_2d<f32>;
@@ -23,6 +24,12 @@ fn decode_srgb(v: vec3<f32>) -> vec3<f32> {
 fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
     let c = max(v, vec3<f32>(0.0));
     return select(1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3<f32>(0.0031308));
+}
+fn grade_color(color: vec3<f32>) -> vec3<f32> {
+    var graded = color * globals.color_grade.x;
+    let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
+    graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
+    return (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);
 }
 @vertex fn vs_main(input: Input) -> Output {
     var output: Output;
@@ -60,6 +67,6 @@ fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
                           + vec3<f32>(0.65,0.78,1.0)*fill*0.20)
             + vec3<f32>(1.0,0.93,0.82)*specular + base*rim*1.3;
     }
-    let fog = smoothstep(100.0, 220.0, distance(input.world, globals.camera_position.xyz));
-    return vec4<f32>(mix(encode_srgb(lit), globals.fog_color.rgb, fog), input.tint.a * sampled.a);
+    let fog = smoothstep(globals.atmosphere.x, globals.atmosphere.y, distance(input.world, globals.camera_position.xyz));
+    return vec4<f32>(mix(grade_color(encode_srgb(lit)), globals.fog_color.rgb, fog), input.tint.a * sampled.a);
 }

@@ -366,6 +366,8 @@ pub(super) fn build_scene(
             .extend(0.0)
             .to_array(),
         fog_color: palette.sky,
+        color_grade: [1.0, 1.0, 1.0, 0.0],
+        atmosphere: [52.0, 115.0, 0.0, 0.0],
     };
     (vertices, actors, globals, palette.sky)
 }

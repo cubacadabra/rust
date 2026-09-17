@@ -207,6 +207,7 @@ impl GamePackageDefinition {
             checkpoints: Vec::new(),
             hazards: Vec::new(),
             safe_zones: Vec::new(),
+            decorations: Vec::new(),
         };
         std::iter::once(("lobby".to_owned(), lobby))
             .chain(
@@ -274,6 +275,8 @@ pub(crate) struct WorldDefinition {
     pub(crate) hazards: Vec<HazardDefinition>,
     #[serde(default)]
     pub(crate) safe_zones: Vec<SafeZoneDefinition>,
+    #[serde(default)]
+    pub(crate) decorations: Vec<DecorationDefinition>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -406,6 +409,57 @@ pub(crate) struct WorldSettingsDefinition {
     pub(crate) health: HealthDefinition,
     #[serde(default)]
     pub(crate) respawn: RespawnDefinition,
+    #[serde(default)]
+    pub(crate) visual: VisualSettingsDefinition,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct VisualSettingsDefinition {
+    #[serde(default = "default_exposure")]
+    pub(crate) exposure: f32,
+    #[serde(default = "default_contrast")]
+    pub(crate) contrast: f32,
+    #[serde(default = "default_saturation")]
+    pub(crate) saturation: f32,
+    #[serde(default = "default_fog_start")]
+    pub(crate) fog_start: f32,
+    #[serde(default = "default_fog_end")]
+    pub(crate) fog_end: f32,
+    #[serde(default = "default_sun_direction")]
+    pub(crate) sun_direction: [f32; 3],
+}
+
+impl Default for VisualSettingsDefinition {
+    fn default() -> Self {
+        Self {
+            exposure: default_exposure(),
+            contrast: default_contrast(),
+            saturation: default_saturation(),
+            fog_start: default_fog_start(),
+            fog_end: default_fog_end(),
+            sun_direction: default_sun_direction(),
+        }
+    }
+}
+
+fn default_exposure() -> f32 {
+    1.0
+}
+fn default_contrast() -> f32 {
+    1.0
+}
+fn default_saturation() -> f32 {
+    1.0
+}
+fn default_fog_start() -> f32 {
+    52.0
+}
+fn default_fog_end() -> f32 {
+    115.0
+}
+fn default_sun_direction() -> [f32; 3] {
+    [-0.45, -0.82, 0.32]
 }
 
 impl Default for WorldSettingsDefinition {
@@ -421,6 +475,7 @@ impl Default for WorldSettingsDefinition {
             physics: PhysicsDefinition::default(),
             health: HealthDefinition::default(),
             respawn: RespawnDefinition::default(),
+            visual: VisualSettingsDefinition::default(),
         }
     }
 }
@@ -635,6 +690,37 @@ pub(crate) struct BlockDefinition {
     pub(crate) material: Option<String>,
     #[serde(default = "default_true")]
     pub(crate) outline: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DecorationDefinition {
+    #[serde(default)]
+    pub(crate) kind: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default = "default_decoration_scale")]
+    pub(crate) scale: f32,
+    #[serde(default)]
+    pub(crate) yaw: f32,
+    #[serde(default)]
+    pub(crate) color: String,
+    #[serde(default)]
+    pub(crate) variant: usize,
+}
+
+fn default_decoration_scale() -> f32 {
+    1.0
+}
+
+impl DecorationDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
+        ]
+    }
 }
 
 impl BlockDefinition {

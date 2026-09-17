@@ -214,6 +214,105 @@ fn add_cloud(
     }
 }
 
+pub(super) fn add_decoration(
+    vertices: &mut Vec<Vertex>,
+    decoration: &RenderDecoration,
+    palette: RenderPalette,
+) {
+    let origin = Vec3::from_array(decoration.position);
+    let scale = decoration.scale.max(0.1);
+    let color = if decoration.color[3] > 0.0 {
+        decoration.color
+    } else {
+        palette.paper
+    };
+    let root = Mat4::from_translation(origin) * Mat4::from_rotation_y(decoration.yaw);
+    match decoration.kind.to_ascii_lowercase().as_str() {
+        "rock" => {
+            let base = if decoration.variant % 2 == 0 {
+                [0.34, 0.28, 0.20, 1.0]
+            } else {
+                [0.25, 0.30, 0.24, 1.0]
+            };
+            let tint = [
+                (base[0] * (0.75 + color[0] * 0.25)).min(1.0),
+                (base[1] * (0.75 + color[1] * 0.25)).min(1.0),
+                (base[2] * (0.75 + color[2] * 0.25)).min(1.0),
+                1.0,
+            ];
+            add_sphere(vertices, origin + Vec3::new(-0.35, 0.35, 0.0) * scale, 0.75 * scale, tint);
+            add_sphere(vertices, origin + Vec3::new(0.35, 0.25, 0.12) * scale, 0.58 * scale, tint);
+            add_sphere(vertices, origin + Vec3::new(0.0, 0.65, -0.18) * scale, 0.48 * scale, tint);
+        }
+        "palm" | "tree" => {
+            let trunk = [0.28, 0.12, 0.045, 1.0];
+            add_cylinder(vertices, origin + Vec3::new(0.0, 2.0, 0.0) * scale, 0.16 * scale, 4.0 * scale, trunk);
+            let leaf = [0.08, 0.38, 0.045, 1.0];
+            for index in 0..6 {
+                let angle = decoration.yaw + index as f32 * std::f32::consts::TAU / 6.0;
+                let transform = Mat4::from_translation(origin + Vec3::new(0.0, 4.0, 0.0) * scale)
+                    * Mat4::from_rotation_y(angle)
+                    * Mat4::from_rotation_z(-0.42);
+                add_transformed_cuboid(
+                    vertices,
+                    transform * Mat4::from_translation(Vec3::new(0.75 * scale, 0.0, 0.0)),
+                    Vec3::new(1.8 * scale, 0.12 * scale, 0.34 * scale),
+                    leaf,
+                );
+            }
+        }
+        "crate" | "box" => {
+            let wood = [0.30, 0.13, 0.055, 1.0];
+            add_transformed_cuboid(vertices, root, Vec3::splat(1.4 * scale), wood);
+            add_cuboid_outline(vertices, origin, Vec3::splat(1.43 * scale), 0.09 * scale, [0.10, 0.045, 0.02, 1.0]);
+        }
+        "bridge" => {
+            let wood = [0.34, 0.16, 0.07, 1.0];
+            for index in -2..=2 {
+                let offset = index as f32 * 0.72 * scale;
+                add_transformed_cuboid(
+                    vertices,
+                    root * Mat4::from_translation(Vec3::new(offset, 0.0, 0.0)),
+                    Vec3::new(0.62 * scale, 0.18 * scale, 3.0 * scale),
+                    wood,
+                );
+            }
+            for side in [-1.0, 1.0] {
+                add_transformed_cuboid(
+                    vertices,
+                    root * Mat4::from_translation(Vec3::new(-1.15 * scale, 0.72 * scale, side * 0.0)),
+                    Vec3::new(0.12 * scale, 1.2 * scale, 0.12 * scale),
+                    wood,
+                );
+                add_transformed_cuboid(
+                    vertices,
+                    root * Mat4::from_translation(Vec3::new(1.15 * scale, 0.72 * scale, side * 0.0)),
+                    Vec3::new(0.12 * scale, 1.2 * scale, 0.12 * scale),
+                    wood,
+                );
+            }
+        }
+        "gate" | "finish" | "portal" => {
+            let accent = if color[3] > 0.0 { color } else { [0.92, 0.18, 0.08, 1.0] };
+            add_transformed_cuboid(vertices, root * Mat4::from_translation(Vec3::new(-1.5 * scale, 1.6 * scale, 0.0)), Vec3::new(0.35 * scale, 3.2 * scale, 0.45 * scale), accent);
+            add_transformed_cuboid(vertices, root * Mat4::from_translation(Vec3::new(1.5 * scale, 1.6 * scale, 0.0)), Vec3::new(0.35 * scale, 3.2 * scale, 0.45 * scale), accent);
+            add_transformed_cuboid(vertices, root * Mat4::from_translation(Vec3::new(0.0, 3.1 * scale, 0.0)), Vec3::new(3.35 * scale, 0.45 * scale, 0.45 * scale), accent);
+            add_ring(vertices, origin + Vec3::new(0.0, 1.65 * scale, 0.28 * scale), 1.15 * scale, 0.12 * scale, [0.10, 0.95, 0.42, 0.75]);
+        }
+        "grass" | "grass-clump" => {
+            let leaf = [0.06, 0.35, 0.035, 1.0];
+            for index in 0..5 {
+                let angle = index as f32 * std::f32::consts::TAU / 5.0;
+                let transform = Mat4::from_translation(origin)
+                    * Mat4::from_rotation_y(angle)
+                    * Mat4::from_rotation_z(0.22);
+                add_transformed_cuboid(vertices, transform * Mat4::from_translation(Vec3::new(0.22 * scale, 0.35 * scale, 0.0)), Vec3::new(0.08 * scale, 0.7 * scale, 0.08 * scale), leaf);
+            }
+        }
+        _ => add_sphere(vertices, origin, 0.5 * scale, color),
+    }
+}
+
 fn add_launch_pad(
     vertices: &mut Vec<Vertex>,
     pad: &RenderPad,

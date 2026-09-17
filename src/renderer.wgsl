@@ -3,6 +3,8 @@ struct Globals {
     camera_position: vec4<f32>,
     sun_direction: vec4<f32>,
     fog_color: vec4<f32>,
+    color_grade: vec4<f32>,
+    atmosphere: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -142,14 +144,19 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.06;
     let lit_color = input.color.rgb * lighting + vec3<f32>(rim);
     let distance_to_camera = distance(input.world_position, globals.camera_position.xyz);
-    let fog = smoothstep(52.0, 115.0, distance_to_camera);
+        let fog = smoothstep(globals.atmosphere.x, globals.atmosphere.y, distance_to_camera);
     if input.image_invert > 1.5 {
         var terrain = builtin_terrain_color(input.tex_coords.x, input.world_position, normal);
         if input.tex_coords.y > 0.5 {
             let terrain_lod = clamp(log2(max(distance_to_camera * 0.04, 1.0)), 0.0, 9.0);
             terrain = built_in_terrain_texture(input.tex_coords.x, input.world_position, normal, terrain_lod);
         }
-        return vec4<f32>(mix(terrain * lighting + vec3<f32>(rim), globals.fog_color.rgb, fog), 1.0);
+        var graded = terrain * lighting + vec3<f32>(rim);
+        graded *= globals.color_grade.x;
+        let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
+        graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
+        graded = (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);
+        return vec4<f32>(mix(graded, globals.fog_color.rgb, fog), 1.0);
     }
     if input.image_invert > 0.5 {
         let uv = input.texture_bounds.xy + fract(input.tex_coords) * input.texture_bounds.zw;
@@ -157,9 +164,18 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         if image.a < 0.05 {
             discard;
         }
-        return vec4<f32>(mix(image.rgb * lighting + vec3<f32>(rim), globals.fog_color.rgb, fog), image.a);
+        var graded = image.rgb * lighting + vec3<f32>(rim);
+        graded *= globals.color_grade.x;
+        let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
+        graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
+        graded = (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);
+        return vec4<f32>(mix(graded, globals.fog_color.rgb, fog), image.a);
     }
-    return vec4<f32>(mix(lit_color, globals.fog_color.rgb, fog), input.color.a);
+    var graded = lit_color * globals.color_grade.x;
+    let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
+    graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
+    graded = (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);
+    return vec4<f32>(mix(graded, globals.fog_color.rgb, fog), input.color.a);
 }
 
 struct UiVertexOutput {

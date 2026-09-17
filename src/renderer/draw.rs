@@ -10,8 +10,8 @@ use super::CharacterRenderMode;
 use super::add_floor_pixel_text;
 use super::{
     Globals, RenderEntity, Renderer, TerrainRenderChunk, Vertex, add_billboard, add_cloud,
-    add_cuboid, add_cuboid_outline, add_ladder, add_launch_pad, add_pixel_text, add_spawn_pad,
-    add_textured_cuboid, faded,
+    add_cuboid, add_cuboid_outline, add_decoration, add_ladder, add_launch_pad, add_pixel_text,
+    add_spawn_pad, add_textured_cuboid, faded,
 };
 use crate::terrain::TerrainVertex;
 
@@ -197,11 +197,23 @@ impl Renderer {
         let globals = Globals {
             view_projection: view_projection.to_cols_array_2d(),
             camera_position: camera_position.extend(1.0).to_array(),
-            sun_direction: Vec3::new(-0.45, -0.82, 0.32)
+            sun_direction: Vec3::from_array(self.scene.world.sun_direction)
                 .normalize()
                 .extend(0.0)
                 .to_array(),
             fog_color: self.scene.world.palette.sky,
+            color_grade: [
+                self.scene.world.exposure,
+                self.scene.world.contrast,
+                self.scene.world.saturation,
+                0.0,
+            ],
+            atmosphere: [
+                self.scene.world.fog_start,
+                self.scene.world.fog_end,
+                0.0,
+                0.0,
+            ],
         };
         let dynamic_vertices = self.build_dynamic_vertices();
         let viewport_aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
@@ -597,6 +609,9 @@ impl Renderer {
                     faded(world.palette.paper, 0.22),
                 );
             }
+        }
+        for decoration in &world.decorations {
+            add_decoration(&mut mesh, decoration, world.palette);
         }
         for ladder in &world.ladders {
             add_ladder(&mut mesh, ladder);

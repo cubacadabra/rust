@@ -1,6 +1,7 @@
 struct Globals {
     view_projection: mat4x4<f32>, camera_position: vec4<f32>,
     sun_direction: vec4<f32>, fog_color: vec4<f32>,
+    color_grade: vec4<f32>, atmosphere: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 
@@ -23,6 +24,12 @@ fn decode_srgb(v: vec3<f32>) -> vec3<f32> {
 fn encode_srgb(v: vec3<f32>) -> vec3<f32> {
     let c = max(v, vec3<f32>(0.0));
     return select(1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3<f32>(0.0031308));
+}
+fn grade_color(color: vec3<f32>) -> vec3<f32> {
+    var graded = color * globals.color_grade.x;
+    let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
+    graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);
+    return (graded - vec3<f32>(0.5)) * globals.color_grade.y + vec3<f32>(0.5);
 }
 fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
     return v*cos(angle) + cross(axis,v)*sin(angle) + axis*dot(axis,v)*(1.0-cos(angle));
@@ -201,8 +208,8 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
             if dot(p, p) > 0.94 { discard; }
             color *= 0.92;
         }
-        let fog = smoothstep(100.0, 220.0, distance(input.world, globals.camera_position.xyz));
-        return vec4<f32>(mix(color, globals.fog_color.rgb, fog), coverage);
+        let fog = smoothstep(globals.atmosphere.x, globals.atmosphere.y, distance(input.world, globals.camera_position.xyz));
+        return vec4<f32>(mix(grade_color(color), globals.fog_color.rgb, fog), coverage);
     }
     let normal = normalize(input.normal);
     let light = normalize(-globals.sun_direction.xyz);
@@ -264,10 +271,10 @@ fn turn_vector(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
         lit += vec3<f32>(0.025, 0.030, 0.038) * (0.5 + 0.5 * normal.y);
     }
     if input.material.z > 0.0 { lit = base * input.material.z; }
-    let fog = smoothstep(100.0, 220.0, distance(input.world, globals.camera_position.xyz));
+    let fog = smoothstep(globals.atmosphere.x, globals.atmosphere.y, distance(input.world, globals.camera_position.xyz));
     // Compatibility target stores display-encoded RGB. World/UI keep their
     // historical shading and blending; only character lighting is linear.
-    let encoded = encode_srgb(lit);
+    let encoded = grade_color(encode_srgb(lit));
     let fog_color = select(globals.fog_color.rgb, vec3<f32>(0.0), input.material.z > 0.0);
     return vec4<f32>(mix(encoded, fog_color, fog), input.tint.a);
 }

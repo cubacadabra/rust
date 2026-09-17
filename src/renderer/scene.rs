@@ -14,8 +14,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
-    AvatarStyle, RenderBillboard, RenderBlock, RenderCloud, RenderEntity, RenderInteraction,
-    RenderLadder, RenderPad, RenderPalette, RenderSign, RenderWorld, Renderer,
+    AvatarStyle, RenderBillboard, RenderBlock, RenderCloud, RenderDecoration, RenderEntity,
+    RenderInteraction, RenderLadder, RenderPad, RenderPalette, RenderSign, RenderWorld, Renderer,
 };
 
 #[cfg(target_os = "ios")]
@@ -466,6 +466,28 @@ fn resolve_world(
             })
             .collect(),
         effect_templates: super::effects::resolve_templates(effects, &definition.palette, palette),
+        decorations: definition
+            .decorations
+            .iter()
+            .map(|decoration| RenderDecoration {
+                kind: decoration.kind.clone(),
+                position: decoration.position(),
+                scale: decoration.scale.max(0.1),
+                yaw: decoration.yaw,
+                color: resolve_color(&definition.palette, &decoration.color, palette.paper),
+                variant: decoration.variant,
+            })
+            .collect(),
+        exposure: definition.world.visual.exposure.clamp(0.25, 3.0),
+        contrast: definition.world.visual.contrast.clamp(0.25, 3.0),
+        saturation: definition.world.visual.saturation.clamp(0.0, 3.0),
+        fog_start: definition.world.visual.fog_start.max(1.0),
+        fog_end: definition
+            .world
+            .visual
+            .fog_end
+            .max(definition.world.visual.fog_start + 1.0),
+        sun_direction: definition.world.visual.sun_direction,
     }
 }
 

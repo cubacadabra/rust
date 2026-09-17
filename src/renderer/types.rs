@@ -193,6 +193,16 @@ pub(super) struct RenderCloud {
 }
 
 #[derive(Clone)]
+pub(super) struct RenderDecoration {
+    pub(super) kind: String,
+    pub(super) position: [f32; 3],
+    pub(super) scale: f32,
+    pub(super) yaw: f32,
+    pub(super) color: [f32; 4],
+    pub(super) variant: usize,
+}
+
+#[derive(Clone)]
 pub(super) struct RenderWorld {
     pub(super) blocks: Vec<RenderBlock>,
     pub(super) terrain: Option<crate::terrain::TerrainGrid>,
@@ -214,6 +224,13 @@ pub(super) struct RenderWorld {
     pub(super) billboards: Vec<RenderBillboard>,
     pub(super) interactions: Vec<RenderInteraction>,
     pub(super) effect_templates: std::collections::BTreeMap<String, RenderEffectTemplate>,
+    pub(super) decorations: Vec<RenderDecoration>,
+    pub(super) exposure: f32,
+    pub(super) contrast: f32,
+    pub(super) saturation: f32,
+    pub(super) fog_start: f32,
+    pub(super) fog_end: f32,
+    pub(super) sun_direction: [f32; 3],
 }
 
 impl Default for RenderWorld {
@@ -239,6 +256,13 @@ impl Default for RenderWorld {
             billboards: Vec::new(),
             interactions: Vec::new(),
             effect_templates: std::collections::BTreeMap::new(),
+            decorations: Vec::new(),
+            exposure: 1.0,
+            contrast: 1.0,
+            saturation: 1.0,
+            fog_start: 52.0,
+            fog_end: 115.0,
+            sun_direction: [-0.45, -0.82, 0.32],
         }
     }
 }
@@ -282,6 +306,8 @@ pub(super) struct Globals {
     pub(super) camera_position: [f32; 4],
     pub(super) sun_direction: [f32; 4],
     pub(super) fog_color: [f32; 4],
+    pub(super) color_grade: [f32; 4],
+    pub(super) atmosphere: [f32; 4],
 }
 
 pub(super) struct Scene {

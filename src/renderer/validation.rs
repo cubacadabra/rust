@@ -468,6 +468,8 @@ impl TestScene {
                 .extend(0.0)
                 .to_array(),
             fog_color: super::color(0x9ab9be),
+            color_grade: [1.0, 1.0, 1.0, 0.0],
+            atmosphere: [52.0, 115.0, 0.0, 0.0],
         };
         let mut world = Vec::new();
         super::add_cuboid(
