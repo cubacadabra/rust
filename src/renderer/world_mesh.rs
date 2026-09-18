@@ -20,6 +20,7 @@ pub(super) struct WorldMeshVertex {
     pub(super) normal: [f32; 3],
     pub(super) uv: [f32; 2],
     pub(super) color: [u8; 4],
+    pub(super) material: [u8; 4],
 }
 
 impl WorldMeshVertex {
@@ -46,6 +47,11 @@ impl WorldMeshVertex {
                 format: wgpu::VertexFormat::Unorm8x4,
                 offset: 32,
                 shader_location: 11,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Unorm8x4,
+                offset: 36,
+                shader_location: 12,
             },
         ],
     };
@@ -220,6 +226,10 @@ impl WorldMeshRegistry {
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_else(|| vec![[u8::MAX; 4]; positions.len()]);
+                let material = primitive.material();
+                let material_name = material.name();
+                let material_layer = builtin_material_layer(material_name);
+                let material_color = material.pbr_metallic_roughness().base_color_factor();
                 if normals.len() != positions.len()
                     || uvs.len() != positions.len()
                     || colors.len() != positions.len()
@@ -236,7 +246,8 @@ impl WorldMeshRegistry {
                         position,
                         normal,
                         uv,
-                        color,
+                        color: apply_material_color(color, material_color),
+                        material: [material_layer, 0, 0, 0],
                     },
                 ));
                 indices.extend(primitive_indices.into_iter().map(|index| base + index));
@@ -381,9 +392,35 @@ fn color_channel(value: f32) -> u8 {
     (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
+fn apply_material_color(color: [u8; 4], factor: [f32; 4]) -> [u8; 4] {
+    [
+        color_channel(f32::from(color[0]) / 255.0 * factor[0]),
+        color_channel(f32::from(color[1]) / 255.0 * factor[1]),
+        color_channel(f32::from(color[2]) / 255.0 * factor[2]),
+        color_channel(f32::from(color[3]) / 255.0 * factor[3]),
+    ]
+}
+
+fn builtin_material_layer(name: Option<&str>) -> u8 {
+    let name = name
+        .and_then(|name| name.rsplit(['/', ':']).next())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    match name.as_str() {
+        "grass" => 1,
+        "ground" | "brick" => 2,
+        "rock" | "slate" | "concrete" | "granite" | "marble" | "pebble" | "cobblestone"
+        | "corrodedmetal" | "diamondplate" | "foil" | "metal" => 3,
+        "sand" => 4,
+        "mud" | "wood" | "woodplanks" => 5,
+        "snow" | "ice" => 6,
+        _ => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{color_channel, generated_normals};
+    use super::{apply_material_color, builtin_material_layer, color_channel, generated_normals};
 
     #[test]
     fn generates_normals_for_triangle_geometry() {
@@ -408,5 +445,21 @@ mod tests {
         assert_eq!(color_channel(-1.0), 0);
         assert_eq!(color_channel(0.5), 128);
         assert_eq!(color_channel(2.0), 255);
+    }
+
+    #[test]
+    fn maps_reference_materials_to_builtin_layers() {
+        assert_eq!(builtin_material_layer(Some("Grass")), 1);
+        assert_eq!(builtin_material_layer(Some("Roblox/Slate")), 3);
+        assert_eq!(builtin_material_layer(Some("Sand")), 4);
+        assert_eq!(builtin_material_layer(Some("Plastic")), 0);
+    }
+
+    #[test]
+    fn applies_gltf_material_factor_without_losing_source_color() {
+        assert_eq!(
+            apply_material_color([255, 128, 64, 255], [0.5, 1.0, 0.25, 1.0]),
+            [128, 128, 16, 255]
+        );
     }
 }

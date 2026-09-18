@@ -16,6 +16,12 @@ var world_texture: texture_2d<f32>;
 @group(1) @binding(1)
 var world_sampler: sampler;
 
+@group(2) @binding(0)
+var terrain_textures: texture_2d_array<f32>;
+
+@group(2) @binding(1)
+var terrain_sampler: sampler;
+
 struct ShadowGlobals {
     view_projection: mat4x4<f32>,
     texel_size: vec4<f32>,
@@ -37,6 +43,7 @@ struct VertexInput {
     @location(9) tint: vec4<f32>,
     @location(10) texture_bounds: vec4<f32>,
     @location(11) vertex_color: vec4<f32>,
+    @location(12) material: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -46,6 +53,7 @@ struct VertexOutput {
     @location(2) tint: vec4<f32>,
     @location(3) uv: vec2<f32>,
     @location(4) texture_bounds: vec4<f32>,
+    @location(5) material: f32,
 };
 
 @vertex
@@ -66,7 +74,30 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.tint = input.tint * input.vertex_color;
     output.uv = input.uv;
     output.texture_bounds = input.texture_bounds;
+    output.material = input.material.x * 255.0;
     return output;
+}
+
+fn sample_terrain_layer(layer: i32, position: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    let weights = pow(abs(normal), vec3<f32>(4.0));
+    let normalized_weights = weights / max(weights.x + weights.y + weights.z, 0.0001);
+    let scale = 0.18;
+    let along_x = textureSampleLevel(terrain_textures, terrain_sampler, position.zy * scale, layer, 0.0).rgb;
+    let along_y = textureSampleLevel(terrain_textures, terrain_sampler, position.xz * scale, layer, 0.0).rgb;
+    let along_z = textureSampleLevel(terrain_textures, terrain_sampler, position.xy * scale, layer, 0.0).rgb;
+    return along_x * normalized_weights.x + along_y * normalized_weights.y + along_z * normalized_weights.z;
+}
+
+fn material_texture(material: f32, position: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    if material < 1.5 {
+        if normal.y < -0.72 {
+            return sample_terrain_layer(2, position, normal);
+        }
+        let side = sample_terrain_layer(1, position, normal);
+        let top = sample_terrain_layer(0, position, normal);
+        return mix(side, top, smoothstep(0.35, 0.82, normal.y));
+    }
+    return sample_terrain_layer(i32(material), position, normal);
 }
 
 fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
@@ -101,6 +132,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.05;
     let lighting = 0.72 + direct * 0.42 * shadow;
     var albedo = vec3<f32>(1.0);
+    if input.material > 0.5 {
+        albedo = material_texture(input.material, input.world_position, normal);
+    }
     if input.texture_bounds.z > 0.0 && input.texture_bounds.w > 0.0 {
         let texture_uv = input.texture_bounds.xy + input.uv * input.texture_bounds.zw;
         albedo = textureSample(world_texture, world_sampler, texture_uv).rgb;
