@@ -85,6 +85,99 @@ fn debug_script_teleport_moves_the_player_to_the_requested_world() {
     assert_eq!(engine.player.facing_yaw, 1.25);
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn debug_script_teleport_preserves_portal_progression() {
+    let manifest = r#"{
+        "startWorld":"island-1",
+        "worlds":{
+            "island-1":{
+                "world":{"spawn":[0,0,0]},
+                "portals":[{
+                    "position":[4,0,6],
+                    "radius":2,
+                    "destinationWorld":"island-2",
+                    "destinationSpawn":[0,0,0]
+                }]
+            },
+            "island-2":{"world":{"spawn":[0,0,0]}}
+        }
+    }"#;
+    let script = r#"
+        local pending_island_advance = false
+        local current_island = 1
+        local game = {}
+
+        function game.on_start(api)
+            api.ui:set_document({
+                nodes = {
+                    {
+                        id = "skip",
+                        kind = "button",
+                        action = "debug.skip",
+                        layout = { width = 120, height = 48, offset = { 0, 140 } },
+                    },
+                },
+            })
+        end
+
+        function game.on_ui_event(api, event)
+            if event.action == "debug.skip" then
+                pending_island_advance = true
+                api.debug:teleport_to("island-1", { 4, 0, 6 }, 0)
+            end
+        end
+
+        function game.on_player_event(api, event)
+            if event.kind == "spawn" and pending_island_advance then
+                current_island += 1
+                pending_island_advance = false
+                api.lobby:set_status("ISLAND " .. tostring(current_island))
+            end
+        end
+
+        return game
+    "#;
+
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(manifest));
+    assert!(engine.load_script_source(script));
+    engine.set_ui_viewport(UiViewport {
+        width: 390.0,
+        height: 844.0,
+        scale: 1.0,
+        safe_area: UiInsets::default(),
+    });
+    let skip = engine
+        .ui
+        .borrow_mut()
+        .frame()
+        .nodes
+        .iter()
+        .find(|node| node.id == "skip")
+        .cloned()
+        .expect("skip node should have a frame");
+    let x = skip.rect.x + skip.rect.width / 2.0;
+    let y = skip.rect.y + skip.rect.height / 2.0;
+    assert!(engine.ui_pointer_event(1, 0, x, y));
+    assert!(engine.ui_pointer_event(1, 2, x, y));
+    engine.step(1.0 / 60.0);
+    assert_eq!(engine.active_world_id(), Some("island-2"));
+
+    engine.step(1.0 / 60.0);
+    assert_eq!(engine.active_world_id(), Some("island-2"));
+    assert_eq!(
+        engine
+            .script
+            .as_ref()
+            .expect("progression script should be loaded")
+            .state()
+            .borrow()
+            .lobby_status,
+        "ISLAND 2"
+    );
+}
+
 #[test]
 fn engine_snapshot_round_trip_continues_deterministically() {
     let mut uninterrupted = Engine::new();
