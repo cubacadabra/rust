@@ -23,12 +23,22 @@ pub(crate) struct ScriptState {
     pub(crate) lobby_status: String,
     pub(crate) lobby_enabled: Option<bool>,
     pub(crate) session_name: Option<String>,
+    #[cfg(debug_assertions)]
+    pub(crate) debug_teleport: Option<DebugTeleportRequest>,
     pub(crate) last_error: Option<String>,
     pub(crate) interactions: InteractionScriptState,
     pub(crate) network_outbox: VecDeque<String>,
     pub(crate) network_inbox: VecDeque<String>,
     pub(crate) audio_outbox: VecDeque<String>,
     pub(crate) effect_outbox: VecDeque<crate::effects::EffectCommand>,
+}
+
+#[cfg(debug_assertions)]
+#[derive(Clone, Debug)]
+pub(crate) struct DebugTeleportRequest {
+    pub(crate) world_id: String,
+    pub(crate) position: [f32; 3],
+    pub(crate) yaw: f32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -263,6 +273,11 @@ impl GameScript {
 
     pub(crate) fn take_effect_commands(&self) -> Vec<crate::effects::EffectCommand> {
         self.state.borrow_mut().effect_outbox.drain(..).collect()
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn take_debug_teleport(&self) -> Option<DebugTeleportRequest> {
+        self.state.borrow_mut().debug_teleport.take()
     }
 
     fn dispatch_ui_event(&self, event: &UiEvent) -> Result<(), String> {
@@ -551,6 +566,36 @@ fn create_api(
             "RELEASE"
         },
     )?;
+
+    #[cfg(debug_assertions)]
+    {
+        let debug = create_table(lua)?;
+        let debug_state = Rc::clone(&state);
+        debug.set(
+            "teleport_to",
+            lua.create_function(
+                move |_, (_debug, world_id, position, yaw): (lua::Table, String, lua::Table, f32)| {
+                    let position = [
+                        position.get::<f32>(1)?,
+                        position.get::<f32>(2)?,
+                        position.get::<f32>(3)?,
+                    ];
+                    if !position.iter().all(|value| value.is_finite()) || !yaw.is_finite() {
+                        return Err(lua::Error::runtime(
+                            "debug:teleport_to expects finite coordinates and yaw",
+                        ));
+                    }
+                    debug_state.borrow_mut().debug_teleport = Some(DebugTeleportRequest {
+                        world_id,
+                        position,
+                        yaw,
+                    });
+                    Ok(())
+                },
+            )?,
+        )?;
+        api.set("debug", debug)?;
+    }
 
     let lobby = create_table(lua)?;
     let lobby_state = Rc::clone(&state);
@@ -859,6 +904,63 @@ mod tests {
         };
         let source = std::fs::read_to_string(&path).expect("configured game script should exist");
         load(&source);
+    }
+
+    #[test]
+    fn configured_maze_debug_skip_activates() {
+        let Ok(path) = std::env::var("CUBACADABRA_TEST_MAZE_GAME_SCRIPT") else {
+            return;
+        };
+        let source =
+            std::fs::read_to_string(&path).expect("configured Maze 101 script should exist");
+        let (script, ui) = load(&source);
+        ui.borrow_mut().set_viewport(UiViewport {
+            width: 390.0,
+            height: 844.0,
+            scale: 1.0,
+            safe_area: UiInsets::default(),
+        });
+
+        let spawn = crate::types::PlayerEvent::Spawn {
+            health: 100.0,
+            max_health: 100.0,
+            deaths: 0,
+        };
+        script
+            .player_event(&spawn)
+            .expect("initial spawn should run");
+        script.player_event(&spawn).expect("maze spawn should run");
+
+        let (x, y) = {
+            let frame = ui.borrow_mut().frame().clone();
+            let node = frame.nodes.iter().find(|node| node.id == "maze-debug-end");
+            if !cfg!(debug_assertions) {
+                assert!(node.is_none(), "release should hide the debug skip");
+                return;
+            }
+            let node = node.expect("debug should show the skip control");
+            (
+                node.rect.x + node.rect.width / 2.0,
+                node.rect.y + node.rect.height / 2.0,
+            )
+        };
+
+        assert!(ui.borrow_mut().pointer(1, UiPointerPhase::Down, x, y));
+        assert!(ui.borrow_mut().pointer(1, UiPointerPhase::Up, x, y));
+        script.tick(0.0).expect("skip action should run");
+        assert_eq!(
+            script.state().borrow().lobby_status,
+            "DEBUG: skipped to the end of Cloudpeak."
+        );
+        assert_eq!(
+            ui.borrow_mut()
+                .frame()
+                .nodes
+                .iter()
+                .find(|node| node.id == "maze-status")
+                .map(|node| node.text.as_str()),
+            Some("DEBUG SKIP  •  ARCHIPELAGO CLEARED")
+        );
     }
 
     #[test]

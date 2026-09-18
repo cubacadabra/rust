@@ -16,6 +16,75 @@ fn starts_at_the_spawn_pad() {
     assert_eq!(engine.snapshot.len(), 18 * SNAPSHOT_STRIDE);
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn debug_script_teleport_moves_the_player_to_the_requested_world() {
+    let manifest = r#"{
+        "startWorld":"lobby",
+        "worlds":{
+            "island-3":{"world":{"spawn":[0,0,0]}}
+        }
+    }"#;
+    let script = r#"
+        local game = {}
+        function game.on_start(api)
+            api.ui:set_document({
+                nodes = {
+                    {
+                        id = "skip",
+                        kind = "button",
+                        action = "debug.skip",
+                        layout = { width = 120, height = 48, offset = { 0, 140 } },
+                    },
+                },
+            })
+        end
+        function game.on_ui_event(api, event)
+            if event.action == "debug.skip" then
+                api.debug:teleport_to("island-3", { 4, 0, 6 }, 1.25)
+            end
+        end
+        return game
+    "#;
+
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(manifest));
+    assert!(engine.load_script_source(script));
+    engine.set_ui_viewport(UiViewport {
+        width: 390.0,
+        height: 844.0,
+        scale: 1.0,
+        safe_area: UiInsets::default(),
+    });
+    assert!(
+        engine
+            .ui
+            .borrow_mut()
+            .frame()
+            .nodes
+            .iter()
+            .any(|node| node.id == "skip")
+    );
+    let skip = engine
+        .ui
+        .borrow_mut()
+        .frame()
+        .nodes
+        .iter()
+        .find(|node| node.id == "skip")
+        .cloned()
+        .expect("skip node should have a frame");
+    let x = skip.rect.x + skip.rect.width / 2.0;
+    let y = skip.rect.y + skip.rect.height / 2.0;
+    assert!(engine.ui_pointer_event(1, 0, x, y));
+    assert!(engine.ui_pointer_event(1, 2, x, y));
+    engine.step(1.0 / 60.0);
+
+    assert_eq!(engine.active_world_id(), Some("island-3"));
+    assert_eq!(engine.player.position, [4.0, 0.0, 6.0]);
+    assert_eq!(engine.player.facing_yaw, 1.25);
+}
+
 #[test]
 fn engine_snapshot_round_trip_continues_deterministically() {
     let mut uninterrupted = Engine::new();

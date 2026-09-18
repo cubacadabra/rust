@@ -26,6 +26,16 @@ impl Engine {
         } else {
             self.player_events.clear();
         }
+
+        #[cfg(debug_assertions)]
+        if let Some(request) = self
+            .script
+            .as_ref()
+            .and_then(|script| script.take_debug_teleport())
+        {
+            self.debug_teleport(request);
+        }
+
         let commands = self
             .script
             .as_ref()

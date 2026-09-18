@@ -179,6 +179,30 @@ impl Engine {
             .is_some_and(|index| self.start_world(index))
     }
 
+    #[cfg(debug_assertions)]
+    pub(crate) fn debug_teleport(&mut self, request: crate::scripting::DebugTeleportRequest) {
+        let Some(index) = self
+            .world_ids
+            .iter()
+            .position(|candidate| candidate == &request.world_id)
+        else {
+            return;
+        };
+        if !self.start_world(index) {
+            return;
+        }
+        self.player.position = request.position;
+        self.player.velocity = [0.0; 3];
+        self.player.grounded = true;
+        self.player.facing_yaw = request.yaw;
+        self.view_yaw = request.yaw;
+        self.target_yaw = request.yaw;
+        self.respawn_position = request.position;
+        self.world_event_id = self.world_event_id.wrapping_add(1);
+        self.last_world_destination = index;
+        self.write_snapshot();
+    }
+
     pub(crate) fn queue_player_spawn(&mut self) {
         self.player_events
             .push_back(crate::types::PlayerEvent::Spawn {
