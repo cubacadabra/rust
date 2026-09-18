@@ -178,6 +178,66 @@ fn debug_script_teleport_preserves_portal_progression() {
     );
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn configured_maze_debug_skip_advances_to_the_next_island() {
+    let Ok(package_dir) = std::env::var("CUBACADABRA_TEST_MAZE_PACKAGE_DIR") else {
+        return;
+    };
+    let package_dir = std::path::Path::new(&package_dir);
+    let manifest = std::fs::read_to_string(package_dir.join("manifest.json"))
+        .expect("configured Maze 101 manifest should exist");
+    let script = std::fs::read_to_string(package_dir.join("game.luau"))
+        .expect("configured Maze 101 game script should exist");
+
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(&manifest));
+    assert!(engine.load_script_source(&script));
+    engine.set_ui_viewport(UiViewport {
+        width: 390.0,
+        height: 844.0,
+        scale: 1.0,
+        safe_area: UiInsets::default(),
+    });
+
+    engine.step(1.0 / 60.0);
+    assert_eq!(engine.active_world_id(), Some("archipelago"));
+    engine.player.position = [0.0, 0.0, -20.0];
+    engine.step(1.0 / 60.0);
+    assert_eq!(engine.active_world_id(), Some("island-1"));
+    engine.step(1.0 / 60.0);
+
+    let skip = engine
+        .ui
+        .borrow_mut()
+        .frame()
+        .nodes
+        .iter()
+        .find(|node| node.id == "maze-debug-end")
+        .cloned()
+        .expect("Maze DEBUG skip node should have a frame");
+    let x = skip.rect.x + skip.rect.width / 2.0;
+    let y = skip.rect.y + skip.rect.height / 2.0;
+    assert!(engine.ui_pointer_event(1, 0, x, y));
+    assert!(engine.ui_pointer_event(1, 2, x, y));
+
+    for _ in 0..60 {
+        engine.step(1.0 / 60.0);
+    }
+
+    assert_eq!(engine.active_world_id(), Some("island-2"));
+    assert_eq!(
+        engine
+            .script
+            .as_ref()
+            .expect("Maze progression script should be loaded")
+            .state()
+            .borrow()
+            .lobby_status,
+        "Island 2 of 3: CORAL CAY"
+    );
+}
+
 #[test]
 fn engine_snapshot_round_trip_continues_deterministically() {
     let mut uninterrupted = Engine::new();
