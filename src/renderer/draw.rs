@@ -169,37 +169,29 @@ impl Renderer {
         #[cfg(feature = "studio-ui")]
         if self.studio_camera_preset != crate::StudioCameraPreset::Gameplay {
             let (minimum, maximum) = self.presentation_bounds();
-            let center = (minimum + maximum) * 0.5;
-            let height = (maximum.y - minimum.y).max(1.0);
-            let half_extents = (maximum - minimum) * 0.5;
-            let radius = half_extents.length().max(8.0);
-            let target = Vec3::new(
-                center.x,
-                minimum.y
-                    + height
-                        * if self.studio_camera_preset == crate::StudioCameraPreset::Overview {
-                            0.58
-                        } else {
-                            0.52
-                        },
-                center.z,
-            );
-            let direction = if self.studio_camera_preset == crate::StudioCameraPreset::Overview {
-                Vec3::new(0.92, 1.18, 0.92).normalize()
-            } else {
-                Vec3::new(1.35, 0.22, 1.15).normalize()
-            };
-            let vertical_half_fov = 31.0_f32.to_radians();
-            let horizontal_half_fov = (vertical_half_fov.tan() * aspect).atan();
-            let limiting_half_fov = vertical_half_fov.min(horizontal_half_fov);
-            // Review cameras are compositional tools. A modestly tighter fit
-            // keeps authored islands legible instead of treating the whole
-            // presentation box as empty safety margin.
-            let fit_distance = radius / limiting_half_fov.sin() * 0.96;
-            return (target + direction * fit_distance, target);
+            return self
+                .studio_camera
+                .view(self.studio_camera_preset, minimum, maximum, aspect);
         }
 
         gameplay()
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn navigate_studio_camera(
+        &mut self,
+        orbit: [f32; 2],
+        pan: [f32; 2],
+        zoom: f32,
+        viewport_height: f32,
+    ) {
+        if self.studio_camera_preset == crate::StudioCameraPreset::Gameplay {
+            return;
+        }
+        let (_, _, width, height) = self.world_viewport();
+        let (camera, target) = self.camera_view(width / height.max(1.0));
+        self.studio_camera
+            .navigate(orbit, pan, zoom, camera, target, viewport_height);
     }
 
     fn camera_far_plane(&self, camera: Vec3, target: Vec3) -> f32 {
@@ -287,31 +279,46 @@ impl Renderer {
     }
 
     pub fn draw(&mut self) {
-        let Some((frame, mut encoder, view)) = self.encode_frame() else {
+        let Some((frame, mut encoder, view)) = self.encode_frame(false) else {
             return;
         };
         self.presenter.draw(&mut encoder, &self.targets, &view);
         self.queue.submit(Some(encoder.finish()));
-        frame.present();
+        frame.expect("presented frame").present();
     }
 
     pub(crate) fn draw_with_overlay<F>(&mut self, overlay: F)
     where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
     {
-        let Some((frame, mut encoder, view)) = self.encode_frame() else {
+        let Some((frame, mut encoder, view)) = self.encode_frame(false) else {
             return;
         };
         overlay(&self.device, &self.queue, &mut encoder, &self.targets.color);
         self.presenter.draw(&mut encoder, &self.targets, &view);
         self.queue.submit(Some(encoder.finish()));
-        frame.present();
+        frame.expect("presented frame").present();
+    }
+
+    /// Runs the production scene and overlay passes into the app-owned target
+    /// when a development capture cannot acquire an on-screen drawable.
+    #[cfg(all(feature = "studio-ui", debug_assertions))]
+    pub(crate) fn capture_studio_frame<F>(&mut self, overlay: F)
+    where
+        F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+    {
+        let Some((_, mut encoder, _)) = self.encode_frame(true) else {
+            return;
+        };
+        overlay(&self.device, &self.queue, &mut encoder, &self.targets.color);
+        self.queue.submit(Some(encoder.finish()));
     }
 
     fn encode_frame(
         &mut self,
+        offscreen: bool,
     ) -> Option<(
-        wgpu::SurfaceTexture,
+        Option<wgpu::SurfaceTexture>,
         wgpu::CommandEncoder,
         wgpu::TextureView,
     )> {
@@ -540,38 +547,47 @@ impl Renderer {
             bytemuck::bytes_of(&shadow_globals),
         );
 
-        let frame = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(frame)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                #[cfg(target_os = "android")]
-                if !super::device::ANDROID_SURFACE_WARNING_REPORTED
-                    .swap(true, std::sync::atomic::Ordering::Relaxed)
-                {
-                    super::device::android_log(
-                        "Android surface became outdated or lost; reconfiguring",
-                    );
+        let frame = if offscreen {
+            None
+        } else {
+            Some(match self.surface.get_current_texture() {
+                wgpu::CurrentSurfaceTexture::Success(frame)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+                wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
+                    #[cfg(target_os = "android")]
+                    if !super::device::ANDROID_SURFACE_WARNING_REPORTED
+                        .swap(true, std::sync::atomic::Ordering::Relaxed)
+                    {
+                        super::device::android_log(
+                            "Android surface became outdated or lost; reconfiguring",
+                        );
+                    }
+                    self.resize(self.width, self.height);
+                    return None;
                 }
-                self.resize(self.width, self.height);
-                return None;
-            }
-            wgpu::CurrentSurfaceTexture::Timeout
-            | wgpu::CurrentSurfaceTexture::Occluded
-            | wgpu::CurrentSurfaceTexture::Validation => {
-                #[cfg(target_os = "android")]
-                if !super::device::ANDROID_SURFACE_WARNING_REPORTED
-                    .swap(true, std::sync::atomic::Ordering::Relaxed)
-                {
-                    super::device::android_log(
-                        "Android surface frame unavailable (timeout, occluded, or validation)",
-                    );
+                wgpu::CurrentSurfaceTexture::Timeout
+                | wgpu::CurrentSurfaceTexture::Occluded
+                | wgpu::CurrentSurfaceTexture::Validation => {
+                    #[cfg(target_os = "android")]
+                    if !super::device::ANDROID_SURFACE_WARNING_REPORTED
+                        .swap(true, std::sync::atomic::Ordering::Relaxed)
+                    {
+                        super::device::android_log(
+                            "Android surface frame unavailable (timeout, occluded, or validation)",
+                        );
+                    }
+                    return None;
                 }
-                return None;
-            }
+            })
         };
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = frame.as_ref().map_or_else(
+            || self.targets.color.clone(),
+            |frame| {
+                frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default())
+            },
+        );
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -760,11 +776,15 @@ impl Renderer {
         (self.scene.world.fog_start, self.scene.world.fog_end)
     }
 
-    /// Keep the 3D world in its normal landscape composition when a window
-    /// becomes portrait-ish. The UI pass still covers the full scene so touch
-    /// controls can adapt to the actual window dimensions.
+    /// Embedded Studio views fill their editor pane. Player hosts retain their
+    /// landscape composition when a window becomes portrait-ish; the UI pass
+    /// still covers the full scene so touch controls can adapt.
     fn world_viewport(&self) -> (f32, f32, f32, f32) {
         const LANDSCAPE_ASPECT: f32 = 16.0 / 9.0;
+        #[cfg(feature = "studio-ui")]
+        if self.studio_viewport.is_some() {
+            return self.output_viewport();
+        }
         #[cfg(feature = "studio-ui")]
         let (x, y, width, height) = self.output_viewport();
         #[cfg(not(feature = "studio-ui"))]

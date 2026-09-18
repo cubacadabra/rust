@@ -81,7 +81,10 @@ fn builtin_terrain_color(material: f32, position: vec3<f32>, normal: vec3<f32>) 
     let variation = broad * 0.58 + grain * 0.27 + flecks * 0.15;
     var dark = vec3<f32>(0.20, 0.105, 0.032);
     var light = vec3<f32>(0.39, 0.235, 0.082);
-    if material < 1.5 {
+    if material > 6.5 {
+        dark = vec3<f32>(0.025, 0.16, 0.012);
+        light = vec3<f32>(0.11, 0.38, 0.028);
+    } else if material < 1.5 {
         if normal.y > 0.72 {
             dark = vec3<f32>(0.025, 0.16, 0.012);
             light = vec3<f32>(0.11, 0.38, 0.028);
@@ -122,6 +125,9 @@ fn sample_terrain_layer(layer: i32, position: vec3<f32>, normal: vec3<f32>, lod:
 }
 
 fn built_in_terrain_texture(material: f32, position: vec3<f32>, normal: vec3<f32>, lod: f32) -> vec3<f32> {
+    if material > 6.5 {
+        return sample_terrain_layer(0, position, normal, lod);
+    }
     if material < 1.5 {
         if normal.y < -0.72 {
             return sample_terrain_layer(2, position, normal, lod);

@@ -11,6 +11,8 @@ mod ui;
 mod worlds;
 
 #[cfg(test)]
+mod maze_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::character::definition::CharacterAppearance;

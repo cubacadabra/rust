@@ -86,10 +86,11 @@ pub(crate) enum TerrainMaterial {
     Sand = 4,
     Mud = 5,
     Snow = 6,
+    LeafyGrass = 7,
 }
 
 impl TerrainMaterial {
-    fn parse(name: &str) -> Option<Self> {
+    pub(crate) fn parse(name: &str) -> Option<Self> {
         match name
             .strip_prefix("builtin:")
             .unwrap_or(name)
@@ -102,6 +103,7 @@ impl TerrainMaterial {
             "sand" => Some(Self::Sand),
             "mud" => Some(Self::Mud),
             "snow" => Some(Self::Snow),
+            "leafygrass" => Some(Self::LeafyGrass),
             _ => None,
         }
     }

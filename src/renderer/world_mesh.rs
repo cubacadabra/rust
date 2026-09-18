@@ -20,7 +20,7 @@ pub(super) struct WorldMeshVertex {
     pub(super) normal: [f32; 3],
     pub(super) uv: [f32; 2],
     pub(super) color: [u8; 4],
-    pub(super) material: [u8; 4],
+    pub(super) material: u32,
 }
 
 impl WorldMeshVertex {
@@ -49,7 +49,7 @@ impl WorldMeshVertex {
                 shader_location: 11,
             },
             wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Unorm8x4,
+                format: wgpu::VertexFormat::Uint32,
                 offset: 36,
                 shader_location: 12,
             },
@@ -247,7 +247,7 @@ impl WorldMeshRegistry {
                         normal,
                         uv,
                         color: apply_material_color(color, material_color),
-                        material: [material_layer, 0, 0, 0],
+                        material: u32::from(material_layer),
                     },
                 ));
                 indices.extend(primitive_indices.into_iter().map(|index| base + index));
@@ -402,20 +402,9 @@ fn apply_material_color(color: [u8; 4], factor: [f32; 4]) -> [u8; 4] {
 }
 
 fn builtin_material_layer(name: Option<&str>) -> u8 {
-    let name = name
-        .and_then(|name| name.rsplit(['/', ':']).next())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match name.as_str() {
-        "grass" => 1,
-        "ground" | "brick" => 2,
-        "rock" | "slate" | "concrete" | "granite" | "marble" | "pebble" | "cobblestone"
-        | "corrodedmetal" | "diamondplate" | "foil" | "metal" => 3,
-        "sand" => 4,
-        "mud" | "wood" | "woodplanks" => 5,
-        "snow" | "ice" => 6,
-        _ => 0,
-    }
+    name.filter(|name| name.starts_with("builtin:"))
+        .and_then(crate::terrain::TerrainMaterial::parse)
+        .map_or(0, |material| material as u8)
 }
 
 #[cfg(test)]
@@ -448,11 +437,31 @@ mod tests {
     }
 
     #[test]
-    fn maps_reference_materials_to_builtin_layers() {
-        assert_eq!(builtin_material_layer(Some("Grass")), 1);
-        assert_eq!(builtin_material_layer(Some("Roblox/Slate")), 3);
-        assert_eq!(builtin_material_layer(Some("Sand")), 4);
-        assert_eq!(builtin_material_layer(Some("Plastic")), 0);
+    fn builtin_materials_require_an_explicit_namespace() {
+        for (name, layer) in [
+            ("builtin:grass", 1),
+            ("builtin:ground", 2),
+            ("builtin:rock", 3),
+            ("builtin:sand", 4),
+            ("builtin:mud", 5),
+            ("builtin:snow", 6),
+            ("builtin:leafygrass", 7),
+        ] {
+            assert_eq!(builtin_material_layer(Some(name)), layer);
+        }
+        for name in [
+            "Grass",
+            "Slate",
+            "Sand",
+            "Roblox/Slate",
+            "artist:grass",
+            "builtin:slate",
+            "builtin:unknown",
+            "builtin:builtin:grass",
+        ] {
+            assert_eq!(builtin_material_layer(Some(name)), 0, "{name}");
+        }
+        assert_eq!(builtin_material_layer(None), 0);
     }
 
     #[test]

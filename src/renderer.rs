@@ -14,6 +14,8 @@ mod hero_geometry;
 pub(crate) mod reference_capture;
 mod rounded_geometry;
 mod scene;
+#[cfg(feature = "studio-ui")]
+mod studio_camera;
 mod targets;
 mod ui;
 #[cfg(feature = "dev-showcase")]

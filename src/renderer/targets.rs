@@ -56,12 +56,12 @@ impl SceneTargets {
                 })
                 .create_view(&Default::default())
         };
-        let color = texture(
-            "resolved scene and UI",
-            SCENE_FORMAT,
-            1,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        );
+        let color_usage =
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        // Development captures read this app-owned target, never the desktop.
+        #[cfg(all(feature = "studio-ui", debug_assertions))]
+        let color_usage = color_usage | wgpu::TextureUsages::COPY_SRC;
+        let color = texture("resolved scene and UI", SCENE_FORMAT, 1, color_usage);
         let multisample = (samples > 1).then(|| {
             texture(
                 "multisample scene",

@@ -135,6 +135,14 @@ pub mod native {
             self.inner.draw_with_overlay(overlay);
         }
 
+        #[cfg(all(feature = "studio-ui", debug_assertions))]
+        pub fn capture_studio_frame<F>(&mut self, overlay: F)
+        where
+            F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+        {
+            self.inner.capture_studio_frame(overlay);
+        }
+
         #[cfg(feature = "studio-ui")]
         pub fn set_studio_viewport(&mut self, viewport: Option<[f32; 4]>) {
             self.inner.set_studio_viewport(viewport);
@@ -143,6 +151,26 @@ pub mod native {
         #[cfg(feature = "studio-ui")]
         pub fn set_studio_camera_preset(&mut self, preset: crate::StudioCameraPreset) {
             self.inner.set_studio_camera_preset(preset);
+        }
+
+        /// Restores the selected review preset without changing gameplay state.
+        #[cfg(feature = "studio-ui")]
+        pub fn reset_studio_camera(&mut self) {
+            self.inner.reset_studio_camera();
+        }
+
+        /// Navigates a review camera using logical-point drag deltas and viewport height.
+        /// Positive zoom moves closer. Gameplay cameras ignore this input.
+        #[cfg(feature = "studio-ui")]
+        pub fn navigate_studio_camera(
+            &mut self,
+            orbit: [f32; 2],
+            pan: [f32; 2],
+            zoom: f32,
+            viewport_height: f32,
+        ) {
+            self.inner
+                .navigate_studio_camera(orbit, pan, zoom, viewport_height);
         }
 
         pub fn device(&self) -> &wgpu::Device {

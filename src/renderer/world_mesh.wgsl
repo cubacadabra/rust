@@ -43,7 +43,7 @@ struct VertexInput {
     @location(9) tint: vec4<f32>,
     @location(10) texture_bounds: vec4<f32>,
     @location(11) vertex_color: vec4<f32>,
-    @location(12) material: vec4<f32>,
+    @location(12) material: u32,
 };
 
 struct VertexOutput {
@@ -53,7 +53,7 @@ struct VertexOutput {
     @location(2) tint: vec4<f32>,
     @location(3) uv: vec2<f32>,
     @location(4) texture_bounds: vec4<f32>,
-    @location(5) material: f32,
+    @location(5) @interpolate(flat) material: u32,
 };
 
 @vertex
@@ -74,7 +74,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     output.tint = input.tint * input.vertex_color;
     output.uv = input.uv;
     output.texture_bounds = input.texture_bounds;
-    output.material = input.material.x * 255.0;
+    output.material = input.material;
     return output;
 }
 
@@ -88,8 +88,11 @@ fn sample_terrain_layer(layer: i32, position: vec3<f32>, normal: vec3<f32>) -> v
     return along_x * normalized_weights.x + along_y * normalized_weights.y + along_z * normalized_weights.z;
 }
 
-fn material_texture(material: f32, position: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
-    if material < 1.5 {
+fn material_texture(material: u32, position: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+    if material == 7u {
+        return sample_terrain_layer(0, position, normal);
+    }
+    if material == 1u {
         if normal.y < -0.72 {
             return sample_terrain_layer(2, position, normal);
         }
@@ -123,8 +126,8 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
 }
 
 @fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let normal = normalize(input.normal);
+fn fs_main(input: VertexOutput, @builtin(front_facing) front_facing: bool) -> @location(0) vec4<f32> {
+    let normal = normalize(select(-input.normal, input.normal, front_facing));
     let view_direction = normalize(globals.camera_position.xyz - input.world_position);
     let light_direction = normalize(-globals.sun_direction.xyz);
     let direct = max(dot(normal, light_direction), 0.0);
@@ -132,7 +135,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.05;
     let lighting = 0.72 + direct * 0.42 * shadow;
     var albedo = vec3<f32>(1.0);
-    if input.material > 0.5 {
+    if input.material != 0u {
         albedo = material_texture(input.material, input.world_position, normal);
     }
     if input.texture_bounds.z > 0.0 && input.texture_bounds.w > 0.0 {

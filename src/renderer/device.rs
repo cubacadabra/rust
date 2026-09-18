@@ -848,6 +848,8 @@ impl Renderer {
             studio_viewport: None,
             #[cfg(feature = "studio-ui")]
             studio_camera_preset: crate::StudioCameraPreset::Gameplay,
+            #[cfg(feature = "studio-ui")]
+            studio_camera: Default::default(),
         }
     }
 
@@ -869,7 +871,15 @@ impl Renderer {
     /// camera state or snapshots.
     #[cfg(feature = "studio-ui")]
     pub(crate) fn set_studio_camera_preset(&mut self, preset: crate::StudioCameraPreset) {
+        if self.studio_camera_preset != preset {
+            self.reset_studio_camera();
+        }
         self.studio_camera_preset = preset;
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn reset_studio_camera(&mut self) {
+        self.studio_camera = Default::default();
     }
 
     pub(crate) fn set_package_image(
