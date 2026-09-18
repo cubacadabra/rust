@@ -950,7 +950,7 @@ mod tests {
         script.tick(0.0).expect("skip action should run");
         assert_eq!(
             script.state().borrow().lobby_status,
-            "DEBUG: skipped to the end of Cloudpeak."
+            "DEBUG: all SUNSHORE items collected. Reach the exit to continue."
         );
         assert_eq!(
             ui.borrow_mut()
@@ -959,7 +959,7 @@ mod tests {
                 .iter()
                 .find(|node| node.id == "maze-status")
                 .map(|node| node.text.as_str()),
-            Some("DEBUG SKIP  •  ARCHIPELAGO CLEARED")
+            Some("DEBUG SKIP  •  ALL COINS FOUND  •  FIND THE EXIT")
         );
     }
 
