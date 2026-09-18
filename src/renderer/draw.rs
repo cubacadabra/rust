@@ -192,7 +192,10 @@ impl Renderer {
             let vertical_half_fov = 31.0_f32.to_radians();
             let horizontal_half_fov = (vertical_half_fov.tan() * aspect).atan();
             let limiting_half_fov = vertical_half_fov.min(horizontal_half_fov);
-            let fit_distance = radius / limiting_half_fov.sin() * 1.14;
+            // Review cameras are compositional tools. A modestly tighter fit
+            // keeps authored islands legible instead of treating the whole
+            // presentation box as empty safety margin.
+            let fit_distance = radius / limiting_half_fov.sin() * 0.96;
             return (target + direction * fit_distance, target);
         }
 
