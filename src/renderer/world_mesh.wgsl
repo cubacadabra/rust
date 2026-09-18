@@ -36,6 +36,7 @@ struct VertexInput {
     @location(8) normal2: vec4<f32>,
     @location(9) tint: vec4<f32>,
     @location(10) texture_bounds: vec4<f32>,
+    @location(11) vertex_color: vec4<f32>,
 };
 
 struct VertexOutput {
@@ -62,7 +63,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
         dot(input.normal1, vec4<f32>(input.normal, 0.0)),
         dot(input.normal2, vec4<f32>(input.normal, 0.0)),
     ));
-    output.tint = input.tint;
+    output.tint = input.tint * input.vertex_color;
     output.uv = input.uv;
     output.texture_bounds = input.texture_bounds;
     return output;

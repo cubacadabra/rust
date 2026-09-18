@@ -19,13 +19,35 @@ pub(super) struct WorldMeshVertex {
     pub(super) position: [f32; 3],
     pub(super) normal: [f32; 3],
     pub(super) uv: [f32; 2],
+    pub(super) color: [u8; 4],
 }
 
 impl WorldMeshVertex {
     pub(super) const LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
         array_stride: size_of::<Self>() as u64,
         step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2],
+        attributes: &[
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x3,
+                offset: 0,
+                shader_location: 0,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x3,
+                offset: 12,
+                shader_location: 1,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Float32x2,
+                offset: 24,
+                shader_location: 2,
+            },
+            wgpu::VertexAttribute {
+                format: wgpu::VertexFormat::Unorm8x4,
+                offset: 32,
+                shader_location: 11,
+            },
+        ],
     };
 }
 
@@ -189,7 +211,19 @@ impl WorldMeshRegistry {
                     .read_tex_coords(0)
                     .map(|values| values.into_f32().collect::<Vec<_>>())
                     .unwrap_or_else(|| vec![[0.0, 0.0]; positions.len()]);
-                if normals.len() != positions.len() || uvs.len() != positions.len() {
+                let colors = reader
+                    .read_colors(0)
+                    .map(|values| {
+                        values
+                            .into_rgba_f32()
+                            .map(|value| value.map(color_channel))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_else(|| vec![[u8::MAX; 4]; positions.len()]);
+                if normals.len() != positions.len()
+                    || uvs.len() != positions.len()
+                    || colors.len() != positions.len()
+                {
                     return Err(format!(
                         "world mesh asset {id:?} has mismatched vertex attribute lengths"
                     ));
@@ -197,11 +231,12 @@ impl WorldMeshRegistry {
 
                 let base = u32::try_from(vertices.len())
                     .map_err(|_| format!("world mesh asset {id:?} has too many vertices"))?;
-                vertices.extend(positions.into_iter().zip(normals).zip(uvs).map(
-                    |((position, normal), uv)| WorldMeshVertex {
+                vertices.extend(positions.into_iter().zip(normals).zip(uvs).zip(colors).map(
+                    |(((position, normal), uv), color)| WorldMeshVertex {
                         position,
                         normal,
                         uv,
+                        color,
                     },
                 ));
                 indices.extend(primitive_indices.into_iter().map(|index| base + index));
@@ -342,9 +377,13 @@ impl WorldMeshRegistry {
     }
 }
 
+fn color_channel(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
 #[cfg(test)]
 mod tests {
-    use super::generated_normals;
+    use super::{color_channel, generated_normals};
 
     #[test]
     fn generates_normals_for_triangle_geometry() {
@@ -362,5 +401,12 @@ mod tests {
         assert!(generated_normals(&positions, &[0, 1]).is_err());
         assert!(generated_normals(&positions, &[0, 1, 3]).is_err());
         assert!(generated_normals(&positions, &[0, 1, 1]).is_err());
+    }
+
+    #[test]
+    fn packs_gltf_vertex_colors_for_the_gpu() {
+        assert_eq!(color_channel(-1.0), 0);
+        assert_eq!(color_channel(0.5), 128);
+        assert_eq!(color_channel(2.0), 255);
     }
 }
