@@ -214,6 +214,104 @@ fn add_cloud(
     }
 }
 
+fn add_palm_frond(
+    vertices: &mut Vec<Vertex>,
+    transform: Mat4,
+    scale: f32,
+    color: [f32; 4],
+) {
+    let centers = [
+        Vec3::ZERO,
+        Vec3::new(0.78, 0.08, 0.0) * scale,
+        Vec3::new(1.58, -0.16, 0.0) * scale,
+        Vec3::new(2.35, -0.62, 0.0) * scale,
+    ];
+    let widths = [0.16, 0.42, 0.30, 0.025].map(|width| width * scale);
+    let normal = transform.transform_vector3(Vec3::Y).normalize_or_zero();
+
+    for index in 0..centers.len() - 1 {
+        let start_left = transform.transform_point3(centers[index] + Vec3::Z * widths[index]);
+        let start_right = transform.transform_point3(centers[index] - Vec3::Z * widths[index]);
+        let end_right =
+            transform.transform_point3(centers[index + 1] - Vec3::Z * widths[index + 1]);
+        let end_left =
+            transform.transform_point3(centers[index + 1] + Vec3::Z * widths[index + 1]);
+        add_quad(
+            vertices,
+            start_left,
+            start_right,
+            end_right,
+            end_left,
+            normal,
+            color,
+        );
+    }
+}
+
+fn add_palm(
+    vertices: &mut Vec<Vertex>,
+    decoration: &RenderDecoration,
+    scale: f32,
+    leaf: [f32; 4],
+) {
+    let origin = Vec3::from_array(decoration.position);
+    let root = Mat4::from_translation(origin) * Mat4::from_rotation_y(decoration.yaw);
+    add_cylinder(
+        vertices,
+        origin + Vec3::new(0.0, 2.0, 0.0) * scale,
+        0.16 * scale,
+        4.0 * scale,
+        [0.30, 0.14, 0.055, 1.0],
+    );
+
+    let crown = root * Mat4::from_translation(Vec3::new(0.0, 4.05 * scale, 0.0));
+    for index in 0..8 {
+        let angle = index as f32 * std::f32::consts::TAU / 8.0;
+        let frond_color = if index % 2 == 0 {
+            leaf
+        } else {
+            [leaf[0] * 0.82, leaf[1] * 0.88, leaf[2] * 0.78, leaf[3]]
+        };
+        add_palm_frond(
+            vertices,
+            crown * Mat4::from_rotation_y(angle),
+            scale,
+            frond_color,
+        );
+    }
+}
+
+fn add_grass_clump(
+    vertices: &mut Vec<Vertex>,
+    decoration: &RenderDecoration,
+    scale: f32,
+    leaf: [f32; 4],
+) {
+    let root = Mat4::from_translation(Vec3::from_array(decoration.position))
+        * Mat4::from_rotation_y(decoration.yaw);
+    for index in 0..7 {
+        let angle = index as f32 * std::f32::consts::TAU / 7.0;
+        let height = (0.58 + (index % 3) as f32 * 0.12) * scale;
+        let width = (0.10 + (index % 2) as f32 * 0.025) * scale;
+        let blade = root * Mat4::from_rotation_y(angle);
+        let left = blade.transform_point3(Vec3::new(0.08 * scale, 0.0, width));
+        let right = blade.transform_point3(Vec3::new(0.08 * scale, 0.0, -width));
+        let tip = blade.transform_point3(Vec3::new(0.34 * scale, height, 0.0));
+        let normal = (right - left).cross(tip - left).normalize_or_zero();
+        let blade_color = if index % 2 == 0 {
+            leaf
+        } else {
+            [
+                (leaf[0] * 1.08).min(1.0),
+                (leaf[1] * 1.10).min(1.0),
+                (leaf[2] * 1.04).min(1.0),
+                leaf[3],
+            ]
+        };
+        add_triangle(vertices, left, right, tip, normal, blade_color);
+    }
+}
+
 pub(super) fn add_decoration(
     vertices: &mut Vec<Vertex>,
     decoration: &RenderDecoration,
@@ -244,23 +342,7 @@ pub(super) fn add_decoration(
             add_sphere(vertices, origin + Vec3::new(0.35, 0.25, 0.12) * scale, 0.58 * scale, tint);
             add_sphere(vertices, origin + Vec3::new(0.0, 0.65, -0.18) * scale, 0.48 * scale, tint);
         }
-        "palm" | "tree" => {
-            let trunk = [0.28, 0.12, 0.045, 1.0];
-            add_cylinder(vertices, origin + Vec3::new(0.0, 2.0, 0.0) * scale, 0.16 * scale, 4.0 * scale, trunk);
-            let leaf = [0.08, 0.38, 0.045, 1.0];
-            for index in 0..6 {
-                let angle = decoration.yaw + index as f32 * std::f32::consts::TAU / 6.0;
-                let transform = Mat4::from_translation(origin + Vec3::new(0.0, 4.0, 0.0) * scale)
-                    * Mat4::from_rotation_y(angle)
-                    * Mat4::from_rotation_z(-0.42);
-                add_transformed_cuboid(
-                    vertices,
-                    transform * Mat4::from_translation(Vec3::new(0.75 * scale, 0.0, 0.0)),
-                    Vec3::new(1.8 * scale, 0.12 * scale, 0.34 * scale),
-                    leaf,
-                );
-            }
-        }
+        "palm" | "tree" => add_palm(vertices, decoration, scale, color),
         "crate" | "box" => {
             let wood = [0.30, 0.13, 0.055, 1.0];
             add_transformed_cuboid(vertices, root, Vec3::splat(1.4 * scale), wood);
@@ -299,16 +381,7 @@ pub(super) fn add_decoration(
             add_transformed_cuboid(vertices, root * Mat4::from_translation(Vec3::new(0.0, 3.1 * scale, 0.0)), Vec3::new(3.35 * scale, 0.45 * scale, 0.45 * scale), accent);
             add_ring(vertices, origin + Vec3::new(0.0, 1.65 * scale, 0.28 * scale), 1.15 * scale, 0.12 * scale, [0.10, 0.95, 0.42, 0.75]);
         }
-        "grass" | "grass-clump" => {
-            let leaf = [0.06, 0.35, 0.035, 1.0];
-            for index in 0..5 {
-                let angle = index as f32 * std::f32::consts::TAU / 5.0;
-                let transform = Mat4::from_translation(origin)
-                    * Mat4::from_rotation_y(angle)
-                    * Mat4::from_rotation_z(0.22);
-                add_transformed_cuboid(vertices, transform * Mat4::from_translation(Vec3::new(0.22 * scale, 0.35 * scale, 0.0)), Vec3::new(0.08 * scale, 0.7 * scale, 0.08 * scale), leaf);
-            }
-        }
+        "grass" | "grass-clump" => add_grass_clump(vertices, decoration, scale, color),
         _ => add_sphere(vertices, origin, 0.5 * scale, color),
     }
 }
@@ -680,4 +753,46 @@ fn add_triangle(
         texture_bounds: [0.0, 0.0, 1.0, 1.0],
         },
     ]);
+}
+
+#[cfg(test)]
+mod vegetation_geometry_tests {
+    use super::*;
+
+    fn decoration(kind: &str, position: [f32; 3], scale: f32) -> RenderDecoration {
+        RenderDecoration {
+            kind: kind.to_owned(),
+            position,
+            scale,
+            yaw: 0.35,
+            color: [0.06, 0.42, 0.08, 1.0],
+            variant: 0,
+        }
+    }
+
+    #[test]
+    fn palm_has_a_broad_tapered_crown_and_authored_leaf_color() {
+        let position = [2.0, 0.0, -3.0];
+        let palm = decoration("palm", position, 1.0);
+        let mut vertices = Vec::new();
+        add_decoration(&mut vertices, &palm, RenderPalette::default());
+
+        assert!(vertices.iter().any(|vertex| vertex.color == palm.color));
+        assert!(vertices.iter().any(|vertex| vertex.position[1] > 4.0));
+        assert!(vertices.iter().any(|vertex| {
+            let offset = Vec3::from_array(vertex.position) - Vec3::from_array(position);
+            offset.x.hypot(offset.z) > 2.2
+        }));
+    }
+
+    #[test]
+    fn grass_clump_uses_lightweight_tapered_blades() {
+        let grass = decoration("grass-clump", [0.0, 0.0, 0.0], 1.0);
+        let mut vertices = Vec::new();
+        add_decoration(&mut vertices, &grass, RenderPalette::default());
+
+        assert_eq!(vertices.len(), 21);
+        assert!(vertices.iter().any(|vertex| vertex.color == grass.color));
+        assert!(vertices.iter().any(|vertex| vertex.position[1] > 0.75));
+    }
 }
