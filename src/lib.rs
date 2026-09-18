@@ -32,6 +32,9 @@ pub mod dev_showcase {
         capture_phase5_outfits, capture_phase6_report, capture_phase8_rollout, capture_phase9_hero,
         capture_phase9_hero_with_set,
     };
+    pub use crate::renderer::reference_capture::{
+        RobloxReferenceCaptureConfig, RobloxReferenceCaptureReport, capture_roblox_reference,
+    };
     pub use crate::renderer::validation::capture_phase3;
 
     pub fn validate_phase5_catalog(

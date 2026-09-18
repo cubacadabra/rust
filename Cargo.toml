@@ -42,6 +42,11 @@ path = "src/bin/validate_character_assets.rs"
 required-features = ["dev-showcase"]
 
 [[bin]]
+name = "roblox_reference_capture"
+path = "src/bin/roblox_reference_capture.rs"
+required-features = ["dev-showcase"]
+
+[[bin]]
 name = "headless"
 path = "src/bin/headless.rs"
 required-features = ["headless"]

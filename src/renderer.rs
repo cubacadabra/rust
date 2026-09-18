@@ -10,6 +10,8 @@ mod effects;
 mod hair_geometry;
 mod hero_character;
 mod hero_geometry;
+#[cfg(all(feature = "dev-showcase", not(target_arch = "wasm32")))]
+pub(crate) mod reference_capture;
 mod rounded_geometry;
 mod scene;
 mod targets;

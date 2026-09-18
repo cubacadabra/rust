@@ -67,6 +67,27 @@ cargo test
 cargo check
 ```
 
+## Capture an imported Roblox reference scene
+
+The `dev-showcase` feature includes a development-only renderer for the JSON
+written by `tools import-roblox-reference`. It renders source BaseParts and
+WedgeParts with their authored transforms, dimensions, colors, and project
+lighting, then writes a JSON report of every approximation and unsupported
+feature. Generated scenes, captures, and reports remain local artifacts.
+
+```sh
+cargo run --features dev-showcase --bin roblox_reference_capture -- \
+  --scene /tmp/reference-scene.json \
+  --output /tmp/maze-world-reference.png \
+  --report /tmp/maze-world-reference.report.json \
+  --path-prefix 'Folder:Place[1]/Folder:Main[1]/Model:MainIsland[1]'
+```
+
+The first capture deliberately omits external mesh geometry, textures, local
+lights, terrain voxels, shadows, skyboxes, and post-processing. The sidecar
+report keeps those omissions visible while renderer parity is developed from
+actual images.
+
 ## Git hooks
 
 Enable the repository's pre-commit hook once per checkout:
