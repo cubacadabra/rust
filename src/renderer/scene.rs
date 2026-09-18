@@ -483,12 +483,20 @@ fn resolve_world(
             .decorations
             .iter()
             .filter_map(|decoration| {
-                decoration.asset.as_ref().map(|asset| RenderMeshInstance {
+                let asset = decoration.asset.as_ref()?;
+                let texture_image = decoration
+                    .material
+                    .as_ref()
+                    .and_then(|material| definition.materials.get(material))
+                    .map(|material| material.image.clone())
+                    .filter(|image| !image.is_empty());
+                Some(RenderMeshInstance {
                     asset: asset.clone(),
                     position: decoration.position(),
                     scale: decoration.scale.max(0.1),
                     yaw: decoration.yaw,
                     color: resolve_color(&definition.palette, &decoration.color, palette.paper),
+                    texture_image,
                 })
             })
             .collect(),

@@ -908,6 +908,11 @@ impl Renderer {
         );
         self.package_image_regions
             .insert(id.to_owned(), [0.0, 0.0, 1.0, 1.0]);
+        self.world_meshes.rebuild_instances(
+            &self.device,
+            &self.scene.world.mesh_instances,
+            &self.package_image_regions,
+        );
         true
     }
 
@@ -919,8 +924,11 @@ impl Renderer {
 
     pub(crate) fn register_world_mesh(&mut self, id: &str, bytes: &[u8]) -> Result<(), String> {
         self.world_meshes.register(&self.device, id, bytes)?;
-        self.world_meshes
-            .rebuild_instances(&self.device, &self.scene.world.mesh_instances);
+        self.world_meshes.rebuild_instances(
+            &self.device,
+            &self.scene.world.mesh_instances,
+            &self.package_image_regions,
+        );
         Ok(())
     }
 
@@ -930,8 +938,12 @@ impl Renderer {
     }
 
     pub(crate) fn replace_world_meshes(&mut self, models: &[(&str, &[u8])]) -> Result<(), String> {
-        self.world_meshes
-            .replace(&self.device, models, &self.scene.world.mesh_instances)?;
+        self.world_meshes.replace(
+            &self.device,
+            models,
+            &self.scene.world.mesh_instances,
+            &self.package_image_regions,
+        )?;
         Ok(())
     }
 
@@ -980,6 +992,11 @@ impl Renderer {
             pixels,
         );
         self.package_image_regions = regions;
+        self.world_meshes.rebuild_instances(
+            &self.device,
+            &self.scene.world.mesh_instances,
+            &self.package_image_regions,
+        );
         true
     }
 

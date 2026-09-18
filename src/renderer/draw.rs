@@ -1204,8 +1204,11 @@ impl Renderer {
         self.terrain_meshes.clear();
         let meshes = self.build_terrain_meshes();
         self.terrain_meshes = self.upload_terrain_meshes(meshes);
-        self.world_meshes
-            .rebuild_instances(&self.device, &self.scene.world.mesh_instances);
+        self.world_meshes.rebuild_instances(
+            &self.device,
+            &self.scene.world.mesh_instances,
+            &self.package_image_regions,
+        );
     }
 
     fn ensure_static_vertex_capacity(&mut self, required: usize) -> bool {

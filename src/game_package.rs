@@ -739,6 +739,8 @@ pub(crate) struct DecorationDefinition {
     pub(crate) variant: usize,
     #[serde(default)]
     pub(crate) asset: Option<String>,
+    #[serde(default)]
+    pub(crate) material: Option<String>,
 }
 
 fn default_decoration_scale() -> f32 {

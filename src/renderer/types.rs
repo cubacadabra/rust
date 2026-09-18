@@ -209,6 +209,7 @@ pub(super) struct RenderMeshInstance {
     pub(super) scale: f32,
     pub(super) yaw: f32,
     pub(super) color: [f32; 4],
+    pub(super) texture_image: Option<String>,
 }
 
 #[derive(Clone)]

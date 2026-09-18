@@ -35,6 +35,7 @@ pub(super) struct WorldMeshInstance {
     pub(super) transform: [[f32; 4]; 3],
     pub(super) normal: [[f32; 4]; 3],
     pub(super) tint: [f32; 4],
+    pub(super) texture_bounds: [f32; 4],
 }
 
 impl WorldMeshInstance {
@@ -44,11 +45,11 @@ impl WorldMeshInstance {
         attributes: &wgpu::vertex_attr_array![
             3 => Float32x4, 4 => Float32x4, 5 => Float32x4,
             6 => Float32x4, 7 => Float32x4, 8 => Float32x4,
-            9 => Float32x4
+            9 => Float32x4, 10 => Float32x4
         ],
     };
 
-    fn new(transform: Mat4, tint: [f32; 4]) -> Self {
+    fn new(transform: Mat4, tint: [f32; 4], texture_bounds: [f32; 4]) -> Self {
         let normal = Mat3::from_mat4(transform).inverse().transpose();
         Self {
             transform: [
@@ -62,6 +63,7 @@ impl WorldMeshInstance {
                 normal.row(2).extend(0.0).to_array(),
             ],
             tint,
+            texture_bounds,
         }
     }
 }
@@ -249,12 +251,13 @@ impl WorldMeshRegistry {
         device: &wgpu::Device,
         models: &[(&str, &[u8])],
         instances: &[crate::renderer::RenderMeshInstance],
+        image_regions: &BTreeMap<String, [f32; 4]>,
     ) -> Result<(), String> {
         let mut replacement = Self::default();
         for (id, bytes) in models {
             replacement.register(device, id, bytes)?;
         }
-        replacement.rebuild_instances(device, instances);
+        replacement.rebuild_instances(device, instances, image_regions);
         *self = replacement;
         Ok(())
     }
@@ -263,6 +266,7 @@ impl WorldMeshRegistry {
         &mut self,
         device: &wgpu::Device,
         instances: &[crate::renderer::RenderMeshInstance],
+        image_regions: &BTreeMap<String, [f32; 4]>,
     ) {
         self.batches.clear();
         let mut grouped: BTreeMap<&str, Vec<WorldMeshInstance>> = BTreeMap::new();
@@ -277,7 +281,17 @@ impl WorldMeshRegistry {
             let transform = Mat4::from_translation(Vec3::from_array(instance.position))
                 * Mat4::from_quat(Quat::from_rotation_y(instance.yaw))
                 * Mat4::from_scale(Vec3::splat(instance.scale));
-            list.push(WorldMeshInstance::new(transform, instance.color));
+            let texture_bounds = instance
+                .texture_image
+                .as_ref()
+                .and_then(|image| image_regions.get(image))
+                .copied()
+                .unwrap_or([0.0; 4]);
+            list.push(WorldMeshInstance::new(
+                transform,
+                instance.color,
+                texture_bounds,
+            ));
         }
         for (id, values) in grouped {
             let count = values.len() as u32;
