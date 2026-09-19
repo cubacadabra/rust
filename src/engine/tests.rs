@@ -425,6 +425,24 @@ fn reset_view_restores_the_default_third_person_orbit() {
     assert_eq!(engine.view_pitch, super::DEFAULT_ORBIT_PITCH);
 }
 
+#[cfg(feature = "studio-ui")]
+#[test]
+fn studio_selection_moves_preview_player_near_the_target() {
+    let mut engine = Engine::new();
+    engine.player.position = [-24.6, 2.2, 24.0];
+    engine.write_snapshot();
+
+    engine.studio_move_player_near([-78.13532, 4.1533, -19.07567]);
+
+    let position = engine.player.position;
+    let distance = (position[0] + 78.13532).hypot(position[2] + 19.07567);
+    assert!((distance - 4.0).abs() < 0.001);
+    assert!((position[1] - 2.2).abs() < 0.001);
+    assert_eq!(&engine.snapshot[..3], &position);
+    assert!(!engine.player.moving);
+    assert_eq!(engine.player.velocity, [0.0; 3]);
+}
+
 #[test]
 fn camera_occlusion_clamps_effective_distance_without_overwriting_requested_zoom() {
     let mut engine = Engine::new();

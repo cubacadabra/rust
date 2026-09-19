@@ -10,6 +10,49 @@ const CAMERA_OUTWARD_RESPONSE: f32 = 12.0;
 const CAMERA_ZOOM_RESPONSE: f32 = 16.0;
 
 impl Engine {
+    /// Moves the local preview player near a selected Studio scene object.
+    ///
+    /// This is an editor-only presentation action. It updates local runtime
+    /// state immediately so it also works while the preview is stopped; it
+    /// does not change authored spawn data.
+    #[cfg(feature = "studio-ui")]
+    pub fn studio_move_player_near(&mut self, target: [f32; 3]) {
+        if !target.iter().all(|value| value.is_finite()) {
+            return;
+        }
+
+        const PREVIEW_DISTANCE: f32 = 4.0;
+        let current = self.player.position;
+        let delta_x = current[0] - target[0];
+        let delta_z = current[2] - target[2];
+        let distance = delta_x.hypot(delta_z);
+        let (direction_x, direction_z) = if distance > 0.001 {
+            (delta_x / distance, delta_z / distance)
+        } else {
+            (0.0, 1.0)
+        };
+        let position = [
+            target[0] + direction_x * PREVIEW_DISTANCE,
+            current[1],
+            target[2] + direction_z * PREVIEW_DISTANCE,
+        ];
+        let look_x = target[0] - position[0];
+        let look_z = target[2] - position[2];
+        let yaw = (-look_x).atan2(-look_z);
+
+        self.player.position = position;
+        self.player.velocity = [0.0; 3];
+        self.player.grounded = true;
+        self.player.climbing = false;
+        self.player.moving = false;
+        self.player.sprinting = false;
+        self.player.facing_yaw = yaw;
+        self.view_yaw = yaw;
+        self.target_yaw = yaw;
+        self.pending_reconciliation = [0.0; 3];
+        self.write_snapshot();
+    }
+
     /// Restores the normal classic third-person orbit.
     pub fn reset_view(&mut self) {
         if !self.apply_authored_world_camera() {
