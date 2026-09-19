@@ -201,12 +201,18 @@ impl GamePackageDefinition {
                 .any(|world| world.collision.is_some())
             || std::iter::once(&package.world)
                 .chain(package.worlds.values().map(|world| &world.world))
-                .any(|world| world.camera.is_some() || world.physics.horizontal_bounds.is_some());
+                .any(|world| {
+                    world.camera.is_some()
+                        || world.physics.horizontal_bounds.is_some()
+                        || world.visual.color_correction.is_some()
+                        || world.visual.daylight.is_some()
+                        || world.visual.sun_rays.is_some()
+                });
         if has_sdk_05_fields && package._sdk_version.as_deref() != Some(CURRENT_SDK_VERSION) {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "collision, world.camera, and world.physics.horizontalBounds require sdkVersion {CURRENT_SDK_VERSION}"
+                    "collision, world.camera, world.physics.horizontalBounds, and world.visual environment controls require sdkVersion {CURRENT_SDK_VERSION}"
                 ),
             )));
         }
@@ -238,6 +244,15 @@ impl GamePackageDefinition {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "world.camera must contain finite yaw/pitch/distance within runtime limits",
+            )));
+        }
+        if std::iter::once(&package.world)
+            .chain(package.worlds.values().map(|world| &world.world))
+            .any(|world| !world.visual.is_valid())
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "world.visual environment controls must be finite and within their documented ranges",
             )));
         }
         for collision in std::iter::once(package.collision.as_ref())
@@ -528,6 +543,8 @@ impl PresentationBoundsDefinition {
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct VisualSettingsDefinition {
+    /// Legacy material-local grade controls. New packages should use
+    /// `colorCorrection`, which applies once to the completed world scene.
     #[serde(default = "default_exposure")]
     pub(crate) exposure: f32,
     #[serde(default = "default_contrast")]
@@ -540,6 +557,47 @@ pub(crate) struct VisualSettingsDefinition {
     pub(crate) fog_end: f32,
     #[serde(default = "default_sun_direction")]
     pub(crate) sun_direction: [f32; 3],
+    #[serde(default)]
+    pub(crate) color_correction: Option<ColorCorrectionDefinition>,
+    #[serde(default)]
+    pub(crate) daylight: Option<DaylightDefinition>,
+    #[serde(default)]
+    pub(crate) sun_rays: Option<SunRaysDefinition>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ColorCorrectionDefinition {
+    #[serde(default)]
+    pub(crate) brightness: f32,
+    #[serde(default)]
+    pub(crate) contrast: f32,
+    #[serde(default)]
+    pub(crate) saturation: f32,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DaylightDefinition {
+    #[serde(default = "default_time_of_day")]
+    pub(crate) time_of_day: f32,
+    #[serde(default)]
+    pub(crate) geographic_latitude: f32,
+    #[serde(default = "default_daylight_brightness")]
+    pub(crate) brightness: f32,
+    #[serde(default = "default_outdoor_ambient")]
+    pub(crate) outdoor_ambient: [f32; 3],
+    #[serde(default)]
+    pub(crate) shadow_softness: f32,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SunRaysDefinition {
+    #[serde(default)]
+    pub(crate) intensity: f32,
+    #[serde(default)]
+    pub(crate) spread: f32,
 }
 
 impl Default for VisualSettingsDefinition {
@@ -551,7 +609,60 @@ impl Default for VisualSettingsDefinition {
             fog_start: default_fog_start(),
             fog_end: default_fog_end(),
             sun_direction: default_sun_direction(),
+            color_correction: None,
+            daylight: None,
+            sun_rays: None,
         }
+    }
+}
+
+impl VisualSettingsDefinition {
+    fn is_valid(&self) -> bool {
+        self.exposure.is_finite()
+            && self.contrast.is_finite()
+            && self.saturation.is_finite()
+            && self.fog_start.is_finite()
+            && self.fog_end.is_finite()
+            && self.sun_direction.iter().all(|value| value.is_finite())
+            && self
+                .color_correction
+                .is_none_or(|correction| correction.is_valid())
+            && self.daylight.is_none_or(|daylight| daylight.is_valid())
+            && self.sun_rays.is_none_or(|sun_rays| sun_rays.is_valid())
+    }
+}
+
+impl ColorCorrectionDefinition {
+    fn is_valid(&self) -> bool {
+        [self.brightness, self.contrast, self.saturation]
+            .iter()
+            .all(|value| value.is_finite() && (-1.0..=1.0).contains(value))
+    }
+}
+
+impl DaylightDefinition {
+    fn is_valid(&self) -> bool {
+        self.time_of_day.is_finite()
+            && (0.0..24.0).contains(&self.time_of_day)
+            && self.geographic_latitude.is_finite()
+            && (-89.0..=89.0).contains(&self.geographic_latitude)
+            && self.brightness.is_finite()
+            && (0.0..=4.0).contains(&self.brightness)
+            && self
+                .outdoor_ambient
+                .iter()
+                .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+            && self.shadow_softness.is_finite()
+            && (0.0..=1.0).contains(&self.shadow_softness)
+    }
+}
+
+impl SunRaysDefinition {
+    fn is_valid(&self) -> bool {
+        self.intensity.is_finite()
+            && self.spread.is_finite()
+            && (0.0..=1.0).contains(&self.intensity)
+            && (0.0..=1.0).contains(&self.spread)
     }
 }
 
@@ -572,6 +683,15 @@ fn default_fog_end() -> f32 {
 }
 fn default_sun_direction() -> [f32; 3] {
     [-0.45, -0.82, 0.32]
+}
+fn default_time_of_day() -> f32 {
+    12.0
+}
+fn default_daylight_brightness() -> f32 {
+    2.0
+}
+fn default_outdoor_ambient() -> [f32; 3] {
+    [0.5, 0.5, 0.5]
 }
 
 impl Default for WorldSettingsDefinition {
@@ -1185,6 +1305,25 @@ mod tests {
     }
 
     #[test]
+    fn retains_source_style_environment_controls() {
+        let package = GamePackageDefinition::parse(
+            r#"{
+                "sdkVersion":"0.5.0",
+                "world":{"visual":{
+                    "colorCorrection":{"brightness":0.12,"contrast":0.2,"saturation":0.6},
+                    "daylight":{"timeOfDay":6.5,"geographicLatitude":45,"brightness":2,"outdoorAmbient":[0.5,0.5,0.5],"shadowSoftness":0.5},
+                    "sunRays":{"intensity":0.058,"spread":0.463}
+                }}
+            }"#,
+        )
+        .expect("environment controls should parse in the current SDK");
+        let visual = &package.world_entries()[0].1.world.visual;
+        assert_eq!(visual.color_correction.unwrap().saturation, 0.6);
+        assert_eq!(visual.daylight.unwrap().time_of_day, 6.5);
+        assert_eq!(visual.sun_rays.unwrap().spread, 0.463);
+    }
+
+    #[test]
     fn rejects_invalid_presentation_bounds() {
         let error = GamePackageDefinition::parse(
             r#"{"world":{"presentationBounds":{"minimum":[0,0,0],"maximum":[0,2,3]}}}"#,
@@ -1217,12 +1356,22 @@ mod tests {
             r#""collision":{"formatVersion":1,"triangles":[[[0,0,0],[1,0,0],[0,0,1]]]}}"#,
             r#""world":{"camera":{"yaw":0,"pitch":0,"distance":8}}}"#,
             r#""world":{"physics":{"horizontalBounds":{"minimum":[-1,-1],"maximum":[1,1]}}}}"#,
+            r#""world":{"visual":{"sunRays":{"intensity":0.058,"spread":0.463}}}}"#,
         ] {
             let source = format!(r#"{{"sdkVersion":"0.4.0",{field}"#);
             let error = GamePackageDefinition::parse(&source)
                 .expect_err("SDK 0.4 must not silently ignore SDK 0.5 fields");
             assert!(error.to_string().contains("require sdkVersion 0.5.0"));
         }
+    }
+
+    #[test]
+    fn rejects_out_of_range_environment_controls() {
+        let error = GamePackageDefinition::parse(
+            r#"{"sdkVersion":"0.5.0","world":{"visual":{"daylight":{"timeOfDay":24}}}}"#,
+        )
+        .expect_err("24:00 is outside the documented half-open day range");
+        assert!(error.to_string().contains("world.visual"));
     }
 
     #[test]

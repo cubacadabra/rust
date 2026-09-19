@@ -775,11 +775,13 @@ impl Renderer {
         let character_shadow_pipeline =
             super::character_material::shadow_pipeline(&device, &shadow_globals_layout);
         let presenter = super::targets::Presenter::new(&device, format);
+        let post_processor = super::targets::PostProcessor::new(&device);
         let targets = super::targets::SceneTargets::new(
             &device,
             config.width,
             config.height,
             sample_count,
+            &post_processor,
             &presenter.layout,
         );
         let (ui_pipeline, ui_texture_bind_group) = ui_resources(&device, &queue);
@@ -798,6 +800,7 @@ impl Renderer {
             sky_pipeline,
             sky_globals_buffer,
             sky_globals_bind_group,
+            post_processor,
             translucent_pipeline,
             world_mesh_pipeline,
             shadow_pipeline,
@@ -1024,6 +1027,7 @@ impl Renderer {
             self.config.width,
             self.config.height,
             self.sample_count,
+            &self.post_processor,
             &self.presenter.layout,
         );
     }

@@ -395,6 +395,7 @@ fn render_thumbnail(
         fog_color: [0.035, 0.035, 0.035, 1.],
         color_grade: [1.0, 1.0, 1.0, 0.0],
         atmosphere: [52.0, 115.0, 0.0, 0.0],
+        lighting: [0.72, 0.72, 0.72, 2.0],
     };
     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: None,

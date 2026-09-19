@@ -1,7 +1,7 @@
 struct Globals {
     view_projection: mat4x4<f32>, camera_position: vec4<f32>,
     sun_direction: vec4<f32>, fog_color: vec4<f32>,
-    color_grade: vec4<f32>, atmosphere: vec4<f32>,
+    color_grade: vec4<f32>, atmosphere: vec4<f32>, lighting: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 @group(1) @binding(0) var morph_texture: texture_2d<f32>;
@@ -47,7 +47,8 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
             visibility += textureSampleCompare(
                 shadow_map,
                 shadow_sampler,
-                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy,
+                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy
+                    * shadow_globals.texel_size.z,
                 depth,
             );
         }
@@ -80,8 +81,9 @@ fn grade_color(color: vec3<f32>) -> vec3<f32> {
     let half_vector = normalize(light + view);
     let shadow = shadow_factor(input.world, normal);
     let roughness = clamp(input.material.x, 0.08, 1.0);
-    let hemisphere = mix(0.42, 0.72, normal.y * 0.5 + 0.5);
-    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.46 * shadow;
+    let ambient = dot(globals.lighting.xyz, vec3<f32>(0.33333334));
+    let hemisphere = mix(ambient * 0.58, ambient, normal.y * 0.5 + 0.5);
+    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.23 * globals.lighting.w * shadow;
     let specular = pow(max(dot(normal, half_vector), 0.0), mix(100.0, 4.0, roughness)) * input.material.y * shadow;
     let rim = pow(1.0 - max(dot(normal, view), 0.0), 3.0) * 0.025;
     let base = decode_srgb(input.tint.rgb * sampled.rgb);
@@ -90,8 +92,9 @@ fn grade_color(color: vec3<f32>) -> vec3<f32> {
         // Baked maps contain fiber/color and local contact occlusion only.
         // Warm key and cool environment response still follow live normals;
         // different cloth/hair/leather responses share the same vertex layout.
-        let sky = mix(vec3<f32>(0.17,0.19,0.24), vec3<f32>(0.39,0.46,0.56), normal.y*0.5+0.5);
-        let key = max((dot(normal,light)+0.13)/1.13,0.0) * shadow;
+        let sky = mix(vec3<f32>(0.17,0.19,0.24), vec3<f32>(0.39,0.46,0.56), normal.y*0.5+0.5)
+            * (ambient / 0.72);
+        let key = max((dot(normal,light)+0.13)/1.13,0.0) * shadow * globals.lighting.w / 2.0;
         let fill = max(dot(normal,normalize(vec3<f32>(-0.7,0.35,-0.4))),0.0);
         lit = base * (sky + vec3<f32>(1.0,0.87,0.72)*key*0.86
                           + vec3<f32>(0.65,0.78,1.0)*fill*0.20)

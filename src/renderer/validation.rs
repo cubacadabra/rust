@@ -4,7 +4,7 @@ use super::{
     Globals, RenderEntity, Vertex,
     character_gpu::{CharacterRenderer, CharacterStats},
     character_material::CharacterPass,
-    targets::{Presenter, SceneTargets},
+    targets::{PostProcessor, Presenter, SceneTargets},
 };
 use glam::{Mat4, Vec3};
 use serde::Serialize;
@@ -424,6 +424,7 @@ struct TestScene {
     ui_buffer: wgpu::Buffer,
     ui_count: u32,
     targets: SceneTargets,
+    post_processor: PostProcessor,
     presenter: Presenter,
     output: wgpu::Texture,
     readback: wgpu::Buffer,
@@ -442,7 +443,15 @@ impl TestScene {
     ) -> Self {
         let device = ctx.device;
         let presenter = Presenter::new(device, format);
-        let targets = SceneTargets::new(device, width, height, samples, &presenter.layout);
+        let post_processor = PostProcessor::new(device);
+        let targets = SceneTargets::new(
+            device,
+            width,
+            height,
+            samples,
+            &post_processor,
+            &presenter.layout,
+        );
         let output = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("capture output"),
             size: wgpu::Extent3d {
@@ -488,6 +497,7 @@ impl TestScene {
             fog_color: super::color(0x9ab9be),
             color_grade: [1.0, 1.0, 1.0, 0.0],
             atmosphere: [52.0, 115.0, 0.0, 0.0],
+            lighting: [0.72, 0.72, 0.72, 2.0],
         };
         let mut world = Vec::new();
         super::add_cuboid(
@@ -558,6 +568,7 @@ impl TestScene {
             ui_buffer,
             ui_count: ui_vertices.len() as u32,
             targets,
+            post_processor,
             presenter,
             output,
             readback,
@@ -583,7 +594,7 @@ impl TestScene {
             a: 1.0,
         };
         {
-            let mut attachment = self.targets.attachment(clear);
+            let mut attachment = self.targets.world_attachment(clear);
             if !present {
                 attachment.view = &view;
             }
@@ -632,6 +643,16 @@ impl TestScene {
             pass.set_pipeline(&self.translucent);
             pass.set_vertex_buffer(0, self.world_buffer.slice(..));
             pass.draw(self.opaque_count..self.world_count, 0..1);
+        }
+        if present {
+            self.post_processor.write_globals(
+                ctx.queue,
+                super::PostGlobals {
+                    color_correction: [0.0, 0.0, 0.0, 0.0],
+                    sun_rays: [0.0, 0.0, 0.0, 0.0],
+                },
+            );
+            self.post_processor.draw(&mut encoder, &self.targets);
         }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

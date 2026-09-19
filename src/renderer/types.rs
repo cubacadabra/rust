@@ -236,9 +236,14 @@ pub(super) struct RenderWorld {
     pub(super) effect_templates: std::collections::BTreeMap<String, RenderEffectTemplate>,
     pub(super) decorations: Vec<RenderDecoration>,
     pub(super) mesh_instances: Vec<RenderMeshInstance>,
-    pub(super) exposure: f32,
-    pub(super) contrast: f32,
-    pub(super) saturation: f32,
+    /// Source-style post-process values. They intentionally apply to the
+    /// complete world image rather than being repeated in every material.
+    pub(super) color_correction: [f32; 3],
+    pub(super) outdoor_ambient: [f32; 3],
+    pub(super) sun_brightness: f32,
+    pub(super) shadow_softness: f32,
+    pub(super) sun_rays_intensity: f32,
+    pub(super) sun_rays_spread: f32,
     pub(super) fog_start: f32,
     pub(super) fog_end: f32,
     pub(super) sun_direction: [f32; 3],
@@ -270,9 +275,12 @@ impl Default for RenderWorld {
             effect_templates: std::collections::BTreeMap::new(),
             decorations: Vec::new(),
             mesh_instances: Vec::new(),
-            exposure: 1.0,
-            contrast: 1.0,
-            saturation: 1.0,
+            color_correction: [0.0, 0.0, 0.0],
+            outdoor_ambient: [0.72, 0.72, 0.72],
+            sun_brightness: 2.0,
+            shadow_softness: 0.0,
+            sun_rays_intensity: 0.0,
+            sun_rays_spread: 0.0,
             fog_start: 52.0,
             fog_end: 115.0,
             sun_direction: [-0.45, -0.82, 0.32],
@@ -322,6 +330,7 @@ pub(super) struct Globals {
     pub(super) fog_color: [f32; 4],
     pub(super) color_grade: [f32; 4],
     pub(super) atmosphere: [f32; 4],
+    pub(super) lighting: [f32; 4],
 }
 
 #[repr(C)]
@@ -330,6 +339,19 @@ pub(super) struct SkyGlobals {
     pub(super) horizon: [f32; 4],
     pub(super) zenith: [f32; 4],
     pub(super) viewport: [f32; 4],
+    /// Screen-space sun center in pixels, its elevation, and visibility.
+    pub(super) sun: [f32; 4],
+    /// Elapsed seconds and small authored atmosphere controls.
+    pub(super) clouds: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+pub(super) struct PostGlobals {
+    /// Brightness, contrast, saturation using ColorCorrection semantics.
+    pub(super) color_correction: [f32; 4],
+    /// Normalized sun center, radial intensity, and spread.
+    pub(super) sun_rays: [f32; 4],
 }
 
 pub(super) struct Scene {
@@ -391,6 +413,7 @@ pub struct Renderer {
     pub(super) sky_pipeline: wgpu::RenderPipeline,
     pub(super) sky_globals_buffer: wgpu::Buffer,
     pub(super) sky_globals_bind_group: wgpu::BindGroup,
+    pub(super) post_processor: targets::PostProcessor,
     pub(super) translucent_pipeline: wgpu::RenderPipeline,
     pub(super) world_mesh_pipeline: wgpu::RenderPipeline,
     pub(super) shadow_pipeline: wgpu::RenderPipeline,

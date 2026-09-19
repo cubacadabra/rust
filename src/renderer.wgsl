@@ -5,6 +5,7 @@ struct Globals {
     fog_color: vec4<f32>,
     color_grade: vec4<f32>,
     atmosphere: vec4<f32>,
+    lighting: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -155,7 +156,8 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
     var visibility = 0.0;
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
-            let offset = vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy;
+            let offset = vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy
+                * shadow_globals.texel_size.z;
             visibility += textureSampleCompare(shadow_map, shadow_sampler, uv + offset, depth);
         }
     }
@@ -182,7 +184,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let light_direction = normalize(-globals.sun_direction.xyz);
     let direct_light = max(dot(normal, light_direction), 0.0);
     let shadow = shadow_factor(input.world_position, normal);
-    let lighting = 0.72 + direct_light * 0.42 * shadow;
+    let lighting = dot(globals.lighting.xyz, vec3<f32>(0.33333334))
+        + direct_light * 0.21 * globals.lighting.w * shadow;
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.06;
     let lit_color = input.color.rgb * lighting + vec3<f32>(rim);
     let distance_to_camera = distance(input.world_position, globals.camera_position.xyz);

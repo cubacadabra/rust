@@ -5,6 +5,7 @@ struct Globals {
     fog_color: vec4<f32>,
     color_grade: vec4<f32>,
     atmosphere: vec4<f32>,
+    lighting: vec4<f32>,
 };
 
 @group(0) @binding(0)
@@ -117,7 +118,8 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
             visibility += textureSampleCompare(
                 shadow_map,
                 shadow_sampler,
-                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy,
+                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy
+                    * shadow_globals.texel_size.z,
                 depth,
             );
         }
@@ -133,7 +135,8 @@ fn fs_main(input: VertexOutput, @builtin(front_facing) front_facing: bool) -> @l
     let direct = max(dot(normal, light_direction), 0.0);
     let shadow = shadow_factor(input.world_position, normal);
     let rim = pow(1.0 - max(dot(normal, view_direction), 0.0), 3.0) * 0.05;
-    let lighting = 0.72 + direct * 0.42 * shadow;
+    let lighting = dot(globals.lighting.xyz, vec3<f32>(0.33333334))
+        + direct * 0.21 * globals.lighting.w * shadow;
     var albedo = vec3<f32>(1.0);
     if input.material != 0u {
         albedo = material_texture(input.material, input.world_position, normal);

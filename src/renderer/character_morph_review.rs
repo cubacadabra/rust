@@ -161,6 +161,7 @@ fn capture_morph() {
                 fog_color: [0.025, 0.027, 0.045, 1.],
                 color_grade: [1.0, 1.0, 1.0, 0.0],
                 atmosphere: [52.0, 115.0, 0.0, 0.0],
+                lighting: [0.72, 0.72, 0.72, 2.0],
             };
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: None,

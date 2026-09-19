@@ -25,9 +25,14 @@ fn samples_from_flags(
 }
 
 pub(super) struct SceneTargets {
+    /// Resolved world-only image. It is sampled by the composite pass before
+    /// UI is painted, so world grading cannot affect readable interface art.
+    pub world_color: wgpu::TextureView,
+    pub world_multisample: Option<wgpu::TextureView>,
+    /// Composited scene plus UI. This remains the app-owned capture target.
     pub color: wgpu::TextureView,
-    pub multisample: Option<wgpu::TextureView>,
     pub depth: wgpu::TextureView,
+    post_bind_group: wgpu::BindGroup,
     pub present_bind_group: wgpu::BindGroup,
 }
 impl SceneTargets {
@@ -36,6 +41,7 @@ impl SceneTargets {
         width: u32,
         height: u32,
         samples: u32,
+        post: &PostProcessor,
         layout: &wgpu::BindGroupLayout,
     ) -> Self {
         let texture = |label, format, sample_count, usage| {
@@ -61,21 +67,23 @@ impl SceneTargets {
         // Development captures read this app-owned target, never the desktop.
         #[cfg(all(feature = "studio-ui", debug_assertions))]
         let color_usage = color_usage | wgpu::TextureUsages::COPY_SRC;
-        let color = texture("resolved scene and UI", SCENE_FORMAT, 1, color_usage);
-        let multisample = (samples > 1).then(|| {
+        let world_color = texture("resolved world scene", SCENE_FORMAT, 1, color_usage);
+        let world_multisample = (samples > 1).then(|| {
             texture(
-                "multisample scene",
+                "multisample world scene",
                 SCENE_FORMAT,
                 samples,
                 wgpu::TextureUsages::RENDER_ATTACHMENT,
             )
         });
+        let color = texture("composited scene and UI", SCENE_FORMAT, 1, color_usage);
         let depth = texture(
             "scene depth",
             super::DEPTH_FORMAT,
             samples,
             wgpu::TextureUsages::RENDER_ATTACHMENT,
         );
+        let post_bind_group = post.bind_group(device, &world_color);
         let present_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("present scene"),
             layout,
@@ -85,26 +93,158 @@ impl SceneTargets {
             }],
         });
         Self {
+            world_color,
+            world_multisample,
             color,
-            multisample,
             depth,
+            post_bind_group,
             present_bind_group,
         }
     }
-    pub fn attachment(&self, clear: wgpu::Color) -> wgpu::RenderPassColorAttachment<'_> {
+    pub fn world_attachment(&self, clear: wgpu::Color) -> wgpu::RenderPassColorAttachment<'_> {
         wgpu::RenderPassColorAttachment {
-            view: self.multisample.as_ref().unwrap_or(&self.color),
+            view: self.world_multisample.as_ref().unwrap_or(&self.world_color),
             depth_slice: None,
-            resolve_target: self.multisample.as_ref().map(|_| &self.color),
+            resolve_target: self.world_multisample.as_ref().map(|_| &self.world_color),
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(clear),
-                store: if self.multisample.is_some() {
+                store: if self.world_multisample.is_some() {
                     wgpu::StoreOp::Discard
                 } else {
                     wgpu::StoreOp::Store
                 },
             },
         }
+    }
+}
+
+/// Full-frame scene grade and SunRays pass. It has no sampler dependency so
+/// every portable backend uses the same integer texel fetch path as present.
+pub(crate) struct PostProcessor {
+    layout: wgpu::BindGroupLayout,
+    pipeline: wgpu::RenderPipeline,
+    globals: wgpu::Buffer,
+}
+
+impl PostProcessor {
+    pub(super) fn new(device: &wgpu::Device) -> Self {
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("scene post-process layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let globals = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("scene post-process globals"),
+            size: std::mem::size_of::<super::PostGlobals>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("scene post-process pipeline layout"),
+            bind_group_layouts: &[Some(&layout)],
+            immediate_size: 0,
+        });
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("scene post-process shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("post.wgsl").into()),
+        });
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("scene color correction and SunRays"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: SCENE_FORMAT,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        Self {
+            layout,
+            pipeline,
+            globals,
+        }
+    }
+
+    fn bind_group(
+        &self,
+        device: &wgpu::Device,
+        world_color: &wgpu::TextureView,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("scene post-process bind group"),
+            layout: &self.layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(world_color),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.globals.as_entire_binding(),
+                },
+            ],
+        })
+    }
+
+    pub(super) fn write_globals(&self, queue: &wgpu::Queue, globals: super::PostGlobals) {
+        queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
+    }
+
+    pub(super) fn draw(&self, encoder: &mut wgpu::CommandEncoder, targets: &SceneTargets) {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("scene color correction and SunRays pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &targets.color,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &targets.post_bind_group, &[]);
+        pass.draw(0..3, 0..1);
     }
 }
 

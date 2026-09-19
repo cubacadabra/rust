@@ -3,7 +3,9 @@ use crate::character::{
     AppearanceInput, CharacterAppearance, CharacterColors, OutfitId, resolve_appearance,
 };
 use crate::engine::Engine;
-use crate::game_package::{AvatarDefinition, GamePackageDefinition, WorldDefinition};
+use crate::game_package::{
+    AvatarDefinition, DaylightDefinition, GamePackageDefinition, WorldDefinition,
+};
 use crate::types::{CharacterEntityKind, CharacterMotionSample};
 #[cfg(target_os = "ios")]
 use crate::ui::UiFrame;
@@ -361,6 +363,46 @@ fn resolve_world(
     let terrain = crate::terrain::TerrainGrid::build(&definition.terrain)
         .ok()
         .flatten();
+    let visual = &definition.world.visual;
+    let finite = |value: f32, fallback: f32| value.is_finite().then_some(value).unwrap_or(fallback);
+    let color_correction = visual.color_correction.map_or_else(
+        || {
+            // SDK 0.5 packages used multiplicative material grades. Keep
+            // their intent while moving the operation into the complete-image
+            // pass; newly authored values use the explicit source semantics.
+            [
+                finite(visual.exposure - 1.0, 0.0).clamp(-1.0, 1.0),
+                finite(visual.contrast - 1.0, 0.0).clamp(-1.0, 1.0),
+                finite(visual.saturation - 1.0, 0.0).clamp(-1.0, 1.0),
+            ]
+        },
+        |correction| {
+            [
+                finite(correction.brightness, 0.0).clamp(-1.0, 1.0),
+                finite(correction.contrast, 0.0).clamp(-1.0, 1.0),
+                finite(correction.saturation, 0.0).clamp(-1.0, 1.0),
+            ]
+        },
+    );
+    let (sun_direction, outdoor_ambient, sun_brightness, shadow_softness) = visual
+        .daylight
+        .map(|daylight| {
+            (
+                sun_direction_for_daylight(daylight),
+                daylight
+                    .outdoor_ambient
+                    .map(|value| finite(value, 0.5).clamp(0.0, 1.0)),
+                finite(daylight.brightness, 2.0).clamp(0.0, 4.0),
+                finite(daylight.shadow_softness, 0.0).clamp(0.0, 1.0),
+            )
+        })
+        .unwrap_or((visual.sun_direction, [0.72, 0.72, 0.72], 2.0, 0.0));
+    let (sun_rays_intensity, sun_rays_spread) = visual.sun_rays.map_or((0.0, 0.0), |rays| {
+        (
+            finite(rays.intensity, 0.0).clamp(0.0, 0.25),
+            finite(rays.spread, 0.0).clamp(0.0, 1.0),
+        )
+    });
     RenderWorld {
         hide_default_ground: terrain.is_some() && definition.terrain.hide_default_ground,
         terrain_material_art: definition.terrain.material_art,
@@ -502,21 +544,51 @@ fn resolve_world(
                 })
             })
             .collect(),
-        exposure: definition.world.visual.exposure.clamp(0.25, 3.0),
-        contrast: definition.world.visual.contrast.clamp(0.25, 3.0),
-        saturation: definition.world.visual.saturation.clamp(0.0, 3.0),
+        color_correction,
+        outdoor_ambient,
+        sun_brightness,
+        shadow_softness,
+        sun_rays_intensity,
+        sun_rays_spread,
         fog_start: definition.world.visual.fog_start.max(1.0),
         fog_end: definition
             .world
             .visual
             .fog_end
             .max(definition.world.visual.fog_start + 1.0),
-        sun_direction: definition.world.visual.sun_direction,
+        sun_direction,
         presentation_bounds: definition
             .world
             .presentation_bounds
             .map(|bounds| (bounds.minimum, bounds.maximum)),
     }
+}
+
+/// Returns the direction light travels from the sky to the world. The
+/// day/latitude calculation is intentionally small and deterministic: it
+/// gives portable morning directionality without importing a host sky model.
+fn sun_direction_for_daylight(daylight: DaylightDefinition) -> [f32; 3] {
+    let time = if daylight.time_of_day.is_finite() {
+        daylight.time_of_day.rem_euclid(24.0)
+    } else {
+        12.0
+    };
+    let latitude = if daylight.geographic_latitude.is_finite() {
+        daylight.geographic_latitude.clamp(-89.0, 89.0).to_radians()
+    } else {
+        0.0
+    };
+    let hour_angle = ((time - 12.0) * 15.0).to_radians();
+    // Equinox declination makes the two authored inputs sufficient while
+    // retaining the expected low, long-shadowed early-morning sun.
+    let elevation = (latitude.cos() * hour_angle.cos()).asin();
+    let azimuth = hour_angle.sin().atan2(hour_angle.cos() * latitude.sin());
+    let toward_sun = [
+        azimuth.sin() * elevation.cos(),
+        elevation.sin(),
+        azimuth.cos() * elevation.cos(),
+    ];
+    [-toward_sun[0], -toward_sun[1], -toward_sun[2]]
 }
 
 fn resolve_avatar_styles(package: &GamePackageDefinition) -> (AvatarStyle, Vec<AvatarStyle>) {
@@ -649,6 +721,7 @@ mod tests {
     use super::*;
     use crate::character::definition::{EquipmentItem, EquipmentSlot};
     use crate::character::{BodyId, FacePreset};
+    use crate::game_package::DaylightDefinition;
 
     #[test]
     fn appearance_keeps_multiple_registered_equipment_assets() {
@@ -676,5 +749,20 @@ mod tests {
         assert_eq!(assets.len(), 2);
         assert_eq!(assets[0].as_str(), "cuba:headwear/test-top-hat.v1");
         assert_eq!(assets[1].as_str(), "cuba:headwear/headphones.v1");
+    }
+
+    #[test]
+    fn morning_daylight_has_a_low_visible_sun() {
+        let direction = sun_direction_for_daylight(DaylightDefinition {
+            time_of_day: 6.5,
+            geographic_latitude: 45.0,
+            brightness: 2.0,
+            outdoor_ambient: [0.5; 3],
+            shadow_softness: 0.5,
+        });
+        // `sun_direction` is the light travel direction; a negative Y means
+        // a sun above the horizon and therefore a visible disk/long shadows.
+        assert!(direction.iter().all(|value| value.is_finite()));
+        assert!(direction[1] < -0.01 && direction[1] > -0.2);
     }
 }

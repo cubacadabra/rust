@@ -24,6 +24,39 @@ fn shadow_light_direction(sun_direction: [f32; 3]) -> Vec3 {
     }
 }
 
+fn screen_sun(
+    view_projection: Mat4,
+    camera: Vec3,
+    sun_direction: [f32; 3],
+    viewport: (f32, f32, f32, f32),
+    output: (f32, f32),
+) -> ([f32; 4], [f32; 4]) {
+    let toward_sun = shadow_light_direction(sun_direction);
+    let clip = view_projection * (camera + toward_sun * 180.0).extend(1.0);
+    let ndc = (clip.w.abs() > 0.0001)
+        .then(|| clip.truncate() / clip.w)
+        .unwrap_or(Vec3::ZERO);
+    let visible = f32::from(
+        clip.w > 0.0001
+            && ndc.x.abs() < 1.08
+            && ndc.y.abs() < 1.08
+            && ndc.z >= 0.0
+            && ndc.z <= 1.0
+            && toward_sun.y > -0.08,
+    );
+    let pixel = [
+        viewport.0 + (ndc.x * 0.5 + 0.5) * viewport.2,
+        viewport.1 + (0.5 - ndc.y * 0.5) * viewport.3,
+    ];
+    let normalized = [
+        pixel[0] / output.0.max(1.0),
+        pixel[1] / output.1.max(1.0),
+        visible,
+        0.0,
+    ];
+    ([pixel[0], pixel[1], toward_sun.y, visible], normalized)
+}
+
 fn vertex_capacity_for(required: usize, max_buffer_size: u64) -> Option<usize> {
     if required == 0 {
         return Some(0);
@@ -338,6 +371,13 @@ impl Renderer {
         // presentationBounds. Review cameras are diagnostic views, so keep
         // them clear without changing the package's gameplay atmosphere.
         let (fog_start, fog_end) = self.review_fog_range();
+        let (sky_sun, post_sun) = screen_sun(
+            view_projection,
+            camera_position,
+            self.scene.world.sun_direction,
+            world_viewport,
+            (self.width, self.height),
+        );
         let globals = Globals {
             view_projection: view_projection.to_cols_array_2d(),
             camera_position: camera_position.extend(1.0).to_array(),
@@ -346,13 +386,16 @@ impl Renderer {
                 .extend(0.0)
                 .to_array(),
             fog_color: self.scene.world.palette.sky,
-            color_grade: [
-                self.scene.world.exposure,
-                self.scene.world.contrast,
-                self.scene.world.saturation,
-                0.0,
-            ],
+            // The post-process applies color correction once after the sky,
+            // terrain, meshes, characters, and fog share one image.
+            color_grade: [1.0, 1.0, 1.0, 0.0],
             atmosphere: [fog_start, fog_end, 0.0, 0.0],
+            lighting: [
+                self.scene.world.outdoor_ambient[0],
+                self.scene.world.outdoor_ambient[1],
+                self.scene.world.outdoor_ambient[2],
+                self.scene.world.sun_brightness,
+            ],
         };
         let sky = self.scene.world.palette.sky;
         let sky_globals = super::SkyGlobals {
@@ -364,6 +407,8 @@ impl Renderer {
                 world_viewport.2,
                 world_viewport.3,
             ],
+            sun: sky_sun,
+            clouds: [self.scene.elapsed, 0.0, 0.82, 0.0],
         };
         let shadow_view_projection = self.shadow_view_projection(target);
         let shadow_globals = super::ShadowGlobals {
@@ -371,8 +416,22 @@ impl Renderer {
             texel_size: [
                 1.0 / super::device::SHADOW_MAP_SIZE as f32,
                 1.0 / super::device::SHADOW_MAP_SIZE as f32,
+                1.0 + self.scene.world.shadow_softness * 1.5,
                 0.0,
+            ],
+        };
+        let post_globals = super::PostGlobals {
+            color_correction: [
+                self.scene.world.color_correction[0],
+                self.scene.world.color_correction[1],
+                self.scene.world.color_correction[2],
                 0.0,
+            ],
+            sun_rays: [
+                post_sun[0],
+                post_sun[1],
+                self.scene.world.sun_rays_intensity * post_sun[2],
+                self.scene.world.sun_rays_spread,
             ],
         };
         let dynamic_vertices = self.build_dynamic_vertices();
@@ -546,6 +605,7 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&shadow_globals),
         );
+        self.post_processor.write_globals(&self.queue, post_globals);
 
         let frame = if offscreen {
             None
@@ -643,7 +703,7 @@ impl Renderer {
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra world pass"),
-                color_attachments: &[Some(self.targets.attachment(wgpu::Color {
+                color_attachments: &[Some(self.targets.world_attachment(wgpu::Color {
                     r: self.scene.world.palette.sky[0] as f64,
                     g: self.scene.world.palette.sky[1] as f64,
                     b: self.scene.world.palette.sky[2] as f64,
@@ -733,6 +793,7 @@ impl Renderer {
                 pass.draw(0..self.translucent_vertices.len() as u32, 0..1);
             }
         }
+        self.post_processor.draw(&mut encoder, &self.targets);
         if !ui_vertices.is_empty() {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra UI pass"),

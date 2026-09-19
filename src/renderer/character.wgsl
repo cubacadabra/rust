@@ -1,7 +1,7 @@
 struct Globals {
     view_projection: mat4x4<f32>, camera_position: vec4<f32>,
     sun_direction: vec4<f32>, fog_color: vec4<f32>,
-    color_grade: vec4<f32>, atmosphere: vec4<f32>,
+    color_grade: vec4<f32>, atmosphere: vec4<f32>, lighting: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> globals: Globals;
 
@@ -56,7 +56,8 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
             visibility += textureSampleCompare(
                 shadow_map,
                 shadow_sampler,
-                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy,
+                uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy
+                    * shadow_globals.texel_size.z,
                 depth,
             );
         }
@@ -246,16 +247,18 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
     let half_vector = normalize(light + view);
     let shadow = shadow_factor(input.world, normal);
     let roughness = clamp(input.material.x, 0.08, 1.0);
-    let hemisphere = mix(0.42, 0.72, normal.y * 0.5 + 0.5);
-    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.46 * shadow;
+    let ambient = dot(globals.lighting.xyz, vec3<f32>(0.33333334));
+    let hemisphere = mix(ambient * 0.58, ambient, normal.y * 0.5 + 0.5);
+    let diffuse = hemisphere + max(dot(normal, light), 0.0) * 0.23 * globals.lighting.w * shadow;
     let specular = pow(max(dot(normal, half_vector), 0.0), mix(100.0, 4.0, roughness)) * input.material.y * shadow;
     let rim = pow(1.0 - max(dot(normal, view), 0.0), 3.0) * 0.025;
     let base = decode_srgb(input.tint.rgb);
     var lit = base * diffuse + vec3<f32>(specular + rim);
     if input.material.w >= 8.0 {
         let wrapped = max((dot(normal,light)+0.18)/1.18,0.0) * shadow;
-        let sky = mix(vec3<f32>(0.18,0.22,0.28),vec3<f32>(0.43,0.52,0.62),normal.y*0.5+0.5);
-        lit = base * (sky + vec3<f32>(1.0,0.89,0.73)*wrapped*0.92) * input.occlusion
+        let sky = mix(vec3<f32>(0.18,0.22,0.28),vec3<f32>(0.43,0.52,0.62),normal.y*0.5+0.5)
+            * (ambient / 0.72);
+        lit = base * (sky + vec3<f32>(1.0,0.89,0.73)*wrapped*0.46*globals.lighting.w) * input.occlusion
             + vec3<f32>(1.0,0.94,0.84)*specular + base*rim*1.4;
         if input.material.w == 11.0 {
             lit += base*vec3<f32>(0.14,0.055,0.025)*pow(1.0-abs(dot(normal,light)),3.0);
