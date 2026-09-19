@@ -1,6 +1,6 @@
 use crate::engine::Engine;
 use crate::math::horizontal_distance;
-use crate::types::{AgentPhase, LaunchPadPhase};
+use crate::types::{AgentPhase, Input, LaunchPadPhase};
 use crate::world::{LaunchPad, Portal};
 
 impl Engine {
@@ -35,6 +35,11 @@ impl Engine {
         {
             self.debug_teleport(request);
         }
+
+        // World requests are deliberately applied only after all script
+        // callbacks for this tick have returned. A world entry queues its
+        // spawn notification for a later tick, preventing callback recursion.
+        self.apply_script_world_transition();
 
         let commands = self
             .script
@@ -141,11 +146,15 @@ impl Engine {
         self.active_world = portal.destination;
         if let Some(world_id) = self.world_ids.get(portal.destination).cloned() {
             self.ui.borrow_mut().set_world_id(&world_id);
+            if let Some(script) = &self.script {
+                script.set_world_id(&world_id);
+            }
         }
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.terrain = world.terrain;
+        self.static_collision = world.static_collision;
         self.physics = world.physics;
         self.health = world.health;
         self.respawn = world.respawn;
@@ -158,6 +167,7 @@ impl Engine {
         self.pending_reconciliation = [0.0; 3];
         self.player.position = portal.destination_spawn;
         self.player.velocity = [0.0; 3];
+        self.input = Input::default();
         self.player.grounded = true;
         self.player.climbing = false;
         self.player_dead = false;
@@ -177,6 +187,7 @@ impl Engine {
         self.player.facing_yaw = portal.destination_yaw;
         self.target_yaw = portal.destination_yaw;
         // Portals reset heading but preserve the user's orbit elevation.
+        self.apply_authored_world_camera();
         self.agents.clear();
         self.remote_players.clear();
         self.next_spawn_at = f32::MAX;
@@ -190,9 +201,12 @@ impl Engine {
             return;
         };
         self.enter_session(source_pad, world.spawn);
+        self.input = Input::default();
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.terrain = world.terrain;
+        self.static_collision = world.static_collision;
         self.physics = world.physics;
         self.health = world.health;
         self.respawn = world.respawn;
@@ -213,10 +227,14 @@ impl Engine {
         self.queue_player_spawn();
         if let Some(world_id) = self.world_ids.get(destination).cloned() {
             self.ui.borrow_mut().set_world_id(&world_id);
+            if let Some(script) = &self.script {
+                script.set_world_id(&world_id);
+            }
         }
         self.world_event_id = self.world_event_id.wrapping_add(1);
         self.last_world_source_pad = source_pad;
         self.last_world_destination = destination;
+        self.apply_authored_world_camera();
     }
 
     pub(super) fn count_launch_pad_occupants(&self, index: usize) -> usize {

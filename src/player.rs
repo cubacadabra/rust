@@ -13,6 +13,9 @@ pub(crate) fn walk_cycle_delta(distance: f32) -> f32 {
     distance.max(0.0) / WALK_CYCLE_DISTANCE * std::f32::consts::TAU
 }
 
+const MAX_STATIC_SUPPORT_STEP: f32 = 0.75;
+const STATIC_SUPPORT_CLEARANCE: f32 = 0.04;
+
 impl Engine {
     pub(crate) fn update_player(&mut self, delta: f32) {
         if self.player_dead {
@@ -172,22 +175,79 @@ impl Engine {
     }
 
     fn move_player_horizontally(&mut self, delta: f32) {
-        let limit = WORLD_LIMIT - PLAYER_RADIUS;
         let mut candidate = self.player.position;
-        candidate[0] = (candidate[0] + self.player.velocity[0] * delta).clamp(-limit, limit);
-        if self.player_can_occupy(candidate) {
-            self.player.position[0] = candidate[0];
+        let (minimum_x, maximum_x) = self.horizontal_limits(0);
+        candidate[0] = (candidate[0] + self.player.velocity[0] * delta).clamp(minimum_x, maximum_x);
+        if let Some(resolved) = self.resolve_horizontal_candidate(candidate) {
+            self.player.position = resolved;
         } else {
             self.player.velocity[0] = 0.0;
         }
 
         candidate = self.player.position;
-        candidate[2] = (candidate[2] + self.player.velocity[2] * delta).clamp(-limit, limit);
-        if self.player_can_occupy(candidate) {
-            self.player.position[2] = candidate[2];
+        let (minimum_z, maximum_z) = self.horizontal_limits(1);
+        candidate[2] = (candidate[2] + self.player.velocity[2] * delta).clamp(minimum_z, maximum_z);
+        if let Some(resolved) = self.resolve_horizontal_candidate(candidate) {
+            self.player.position = resolved;
         } else {
             self.player.velocity[2] = 0.0;
         }
+    }
+
+    fn horizontal_limits(&self, axis: usize) -> (f32, f32) {
+        let (minimum, maximum) = self
+            .physics
+            .horizontal_bounds
+            .map_or((-WORLD_LIMIT, WORLD_LIMIT), |bounds| {
+                (bounds.minimum[axis], bounds.maximum[axis])
+            });
+        let inset_minimum = minimum + PLAYER_RADIUS;
+        let inset_maximum = maximum - PLAYER_RADIUS;
+        if inset_minimum <= inset_maximum {
+            (inset_minimum, inset_maximum)
+        } else {
+            let middle = (minimum + maximum) * 0.5;
+            (middle, middle)
+        }
+    }
+
+    fn resolve_horizontal_candidate(&self, candidate: [f32; 3]) -> Option<[f32; 3]> {
+        if self.player_can_occupy(candidate) {
+            return Some(candidate);
+        }
+        if !self.player.grounded {
+            return None;
+        }
+        let collision = self.static_collision.as_ref()?;
+        let delta_x = candidate[0] - self.player.position[0];
+        let delta_z = candidate[2] - self.player.position[2];
+        let length = delta_x.hypot(delta_z);
+        let probe = if length > 0.0001 {
+            [
+                candidate[0] + delta_x / length * PLAYER_RADIUS,
+                candidate[2] + delta_z / length * PLAYER_RADIUS,
+            ]
+        } else {
+            [candidate[0], candidate[2]]
+        };
+        // Probe one capsule radius into the attempted step as well as under
+        // the center. At a raised plank edge the center cannot overlap the top
+        // until the capsule clears the vertical lip, but the forward support
+        // still proves this is a bounded step rather than a climb up a wall.
+        let support = [[candidate[0], candidate[2]], probe]
+            .into_iter()
+            .filter_map(|[x, z]| {
+                collision.support_height(
+                    x,
+                    z,
+                    candidate[1] - MAX_STATIC_SUPPORT_STEP,
+                    candidate[1] + MAX_STATIC_SUPPORT_STEP - STATIC_SUPPORT_CLEARANCE,
+                )
+            })
+            .max_by(f32::total_cmp)?;
+        let mut stepped = candidate;
+        stepped[1] = support.max(candidate[1]) + STATIC_SUPPORT_CLEARANCE;
+        self.player_can_occupy(stepped).then_some(stepped)
     }
 
     fn apply_pending_reconciliation(&mut self, delta: f32) {
@@ -251,6 +311,21 @@ impl Engine {
                 self.player.grounded = true;
                 return;
             }
+            if let Some(height) = self.static_collision.as_ref().and_then(|collision| {
+                collision.support_height(
+                    self.player.position[0],
+                    self.player.position[2],
+                    next_feet - epsilon,
+                    previous_feet + epsilon,
+                )
+            }) && previous_feet >= height - epsilon
+                && next_feet <= height + epsilon
+            {
+                self.player.position[1] = height;
+                self.player.velocity[1] = 0.0;
+                self.player.grounded = true;
+                return;
+            }
             if let Some(terrain) = &self.terrain {
                 let mut candidate = self.player.position;
                 candidate[1] = next_feet;
@@ -274,6 +349,27 @@ impl Engine {
                     self.player.position[1] = clear;
                     self.player.velocity[1] = 0.0;
                     self.player.grounded = normal[1] > 0.45;
+                    return;
+                }
+            }
+            if let Some(collision) = &self.static_collision {
+                let mut candidate = self.player.position;
+                candidate[1] = next_feet;
+                if !collision.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                    let mut blocked = next_feet;
+                    let mut clear = previous_feet;
+                    for _ in 0..14 {
+                        let middle = (blocked + clear) * 0.5;
+                        candidate[1] = middle;
+                        if collision.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                            clear = middle;
+                        } else {
+                            blocked = middle;
+                        }
+                    }
+                    self.player.position[1] = clear;
+                    self.player.velocity[1] = 0.0;
+                    self.player.grounded = false;
                     return;
                 }
             }
@@ -305,6 +401,23 @@ impl Engine {
                 self.player.grounded = false;
                 return;
             }
+            if !self.player.climbing
+                && let Some(height) = self.static_collision.as_ref().and_then(|collision| {
+                    collision.ceiling_height(
+                        self.player.position[0],
+                        self.player.position[2],
+                        previous_head - epsilon,
+                        next_head + epsilon,
+                    )
+                })
+                && previous_head <= height + epsilon
+                && next_head >= height - epsilon
+            {
+                self.player.position[1] = height - BODY_HEIGHT;
+                self.player.velocity[1] = 0.0;
+                self.player.grounded = false;
+                return;
+            }
             if let Some(terrain) = &self.terrain {
                 let mut candidate = self.player.position;
                 candidate[1] = next_feet;
@@ -326,6 +439,27 @@ impl Engine {
                     return;
                 }
             }
+            if let Some(collision) = &self.static_collision {
+                let mut candidate = self.player.position;
+                candidate[1] = next_feet;
+                if !collision.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                    let mut clear = previous_feet;
+                    let mut blocked = next_feet;
+                    for _ in 0..14 {
+                        let middle = (clear + blocked) * 0.5;
+                        candidate[1] = middle;
+                        if collision.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT) {
+                            clear = middle;
+                        } else {
+                            blocked = middle;
+                        }
+                    }
+                    self.player.position[1] = clear;
+                    self.player.velocity[1] = 0.0;
+                    self.player.grounded = false;
+                    return;
+                }
+            }
         }
 
         self.player.position[1] = next_feet;
@@ -333,7 +467,7 @@ impl Engine {
     }
 
     fn player_can_occupy(&self, candidate: [f32; 3]) -> bool {
-        let feet = self.player.position[1];
+        let feet = candidate[1];
         let head = feet + BODY_HEIGHT;
         self.obstacles.iter().all(|obstacle| {
             if feet >= obstacle.top - 0.05 || head <= obstacle.bottom + 0.05 {
@@ -344,6 +478,9 @@ impl Engine {
             .terrain
             .as_ref()
             .is_none_or(|terrain| terrain.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT))
+            && self.static_collision.as_ref().is_none_or(|collision| {
+                collision.capsule_clear(candidate, PLAYER_RADIUS, BODY_HEIGHT)
+            })
     }
 
     fn check_for_void_death(&mut self) {

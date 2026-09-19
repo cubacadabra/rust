@@ -23,6 +23,15 @@ pub(crate) struct ScriptState {
     pub(crate) lobby_status: String,
     pub(crate) lobby_enabled: Option<bool>,
     pub(crate) session_name: Option<String>,
+    /// The package world currently presented to this script. This is kept in
+    /// script state rather than captured by a Lua closure so host world
+    /// transitions can update the value without rebuilding the VM.
+    pub(crate) world_id: String,
+    /// Package-owned world IDs accepted by `api.world:enter`.
+    pub(crate) world_ids: Vec<String>,
+    /// A transition requested by game code. Requests are consumed by the
+    /// engine after the current callback/tick returns.
+    pub(crate) world_transition: Option<String>,
     #[cfg(debug_assertions)]
     pub(crate) debug_teleport: Option<DebugTeleportRequest>,
     pub(crate) last_error: Option<String>,
@@ -110,12 +119,30 @@ fn execute_with_budget<T>(
 
 impl GameScript {
     pub(crate) fn load(source: &str, ui: Rc<RefCell<UiRuntime>>) -> Result<Self, String> {
-        Self::load_inner(source, ui).map_err(|error| error.to_string())
+        Self::load_with_worlds(source, ui, "", Vec::new())
     }
 
-    fn load_inner(source: &str, ui: Rc<RefCell<UiRuntime>>) -> lua::Result<Self> {
+    pub(crate) fn load_with_worlds(
+        source: &str,
+        ui: Rc<RefCell<UiRuntime>>,
+        world_id: &str,
+        world_ids: Vec<String>,
+    ) -> Result<Self, String> {
+        Self::load_inner(source, ui, world_id, world_ids).map_err(|error| error.to_string())
+    }
+
+    fn load_inner(
+        source: &str,
+        ui: Rc<RefCell<UiRuntime>>,
+        world_id: &str,
+        world_ids: Vec<String>,
+    ) -> lua::Result<Self> {
         let lua = lua::Lua::new();
-        let state = Rc::new(RefCell::new(ScriptState::default()));
+        let state = Rc::new(RefCell::new(ScriptState {
+            world_id: world_id.to_owned(),
+            world_ids,
+            ..ScriptState::default()
+        }));
         let scheduler = Rc::new(RefCell::new(TaskScheduler::default()));
         let execution_budget = Rc::new(RefCell::new(ExecutionBudget::default()));
         let interrupt_budget = Rc::clone(&execution_budget);
@@ -278,6 +305,14 @@ impl GameScript {
     #[cfg(debug_assertions)]
     pub(crate) fn take_debug_teleport(&self) -> Option<DebugTeleportRequest> {
         self.state.borrow_mut().debug_teleport.take()
+    }
+
+    pub(crate) fn set_world_id(&self, world_id: &str) {
+        self.state.borrow_mut().world_id = world_id.to_owned();
+    }
+
+    pub(crate) fn take_world_transition(&self) -> Option<String> {
+        self.state.borrow_mut().world_transition.take()
     }
 
     fn dispatch_ui_event(&self, event: &UiEvent) -> Result<(), String> {
@@ -629,6 +664,44 @@ fn create_api(
     )?;
     api.set("session", session)?;
 
+    let world = create_table(lua)?;
+    let world_state = Rc::clone(&state);
+    world.set(
+        "get_id",
+        lua.create_function(move |_, _world: lua::Table| {
+            Ok(world_state.borrow().world_id.clone())
+        })?,
+    )?;
+    let world_state = Rc::clone(&state);
+    world.set(
+        "enter",
+        lua.create_function(move |_, (_world, world_id): (lua::Table, String)| {
+            if world_id.trim().is_empty() {
+                return Err(lua::Error::runtime(
+                    "world:enter requires a non-empty package world id",
+                ));
+            }
+            let mut state = world_state.borrow_mut();
+            if !state
+                .world_ids
+                .iter()
+                .any(|candidate| candidate == &world_id)
+            {
+                return Err(lua::Error::runtime(format!(
+                    "world:enter cannot find package world `{world_id}`",
+                )));
+            }
+            if state.world_transition.is_some() {
+                return Err(lua::Error::runtime(
+                    "world:enter already has a transition queued",
+                ));
+            }
+            state.world_transition = Some(world_id);
+            Ok(())
+        })?,
+    )?;
+    api.set("world", world)?;
+
     let ui = create_table(lua)?;
     let document_runtime = Rc::clone(&ui_runtime);
     ui.set(
@@ -897,6 +970,21 @@ mod tests {
         (script, ui)
     }
 
+    fn load_with_worlds(
+        source: &str,
+        world_id: &str,
+        world_ids: &[&str],
+    ) -> Result<(GameScript, Rc<RefCell<UiRuntime>>), String> {
+        let ui = Rc::new(RefCell::new(UiRuntime::default()));
+        let script = GameScript::load_with_worlds(
+            source,
+            Rc::clone(&ui),
+            world_id,
+            world_ids.iter().map(|id| (*id).to_owned()).collect(),
+        )?;
+        Ok((script, ui))
+    }
+
     #[test]
     fn configured_external_game_script_compiles() {
         let Ok(path) = std::env::var("CUBACADABRA_TEST_GAME_SCRIPT") else {
@@ -904,6 +992,42 @@ mod tests {
         };
         let source = std::fs::read_to_string(&path).expect("configured game script should exist");
         load(&source);
+    }
+
+    #[test]
+    fn world_api_reads_current_id_and_queues_a_package_transition() {
+        let source = r#"
+            local game = {}
+            function game.on_start(api)
+                api.lobby:set_status(api.world:get_id())
+                api.world:enter("maze")
+            end
+            return game
+        "#;
+        let (script, _) = load_with_worlds(source, "lobby", &["lobby", "maze"])
+            .expect("world API script should load");
+
+        assert_eq!(script.state().borrow().lobby_status, "lobby");
+        assert_eq!(script.take_world_transition().as_deref(), Some("maze"));
+    }
+
+    #[test]
+    fn world_api_rejects_invalid_ids_without_queueing_a_transition() {
+        for requested_id in ["", "   ", "missing"] {
+            let source = format!(
+                r#"
+                    local game = {{}}
+                    function game.on_tick(api, delta)
+                        api.world:enter("{requested_id}")
+                    end
+                    return game
+                "#
+            );
+            let (script, _) = load_with_worlds(&source, "lobby", &["lobby", "maze"])
+                .expect("invalid world request should not fail script loading");
+            assert!(script.tick(1.0 / 60.0).is_err());
+            assert!(script.take_world_transition().is_none());
+        }
     }
 
     #[test]

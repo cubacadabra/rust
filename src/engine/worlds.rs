@@ -3,11 +3,13 @@ use crate::engine::interactions::InteractionRuntime;
 use crate::game_package::GamePackageDefinition;
 use crate::math::horizontal_distance;
 use crate::terrain::TerrainGrid;
-use crate::types::{AgentPhase, BuildBlock};
+use crate::types::{AgentPhase, BuildBlock, Input};
 use crate::world::{
-    Checkpoint, HazardVolume, HealthSettings, LadderAxis, LadderVolume, LaunchPad, PhysicsSettings,
-    Portal, RespawnMode, RespawnSettings, RuntimeWorld, SafeZone, block_bounds, slot_offset,
+    Checkpoint, HazardVolume, HealthSettings, HorizontalBounds, LadderAxis, LadderVolume,
+    LaunchPad, PhysicsSettings, Portal, RespawnMode, RespawnSettings, RuntimeWorld, SafeZone,
+    WorldCamera, block_bounds, slot_offset,
 };
+use std::sync::Arc;
 
 impl Engine {
     pub(crate) fn set_launch_pad(
@@ -131,14 +133,23 @@ impl Engine {
         let Some(world) = self.worlds.get(index).cloned() else {
             return false;
         };
+        // Package initialization and host-only world setup do not emit a
+        // client transition. Once game code is loaded, an explicit world
+        // entry (including re-entering the current world) is observable
+        // through the same event cursor as portal travel.
+        let emit_world_event = self.script.is_some();
         self.active_world = index;
         if let Some(world_id) = self.world_ids.get(index).cloned() {
             self.ui.borrow_mut().set_world_id(&world_id);
+            if let Some(script) = &self.script {
+                script.set_world_id(&world_id);
+            }
         }
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.terrain = world.terrain;
+        self.static_collision = world.static_collision;
         self.physics = world.physics;
         self.health = world.health;
         self.respawn = world.respawn;
@@ -153,6 +164,9 @@ impl Engine {
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
         self.player.climbing = false;
+        self.player.moving = false;
+        self.player.sprinting = false;
+        self.input = Input::default();
         self.player_dead = false;
         self.player_max_health = self.health.max.max(1.0);
         self.player_health = self.health.start.clamp(0.0, self.player_max_health);
@@ -165,9 +179,17 @@ impl Engine {
         self.checkpoint_index = usize::MAX;
         self.agents.clear();
         self.next_spawn_at = self.elapsed + 3.0;
+        if emit_world_event {
+            self.portal_cooldown_until = self.elapsed + 0.6;
+        }
         if self.script.is_some() {
             self.queue_player_spawn();
         }
+        if emit_world_event {
+            self.world_event_id = self.world_event_id.wrapping_add(1);
+            self.last_world_destination = index;
+        }
+        self.apply_authored_world_camera();
         self.write_snapshot();
         true
     }
@@ -191,6 +213,10 @@ impl Engine {
         if !self.start_world(index) {
             return;
         }
+        // Debug teleports intentionally place the player on authored portal
+        // destinations for local progression tests; do not apply travel's
+        // anti-recursion cooldown to this development-only cheat.
+        self.portal_cooldown_until = 0.0;
         self.player.position = request.position;
         self.player.velocity = [0.0; 3];
         self.player.grounded = true;
@@ -198,7 +224,6 @@ impl Engine {
         self.view_yaw = request.yaw;
         self.target_yaw = request.yaw;
         self.respawn_position = request.position;
-        self.world_event_id = self.world_event_id.wrapping_add(1);
         self.last_world_destination = index;
         self.write_snapshot();
     }
@@ -320,6 +345,19 @@ impl Engine {
         let Ok(terrain_grids) = terrain_grids else {
             return false;
         };
+        let collision_grids = entries
+            .iter()
+            .map(|(_, definition)| {
+                let Some(definition) = definition.collision.as_ref() else {
+                    return Ok(None);
+                };
+                crate::static_collision::StaticCollision::build(definition)
+                    .map(|collision| collision.map(Arc::new))
+            })
+            .collect::<Result<Vec<_>, _>>();
+        let Ok(collision_grids) = collision_grids else {
+            return false;
+        };
         let world_indices = entries
             .iter()
             .enumerate()
@@ -327,8 +365,8 @@ impl Engine {
             .collect::<std::collections::BTreeMap<_, _>>();
         let worlds = entries
             .iter()
-            .zip(terrain_grids)
-            .map(|((id, definition), terrain)| {
+            .zip(terrain_grids.into_iter().zip(collision_grids))
+            .map(|((id, definition), (terrain, static_collision))| {
                 let launch_pads = definition
                     .launch_pads
                     .iter()
@@ -367,6 +405,12 @@ impl Engine {
                     death_y: definition.world.physics.death_y,
                     respawn_delay: definition.world.physics.respawn_delay.max(0.0),
                     climb_speed: definition.world.physics.climb_speed.max(0.0),
+                    horizontal_bounds: definition.world.physics.horizontal_bounds.map(|bounds| {
+                        HorizontalBounds {
+                            minimum: bounds.minimum,
+                            maximum: bounds.maximum,
+                        }
+                    }),
                 };
                 let health = HealthSettings {
                     max: definition.world.health.max.max(1.0),
@@ -470,7 +514,13 @@ impl Engine {
                     InteractionRuntime::from_definitions(&definition.interactions).world;
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
+                    camera: definition.world.camera.map(|camera| WorldCamera {
+                        yaw: camera.yaw,
+                        pitch: camera.pitch,
+                        distance: camera.distance,
+                    }),
                     terrain,
+                    static_collision,
                     physics,
                     health,
                     respawn,

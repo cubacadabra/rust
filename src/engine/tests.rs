@@ -1573,6 +1573,173 @@ fn luau_can_switch_a_lobby_package_to_direct_startup() {
 }
 
 #[test]
+fn luau_world_api_queues_package_transition_after_callback() {
+    let manifest = r#"
+        {
+            "sdkVersion":"0.5.0",
+            "startWorld":"lobby",
+            "world":{"spawn":[0,0,0]},
+            "worlds":{"maze":{"world":{"spawn":[4,0,8]}}}
+        }
+    "#;
+    let script = r#"
+        local game = {}
+        function game.on_start(api)
+            api.world:enter("maze")
+        end
+        function game.on_tick(api, delta)
+            api.lobby:set_status(api.world:get_id())
+        end
+        return game
+    "#;
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(manifest));
+    assert!(engine.load_script_source(script));
+    assert_eq!(engine.active_world_id(), Some("lobby"));
+
+    engine.step(1.0 / 60.0);
+    assert_eq!(engine.active_world_id(), Some("maze"));
+    assert_eq!(engine.player.position, [4.0, 0.0, 8.0]);
+
+    engine.step(1.0 / 60.0);
+    assert_eq!(
+        engine
+            .script
+            .as_ref()
+            .expect("world script should remain loaded")
+            .state()
+            .borrow()
+            .lobby_status,
+        "maze"
+    );
+}
+
+#[test]
+fn authored_world_camera_applies_on_load_entry_and_reset() {
+    let manifest = r#"
+        {
+            "sdkVersion":"0.5.0",
+            "startWorld":"lobby",
+            "world":{"spawn":[0,0,0],"camera":{"yaw":1.25,"pitch":0.4,"distance":18}},
+            "worlds":{"room":{"world":{"spawn":[4,0,8],"camera":{"yaw":-2,"pitch":-0.3,"distance":12}}}}
+        }
+    "#;
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(manifest));
+    assert_eq!(engine.camera(), [1.25, 0.4, 18.0]);
+
+    engine.view_yaw = 0.0;
+    engine.view_pitch = 0.0;
+    engine.camera_distance = 2.0;
+    engine.reset_view();
+    assert_eq!(engine.camera(), [1.25, 0.4, 18.0]);
+
+    engine.view_yaw = 0.2;
+    engine.view_pitch = -0.2;
+    engine.target_yaw = 0.3;
+    engine.target_pitch = -0.1;
+    engine.camera_distance = 7.0;
+    engine.target_camera_distance = 8.0;
+    let snapshot = engine.capture_snapshot().expect("camera snapshot");
+    engine.reset_view();
+    engine
+        .restore_snapshot(&snapshot)
+        .expect("camera snapshot should restore");
+    assert_eq!(engine.camera(), [0.2, -0.2, 7.0]);
+
+    engine.script = None;
+    assert!(engine.start_world_by_id("room"));
+    assert_eq!(engine.camera(), [-2.0, -0.3, 12.0]);
+}
+
+#[test]
+fn luau_world_travel_notifies_once_and_spawn_observes_destination_id() {
+    let manifest = r#"
+        {
+            "startWorld":"lobby",
+            "world":{"spawn":[0,0,0]},
+            "worlds":{"room":{"world":{"spawn":[4,0,8]}}}
+        }
+    "#;
+    let script = r#"
+        local game = {}
+        function game.on_start(api)
+            api.world:enter("room")
+        end
+        function game.on_tick(api, delta)
+            api.lobby:set_status("tick:" .. api.world:get_id())
+        end
+        function game.on_player_event(api, event)
+            if event.kind == "spawn" then
+                api.session:start("spawn:" .. api.world:get_id(), {})
+            end
+        end
+        return game
+    "#;
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(manifest));
+    assert!(engine.load_script_source(script));
+    engine.input.forward = 1.0;
+    engine.input.strafe = -1.0;
+    engine.input.sprint = true;
+    engine.input.jump = true;
+
+    engine.step(1.0 / 60.0);
+    assert_eq!(engine.active_world_id(), Some("room"));
+    assert_eq!(engine.world_event_id(), 1);
+    assert_eq!(engine.last_world_destination(), 1);
+    assert_eq!(engine.player.position, [4.0, 0.0, 8.0]);
+    assert_eq!(engine.player.velocity, [0.0; 3]);
+    assert!(!engine.player.moving);
+    assert!(!engine.player.sprinting);
+    assert_eq!(engine.input.forward, 0.0);
+    assert_eq!(engine.input.strafe, 0.0);
+    assert!(!engine.input.sprint);
+    assert!(!engine.input.jump);
+
+    engine.step(1.0 / 60.0);
+    let script_state = engine
+        .script
+        .as_ref()
+        .expect("world script should remain loaded")
+        .state();
+    let script_state = script_state.borrow();
+    assert_eq!(script_state.lobby_status, "tick:room");
+    assert_eq!(script_state.session_name.as_deref(), Some("spawn:room"));
+    assert_eq!(engine.world_event_id(), 1);
+}
+
+#[test]
+fn luau_world_api_rejects_unknown_world_without_changing_world() {
+    let manifest = r#"
+        {
+            "startWorld":"lobby",
+            "world":{"spawn":[0,0,0]},
+            "worlds":{"maze":{"world":{"spawn":[4,0,8]}}}
+        }
+    "#;
+    let script = r#"
+        local game = {}
+        function game.on_tick(api, delta)
+            api.world:enter("missing")
+        end
+        return game
+    "#;
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(manifest));
+    assert!(engine.load_script_source(script));
+    engine.step(1.0 / 60.0);
+
+    assert_eq!(engine.active_world_id(), Some("lobby"));
+    assert_eq!(engine.player.position, [0.0, 0.0, 0.0]);
+    assert!(
+        engine
+            .last_script_error()
+            .is_some_and(|error| error.contains("cannot find package world"))
+    );
+}
+
+#[test]
 fn luau_effect_commands_enter_the_bounded_engine_runtime() {
     let script = r#"
         local game = {}

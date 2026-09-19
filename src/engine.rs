@@ -13,6 +13,8 @@ mod worlds;
 #[cfg(test)]
 mod maze_tests;
 #[cfg(test)]
+mod static_collision_tests;
+#[cfg(test)]
 mod tests;
 
 use crate::character::definition::CharacterAppearance;
@@ -56,9 +58,9 @@ pub(crate) const DEFAULT_LAUNCH_COUNTDOWN: f32 = 8.0;
 const LOOK_SENSITIVITY: f32 = 0.0062;
 // Let the classic third-person camera orbit to an almost overhead view while
 // staying just short of the look-at singularity.
-const MAX_PITCH: f32 = 1.45;
+pub(crate) const MAX_PITCH: f32 = 1.45;
 // Leave enough room for a genuinely high bird's-eye view of the world.
-const MAX_CAMERA_DISTANCE: f32 = 120.0;
+pub(crate) const MAX_CAMERA_DISTANCE: f32 = 120.0;
 // Slightly elevated, full-body framing leaves room to read footfalls and turns.
 pub(crate) const DEFAULT_ORBIT_PITCH: f32 = 0.26;
 pub(crate) const DEFAULT_ORBIT_DISTANCE: f32 = 7.6;
@@ -81,6 +83,7 @@ pub struct Engine {
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) base_obstacles: Vec<Aabb>,
     pub(crate) terrain: Option<crate::terrain::TerrainGrid>,
+    pub(crate) static_collision: Option<std::sync::Arc<crate::static_collision::StaticCollision>>,
     pub(crate) physics: PhysicsSettings,
     pub(crate) health: HealthSettings,
     pub(crate) respawn: RespawnSettings,

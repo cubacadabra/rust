@@ -32,10 +32,19 @@ pub(crate) struct Portal {
     pub(crate) destination_yaw: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct WorldCamera {
+    pub(crate) yaw: f32,
+    pub(crate) pitch: f32,
+    pub(crate) distance: f32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RuntimeWorld {
     pub(crate) spawn: [f32; 3],
+    pub(crate) camera: Option<WorldCamera>,
     pub(crate) terrain: Option<crate::terrain::TerrainGrid>,
+    pub(crate) static_collision: Option<std::sync::Arc<crate::static_collision::StaticCollision>>,
     pub(crate) physics: PhysicsSettings,
     pub(crate) health: HealthSettings,
     pub(crate) respawn: RespawnSettings,
@@ -95,6 +104,7 @@ pub(crate) struct PhysicsSettings {
     pub(crate) death_y: f32,
     pub(crate) respawn_delay: f32,
     pub(crate) climb_speed: f32,
+    pub(crate) horizontal_bounds: Option<HorizontalBounds>,
 }
 
 impl Default for PhysicsSettings {
@@ -107,8 +117,15 @@ impl Default for PhysicsSettings {
             death_y: -100.0,
             respawn_delay: 0.55,
             climb_speed: 4.5,
+            horizontal_bounds: None,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct HorizontalBounds {
+    pub(crate) minimum: [f32; 2],
+    pub(crate) maximum: [f32; 2],
 }
 
 #[derive(Clone, Debug)]

@@ -77,8 +77,9 @@ fn default_respawn_mode() -> String {
     "checkpoint".to_owned()
 }
 
-pub(crate) const SUPPORTED_SDK_VERSION: &str = "0.3.0";
+pub(crate) const PREVIEW_SDK_VERSION: &str = "0.3.0";
 pub(crate) const TERRAIN_SDK_VERSION: &str = "0.4.0";
+pub(crate) const CURRENT_SDK_VERSION: &str = "0.5.0";
 
 fn deserialize_sdk_version<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
@@ -88,11 +89,12 @@ where
 
     let value = Option::<String>::deserialize(deserializer)?;
     if let Some(version) = value.as_deref()
-        && version != SUPPORTED_SDK_VERSION
+        && version != PREVIEW_SDK_VERSION
         && version != TERRAIN_SDK_VERSION
+        && version != CURRENT_SDK_VERSION
     {
         return Err(D::Error::custom(format!(
-            "unsupported sdkVersion {version:?}; runtime supports {SUPPORTED_SDK_VERSION} and {TERRAIN_SDK_VERSION}"
+            "unsupported sdkVersion {version:?}; runtime supports {PREVIEW_SDK_VERSION}, {TERRAIN_SDK_VERSION}, and {CURRENT_SDK_VERSION}"
         )));
     }
     Ok(value)
@@ -115,6 +117,8 @@ pub(crate) struct GamePackageDefinition {
     pub(crate) palette: BTreeMap<String, String>,
     #[serde(default)]
     pub(crate) terrain: crate::terrain::TerrainDefinition,
+    #[serde(default)]
+    pub(crate) collision: Option<crate::static_collision::StaticCollisionDefinition>,
     #[serde(default)]
     pub(crate) world: WorldSettingsDefinition,
     #[serde(default)]
@@ -181,10 +185,29 @@ impl GamePackageDefinition {
                 .values()
                 .any(|world| !world.terrain.operations.is_empty()))
             && package._sdk_version.as_deref() != Some(TERRAIN_SDK_VERSION)
+            && package._sdk_version.as_deref() != Some(CURRENT_SDK_VERSION)
         {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                format!("terrain operations require sdkVersion {TERRAIN_SDK_VERSION}"),
+                format!(
+                    "terrain operations require sdkVersion {TERRAIN_SDK_VERSION} or {CURRENT_SDK_VERSION}"
+                ),
+            )));
+        }
+        let has_sdk_05_fields = package.collision.is_some()
+            || package
+                .worlds
+                .values()
+                .any(|world| world.collision.is_some())
+            || std::iter::once(&package.world)
+                .chain(package.worlds.values().map(|world| &world.world))
+                .any(|world| world.camera.is_some() || world.physics.horizontal_bounds.is_some());
+        if has_sdk_05_fields && package._sdk_version.as_deref() != Some(CURRENT_SDK_VERSION) {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "collision, world.camera, and world.physics.horizontalBounds require sdkVersion {CURRENT_SDK_VERSION}"
+                ),
             )));
         }
         if std::iter::once(&package.world)
@@ -197,6 +220,42 @@ impl GamePackageDefinition {
                 "world.presentationBounds minimum and maximum must be finite and ordered on every axis",
             )));
         }
+        if std::iter::once(&package.world)
+            .chain(package.worlds.values().map(|world| &world.world))
+            .filter_map(|world| world.physics.horizontal_bounds.as_ref())
+            .any(|bounds| !bounds.is_valid())
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "world.physics.horizontalBounds minimum and maximum must be finite and ordered on both axes",
+            )));
+        }
+        if std::iter::once(&package.world)
+            .chain(package.worlds.values().map(|world| &world.world))
+            .filter_map(|world| world.camera.as_ref())
+            .any(|camera| !camera.is_valid())
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "world.camera must contain finite yaw/pitch/distance within runtime limits",
+            )));
+        }
+        for collision in std::iter::once(package.collision.as_ref())
+            .chain(
+                package
+                    .worlds
+                    .values()
+                    .map(|world| world.collision.as_ref()),
+            )
+            .flatten()
+        {
+            if let Err(error) = collision.validate() {
+                return Err(serde_json::Error::io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    error,
+                )));
+            }
+        }
         Ok(package)
     }
 
@@ -206,6 +265,7 @@ impl GamePackageDefinition {
             materials: BTreeMap::new(),
             ground_material: None,
             terrain: self.terrain.clone(),
+            collision: self.collision.clone(),
             world: self.world.clone(),
             launch_pads: self.launch_pads.clone(),
             blocks: self.blocks.clone(),
@@ -263,6 +323,8 @@ pub(crate) struct WorldDefinition {
     pub(crate) ground_material: Option<String>,
     #[serde(default)]
     pub(crate) terrain: crate::terrain::TerrainDefinition,
+    #[serde(default)]
+    pub(crate) collision: Option<crate::static_collision::StaticCollisionDefinition>,
     #[serde(default)]
     pub(crate) world: WorldSettingsDefinition,
     #[serde(default)]
@@ -409,6 +471,8 @@ pub(crate) struct WorldSettingsDefinition {
     pub(crate) show_grid: bool,
     #[serde(default)]
     pub(crate) spawn: Vec<f32>,
+    #[serde(default)]
+    pub(crate) camera: Option<CameraDefinition>,
     #[serde(default = "default_true")]
     pub(crate) show_spawn_pad: bool,
     #[serde(default)]
@@ -423,6 +487,25 @@ pub(crate) struct WorldSettingsDefinition {
     pub(crate) visual: VisualSettingsDefinition,
     #[serde(default)]
     pub(crate) presentation_bounds: Option<PresentationBoundsDefinition>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CameraDefinition {
+    pub(crate) yaw: f32,
+    pub(crate) pitch: f32,
+    pub(crate) distance: f32,
+}
+
+impl CameraDefinition {
+    fn is_valid(&self) -> bool {
+        self.yaw.is_finite()
+            && self.yaw.abs() <= std::f32::consts::TAU
+            && self.pitch.is_finite()
+            && self.pitch.abs() <= crate::engine::MAX_PITCH
+            && self.distance.is_finite()
+            && (0.0..=crate::engine::MAX_CAMERA_DISTANCE).contains(&self.distance)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -499,6 +582,7 @@ impl Default for WorldSettingsDefinition {
             grid_divisions: default_grid_divisions(),
             show_grid: true,
             spawn: vec![0.0, 0.0, 0.0],
+            camera: None,
             show_spawn_pad: true,
             clouds: Vec::new(),
             physics: PhysicsDefinition::default(),
@@ -573,6 +657,8 @@ pub(crate) struct PhysicsDefinition {
     pub(crate) respawn_delay: f32,
     #[serde(default = "default_climb_speed")]
     pub(crate) climb_speed: f32,
+    #[serde(default)]
+    pub(crate) horizontal_bounds: Option<HorizontalBoundsDefinition>,
 }
 
 impl Default for PhysicsDefinition {
@@ -585,7 +671,25 @@ impl Default for PhysicsDefinition {
             death_y: default_void_y(),
             respawn_delay: default_respawn_delay(),
             climb_speed: default_climb_speed(),
+            horizontal_bounds: None,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HorizontalBoundsDefinition {
+    pub(crate) minimum: [f32; 2],
+    pub(crate) maximum: [f32; 2],
+}
+
+impl HorizontalBoundsDefinition {
+    fn is_valid(&self) -> bool {
+        self.minimum
+            .iter()
+            .chain(self.maximum.iter())
+            .all(|value| value.is_finite())
+            && (0..2).all(|axis| self.minimum[axis] < self.maximum[axis])
     }
 }
 
@@ -986,7 +1090,7 @@ mod tests {
 
     #[test]
     fn rejects_an_unsupported_sdk_version() {
-        let error = GamePackageDefinition::parse(r#"{"sdkVersion":"0.5.0"}"#)
+        let error = GamePackageDefinition::parse(r#"{"sdkVersion":"0.6.0"}"#)
             .expect_err("unsupported SDK versions must be rejected");
         assert!(error.to_string().contains("unsupported sdkVersion"));
     }
@@ -996,6 +1100,9 @@ mod tests {
         let supported = GamePackageDefinition::parse(r#"{"sdkVersion":"0.4.0"}"#)
             .expect("terrain-capable SDK should be accepted");
         assert_eq!(supported._sdk_version.as_deref(), Some(TERRAIN_SDK_VERSION));
+        let current = GamePackageDefinition::parse(r#"{"sdkVersion":"0.5.0"}"#)
+            .expect("current SDK should be accepted");
+        assert_eq!(current._sdk_version.as_deref(), Some(CURRENT_SDK_VERSION));
 
         let top_level = r##"{
             "sdkVersion":"0.4.0",
@@ -1017,7 +1124,21 @@ mod tests {
         }"##;
         let error = GamePackageDefinition::parse(terrain)
             .expect_err("older packages must not silently ignore terrain semantics");
-        assert!(error.to_string().contains("require sdkVersion 0.4.0"));
+        assert!(
+            error
+                .to_string()
+                .contains("require sdkVersion 0.4.0 or 0.5.0")
+        );
+
+        let current_terrain = r##"{
+            "sdkVersion":"0.5.0",
+            "worlds":{"maze":{"terrain":{"operations":[{
+                "shape":"block","operation":"fill","position":[0,0,0],
+                "size":[2,2,2],"material":"builtin:grass"
+            }]}}}
+        }"##;
+        GamePackageDefinition::parse(current_terrain)
+            .expect("current SDK should retain terrain support");
     }
 
     #[test]
@@ -1070,6 +1191,38 @@ mod tests {
         )
         .expect_err("zero-width presentation bounds must not be accepted");
         assert!(error.to_string().contains("presentationBounds"));
+    }
+
+    #[test]
+    fn parses_and_validates_authored_world_camera() {
+        let package = GamePackageDefinition::parse(
+            r#"{"sdkVersion":"0.5.0","world":{"camera":{"yaw":1.25,"pitch":0.4,"distance":18}}}"#,
+        )
+        .expect("authored camera should parse");
+        assert_eq!(package.world.camera.unwrap().distance, 18.0);
+
+        for camera in [
+            r#"{"yaw":null,"pitch":0,"distance":8}"#,
+            r#"{"yaw":0,"pitch":2,"distance":8}"#,
+            r#"{"yaw":0,"pitch":0,"distance":121}"#,
+        ] {
+            let source = format!(r#"{{"sdkVersion":"0.5.0","world":{{"camera":{camera}}}}}"#);
+            assert!(GamePackageDefinition::parse(&source).is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_sdk_04_for_sdk_05_world_fields() {
+        for field in [
+            r#""collision":{"formatVersion":1,"triangles":[[[0,0,0],[1,0,0],[0,0,1]]]}}"#,
+            r#""world":{"camera":{"yaw":0,"pitch":0,"distance":8}}}"#,
+            r#""world":{"physics":{"horizontalBounds":{"minimum":[-1,-1],"maximum":[1,1]}}}}"#,
+        ] {
+            let source = format!(r#"{{"sdkVersion":"0.4.0",{field}"#);
+            let error = GamePackageDefinition::parse(&source)
+                .expect_err("SDK 0.4 must not silently ignore SDK 0.5 fields");
+            assert!(error.to_string().contains("require sdkVersion 0.5.0"));
+        }
     }
 
     #[test]

@@ -54,6 +54,7 @@ pub mod dev_showcase {
     }
 }
 mod scripting;
+mod static_collision;
 pub use scripting::authority::LuauAuthorityRules;
 pub mod server_runtime;
 mod terrain;

@@ -77,6 +77,12 @@ impl Engine {
         hash.usize(self.last_world_destination);
         hash.player(&self.player);
         hash.input(&self.input);
+        hash.f32(self.view_yaw);
+        hash.f32(self.view_pitch);
+        hash.f32(self.target_yaw);
+        hash.f32(self.target_pitch);
+        hash.f32(self.camera_distance);
+        hash.f32(self.target_camera_distance);
         hash.array3(self.pending_reconciliation);
 
         for value in &self.snapshot {

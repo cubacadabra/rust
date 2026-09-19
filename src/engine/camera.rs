@@ -12,12 +12,33 @@ const CAMERA_ZOOM_RESPONSE: f32 = 16.0;
 impl Engine {
     /// Restores the normal classic third-person orbit.
     pub fn reset_view(&mut self) {
-        self.view_yaw = 0.0;
-        self.view_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
-        self.target_yaw = 0.0;
-        self.target_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
-        self.camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
-        self.target_camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
+        if !self.apply_authored_world_camera() {
+            self.view_yaw = 0.0;
+            self.view_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
+            self.target_yaw = 0.0;
+            self.target_pitch = crate::engine::DEFAULT_ORBIT_PITCH;
+            self.camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
+            self.target_camera_distance = crate::engine::DEFAULT_ORBIT_DISTANCE;
+        }
+    }
+
+    /// Applies a package-authored gameplay camera for the active world.
+    /// Returns false when the world intentionally uses the legacy camera.
+    pub(crate) fn apply_authored_world_camera(&mut self) -> bool {
+        let Some(camera) = self
+            .worlds
+            .get(self.active_world)
+            .and_then(|world| world.camera)
+        else {
+            return false;
+        };
+        self.view_yaw = camera.yaw;
+        self.view_pitch = camera.pitch;
+        self.target_yaw = camera.yaw;
+        self.target_pitch = camera.pitch;
+        self.camera_distance = camera.distance;
+        self.target_camera_distance = camera.distance;
+        true
     }
 
     pub fn reset_showcase_view(&mut self) {
@@ -138,6 +159,11 @@ impl Engine {
         }
         if let Some(distance) = self.terrain.as_ref().and_then(|terrain| {
             terrain.sweep_sphere(start.to_array(), end.to_array(), CAMERA_COLLISION_RADIUS)
+        }) {
+            nearest = nearest.min(distance);
+        }
+        if let Some(distance) = self.static_collision.as_ref().and_then(|collision| {
+            collision.sweep_sphere(start.to_array(), end.to_array(), CAMERA_COLLISION_RADIUS)
         }) {
             nearest = nearest.min(distance);
         }

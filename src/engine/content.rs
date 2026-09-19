@@ -83,7 +83,13 @@ impl Engine {
 
     pub(crate) fn load_script_buffer(&mut self) -> bool {
         let source = String::from_utf8_lossy(&self.script_buffer).into_owned();
-        match GameScript::load(&source, std::rc::Rc::clone(&self.ui)) {
+        let world_id = self.active_world_id().unwrap_or_default().to_owned();
+        match GameScript::load_with_worlds(
+            &source,
+            std::rc::Rc::clone(&self.ui),
+            &world_id,
+            self.world_ids.clone(),
+        ) {
             Ok(script) => {
                 let direct_world_id = (script.lobby_enabled_override() == Some(false))
                     .then(|| {
@@ -101,6 +107,12 @@ impl Engine {
                     }
                 } else {
                     self.queue_player_spawn();
+                }
+                if let Some(world_id) = self.active_world_id() {
+                    self.script
+                        .as_ref()
+                        .expect("script was installed above")
+                        .set_world_id(world_id);
                 }
                 true
             }
@@ -128,6 +140,31 @@ impl Engine {
 
     pub(crate) fn script_loaded(&self) -> bool {
         self.script.is_some()
+    }
+
+    /// Applies at most one package-world transition requested by Luau. The
+    /// request is intentionally consumed outside the callback that queued it,
+    /// so entering a world cannot recursively invoke its spawn callback.
+    pub(crate) fn apply_script_world_transition(&mut self) {
+        let Some(world_id) = self
+            .script
+            .as_ref()
+            .and_then(GameScript::take_world_transition)
+        else {
+            return;
+        };
+        if !self.start_world_by_id(&world_id) {
+            // The package list is immutable for the lifetime of the script,
+            // but keep this guard in case a host changes package state between
+            // callbacks. `world:enter` already rejects unknown IDs in Luau.
+            return;
+        }
+        if let Some(world_id) = self.active_world_id() {
+            self.script
+                .as_ref()
+                .expect("script remains installed during world transition")
+                .set_world_id(world_id);
+        }
     }
 
     pub fn receive_network_message_json(&mut self, source: &str) -> bool {

@@ -24,6 +24,7 @@ impl Engine {
             obstacles: obstacles.clone(),
             base_obstacles: obstacles.clone(),
             terrain: None,
+            static_collision: None,
             physics: crate::world::PhysicsSettings::default(),
             health: crate::world::HealthSettings::default(),
             respawn: crate::world::RespawnSettings::default(),
