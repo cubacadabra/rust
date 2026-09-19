@@ -466,7 +466,7 @@ impl Engine {
         self.player.grounded = false;
     }
 
-    fn player_can_occupy(&self, candidate: [f32; 3]) -> bool {
+    pub(crate) fn player_can_occupy(&self, candidate: [f32; 3]) -> bool {
         let feet = candidate[1];
         let head = feet + BODY_HEIGHT;
         self.obstacles.iter().all(|obstacle| {

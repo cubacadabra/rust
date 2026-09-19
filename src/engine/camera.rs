@@ -15,13 +15,19 @@ impl Engine {
     /// This is an editor-only presentation action. It updates local runtime
     /// state immediately so it also works while the preview is stopped; it
     /// does not change authored spawn data.
+    /// `object_radius` is the selected object's horizontal half-extent.
     #[cfg(feature = "studio-ui")]
-    pub fn studio_move_player_near(&mut self, target: [f32; 3]) {
+    pub fn studio_move_player_near(&mut self, target: [f32; 3], object_radius: f32) {
         if !target.iter().all(|value| value.is_finite()) {
             return;
         }
 
-        const PREVIEW_DISTANCE: f32 = 4.0;
+        const PLAYER_CLEARANCE: f32 = 1.75;
+        let preview_distance = object_radius
+            .is_finite()
+            .then_some(object_radius.max(0.0) + PLAYER_CLEARANCE)
+            .unwrap_or(4.0)
+            .max(4.0);
         let current = self.player.position;
         let delta_x = current[0] - target[0];
         let delta_z = current[2] - target[2];
@@ -31,11 +37,19 @@ impl Engine {
         } else {
             (0.0, 1.0)
         };
-        let position = [
-            target[0] + direction_x * PREVIEW_DISTANCE,
-            current[1],
-            target[2] + direction_z * PREVIEW_DISTANCE,
-        ];
+        let position = self
+            .studio_preview_position(
+                target,
+                current[1],
+                direction_x,
+                direction_z,
+                preview_distance,
+            )
+            .unwrap_or([
+                target[0] + direction_x * preview_distance,
+                current[1],
+                target[2] + direction_z * preview_distance,
+            ]);
         let look_x = target[0] - position[0];
         let look_z = target[2] - position[2];
         let yaw = (-look_x).atan2(-look_z);
@@ -51,6 +65,36 @@ impl Engine {
         self.target_yaw = yaw;
         self.pending_reconciliation = [0.0; 3];
         self.write_snapshot();
+    }
+
+    #[cfg(feature = "studio-ui")]
+    fn studio_preview_position(
+        &self,
+        target: [f32; 3],
+        feet_y: f32,
+        direction_x: f32,
+        direction_z: f32,
+        preview_distance: f32,
+    ) -> Option<[f32; 3]> {
+        // The first candidate follows the direction the player came from.
+        // If that side is occupied by a table, wall, or other runtime
+        // collision, walk around the object until a clear side is found.
+        const ANGLE_OFFSETS: [f32; 15] = [
+            0.0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, 1.4, -1.4, 1.75, -1.75, 2.1, -2.1, 2.6, -2.6,
+        ];
+        for extra_distance in [0.0, 0.75, 1.5, 2.25, 3.0, 4.0] {
+            let distance = preview_distance + extra_distance;
+            for angle in ANGLE_OFFSETS {
+                let (sin, cos) = angle.sin_cos();
+                let x = direction_x * cos - direction_z * sin;
+                let z = direction_x * sin + direction_z * cos;
+                let candidate = [target[0] + x * distance, feet_y, target[2] + z * distance];
+                if self.player_can_occupy(candidate) {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
     }
 
     /// Restores the normal classic third-person orbit.

@@ -432,7 +432,7 @@ fn studio_selection_moves_preview_player_near_the_target() {
     engine.player.position = [-24.6, 2.2, 24.0];
     engine.write_snapshot();
 
-    engine.studio_move_player_near([-78.13532, 4.1533, -19.07567]);
+    engine.studio_move_player_near([-78.13532, 4.1533, -19.07567], 2.1);
 
     let position = engine.player.position;
     let distance = (position[0] + 78.13532).hypot(position[2] + 19.07567);
@@ -441,6 +441,22 @@ fn studio_selection_moves_preview_player_near_the_target() {
     assert_eq!(&engine.snapshot[..3], &position);
     assert!(!engine.player.moving);
     assert_eq!(engine.player.velocity, [0.0; 3]);
+}
+
+#[cfg(feature = "studio-ui")]
+#[test]
+fn studio_selection_chooses_a_clear_side_when_the_nearest_side_is_blocked() {
+    let mut engine = Engine::new();
+    engine.player.position = [4.0, 0.0, 4.0];
+    engine.obstacles = vec![block_bounds([2.8, 1.5, 2.8], [2.0, 3.0, 2.0])];
+
+    engine.studio_move_player_near([0.0, 0.0, 0.0], 0.0);
+
+    let position = engine.player.position;
+    let direct = [4.0_f32 / 2.0_f32.sqrt(), 0.0, 4.0 / 2.0_f32.sqrt()];
+    assert!(!engine.player_can_occupy(direct));
+    assert!(engine.player_can_occupy(position));
+    assert!((position[0].hypot(position[2]) - 4.0).abs() < 0.001);
 }
 
 #[test]
