@@ -956,6 +956,8 @@ pub(crate) struct DecorationDefinition {
     #[serde(default = "default_decoration_scale")]
     pub(crate) scale: f32,
     #[serde(default)]
+    pub(crate) scale3: Option<Vec<f32>>,
+    #[serde(default)]
     pub(crate) yaw: f32,
     #[serde(default)]
     pub(crate) color: String,
@@ -978,6 +980,16 @@ impl DecorationDefinition {
             self.position.get(1).copied().unwrap_or(0.0),
             self.position.get(2).copied().unwrap_or(0.0),
         ]
+    }
+
+    pub(crate) fn scale3(&self) -> [f32; 3] {
+        self.scale3.as_deref().map_or([self.scale; 3], |scale| {
+            [
+                scale.first().copied().unwrap_or(self.scale),
+                scale.get(1).copied().unwrap_or(self.scale),
+                scale.get(2).copied().unwrap_or(self.scale),
+            ]
+        })
     }
 }
 

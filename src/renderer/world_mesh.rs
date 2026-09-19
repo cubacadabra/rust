@@ -326,7 +326,7 @@ impl WorldMeshRegistry {
             }
             let transform = Mat4::from_translation(Vec3::from_array(instance.position))
                 * Mat4::from_quat(Quat::from_rotation_y(instance.yaw))
-                * Mat4::from_scale(Vec3::splat(instance.scale));
+                * Mat4::from_scale(Vec3::from_array(instance.scale));
             let texture_bounds = instance
                 .texture_image
                 .as_ref()

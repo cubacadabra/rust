@@ -277,7 +277,7 @@ impl Renderer {
         }
         for mesh in &self.scene.world.mesh_instances {
             let position = Vec3::from_array(mesh.position);
-            let extent = Vec3::splat(mesh.scale.max(0.5) * 2.0);
+            let extent = Vec3::from_array(mesh.scale.map(|scale| scale.max(0.5))) * 2.0;
             include(position - extent, position + extent);
         }
         for ladder in &self.scene.world.ladders {

@@ -206,7 +206,7 @@ pub(super) struct RenderDecoration {
 pub(super) struct RenderMeshInstance {
     pub(super) asset: String,
     pub(super) position: [f32; 3],
-    pub(super) scale: f32,
+    pub(super) scale: [f32; 3],
     pub(super) yaw: f32,
     pub(super) color: [f32; 4],
     pub(super) texture_image: Option<String>,

@@ -537,7 +537,7 @@ fn resolve_world(
                 Some(RenderMeshInstance {
                     asset: asset.clone(),
                     position: decoration.position(),
-                    scale: decoration.scale.max(0.1),
+                    scale: decoration.scale3().map(|value| value.max(0.1)),
                     yaw: decoration.yaw,
                     color: resolve_color(&definition.palette, &decoration.color, palette.paper),
                     texture_image,
