@@ -79,7 +79,8 @@ fn default_respawn_mode() -> String {
 
 pub(crate) const PREVIEW_SDK_VERSION: &str = "0.3.0";
 pub(crate) const TERRAIN_SDK_VERSION: &str = "0.4.0";
-pub(crate) const CURRENT_SDK_VERSION: &str = "0.5.0";
+pub(crate) const LEGACY_CURRENT_SDK_VERSION: &str = "0.5.0";
+pub(crate) const CURRENT_SDK_VERSION: &str = "0.6.0";
 
 fn deserialize_sdk_version<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
@@ -91,10 +92,11 @@ where
     if let Some(version) = value.as_deref()
         && version != PREVIEW_SDK_VERSION
         && version != TERRAIN_SDK_VERSION
+        && version != LEGACY_CURRENT_SDK_VERSION
         && version != CURRENT_SDK_VERSION
     {
         return Err(D::Error::custom(format!(
-            "unsupported sdkVersion {version:?}; runtime supports {PREVIEW_SDK_VERSION}, {TERRAIN_SDK_VERSION}, and {CURRENT_SDK_VERSION}"
+            "unsupported sdkVersion {version:?}; runtime supports {PREVIEW_SDK_VERSION}, {TERRAIN_SDK_VERSION}, {LEGACY_CURRENT_SDK_VERSION}, and {CURRENT_SDK_VERSION}"
         )));
     }
     Ok(value)
@@ -185,12 +187,13 @@ impl GamePackageDefinition {
                 .values()
                 .any(|world| !world.terrain.operations.is_empty()))
             && package._sdk_version.as_deref() != Some(TERRAIN_SDK_VERSION)
+            && package._sdk_version.as_deref() != Some(LEGACY_CURRENT_SDK_VERSION)
             && package._sdk_version.as_deref() != Some(CURRENT_SDK_VERSION)
         {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "terrain operations require sdkVersion {TERRAIN_SDK_VERSION} or {CURRENT_SDK_VERSION}"
+                    "terrain operations require sdkVersion {TERRAIN_SDK_VERSION}, {LEGACY_CURRENT_SDK_VERSION}, or {CURRENT_SDK_VERSION}"
                 ),
             )));
         }
@@ -208,12 +211,29 @@ impl GamePackageDefinition {
                         || world.visual.daylight.is_some()
                         || world.visual.sun_rays.is_some()
                 });
-        if has_sdk_05_fields && package._sdk_version.as_deref() != Some(CURRENT_SDK_VERSION) {
+        if has_sdk_05_fields
+            && package._sdk_version.as_deref() != Some(LEGACY_CURRENT_SDK_VERSION)
+            && package._sdk_version.as_deref() != Some(CURRENT_SDK_VERSION)
+        {
             return Err(serde_json::Error::io(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
-                    "collision, world.camera, world.physics.horizontalBounds, and world.visual environment controls require sdkVersion {CURRENT_SDK_VERSION}"
+                    "collision, world.camera, world.physics.horizontalBounds, and world.visual environment controls require sdkVersion {LEGACY_CURRENT_SDK_VERSION} or {CURRENT_SDK_VERSION}"
                 ),
+            )));
+        }
+        let has_non_uniform_mesh_scale = package.worlds.values().any(|world| {
+            world
+                .decorations
+                .iter()
+                .any(|decoration| decoration.scale3.is_some())
+        });
+        if has_non_uniform_mesh_scale
+            && package._sdk_version.as_deref() != Some(CURRENT_SDK_VERSION)
+        {
+            return Err(serde_json::Error::io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("mesh scale3 requires sdkVersion {CURRENT_SDK_VERSION}"),
             )));
         }
         if std::iter::once(&package.world)
@@ -956,7 +976,7 @@ pub(crate) struct DecorationDefinition {
     #[serde(default = "default_decoration_scale")]
     pub(crate) scale: f32,
     #[serde(default)]
-    pub(crate) scale3: Option<Vec<f32>>,
+    pub(crate) scale3: Option<[f32; 3]>,
     #[serde(default)]
     pub(crate) yaw: f32,
     #[serde(default)]
@@ -983,13 +1003,7 @@ impl DecorationDefinition {
     }
 
     pub(crate) fn scale3(&self) -> [f32; 3] {
-        self.scale3.as_deref().map_or([self.scale; 3], |scale| {
-            [
-                scale.first().copied().unwrap_or(self.scale),
-                scale.get(1).copied().unwrap_or(self.scale),
-                scale.get(2).copied().unwrap_or(self.scale),
-            ]
-        })
+        self.scale3.unwrap_or([self.scale; 3])
     }
 }
 
@@ -1222,7 +1236,7 @@ mod tests {
 
     #[test]
     fn rejects_an_unsupported_sdk_version() {
-        let error = GamePackageDefinition::parse(r#"{"sdkVersion":"0.6.0"}"#)
+        let error = GamePackageDefinition::parse(r#"{"sdkVersion":"0.7.0"}"#)
             .expect_err("unsupported SDK versions must be rejected");
         assert!(error.to_string().contains("unsupported sdkVersion"));
     }
@@ -1232,9 +1246,33 @@ mod tests {
         let supported = GamePackageDefinition::parse(r#"{"sdkVersion":"0.4.0"}"#)
             .expect("terrain-capable SDK should be accepted");
         assert_eq!(supported._sdk_version.as_deref(), Some(TERRAIN_SDK_VERSION));
-        let current = GamePackageDefinition::parse(r#"{"sdkVersion":"0.5.0"}"#)
+        let legacy = GamePackageDefinition::parse(r#"{"sdkVersion":"0.5.0"}"#)
+            .expect("legacy current SDK should be accepted");
+        assert_eq!(
+            legacy._sdk_version.as_deref(),
+            Some(LEGACY_CURRENT_SDK_VERSION)
+        );
+        let current = GamePackageDefinition::parse(r#"{"sdkVersion":"0.6.0"}"#)
             .expect("current SDK should be accepted");
         assert_eq!(current._sdk_version.as_deref(), Some(CURRENT_SDK_VERSION));
+
+        let scale3 = r#"{
+            "sdkVersion":"0.5.0",
+            "worlds":{"world":{"decorations":[{"asset":"chair","scale3":[1,2,3]}]}}
+        }"#;
+        let error = GamePackageDefinition::parse(scale3)
+            .expect_err("non-uniform scale must require its capability SDK");
+        assert!(
+            error
+                .to_string()
+                .contains("mesh scale3 requires sdkVersion 0.6.0")
+        );
+        let malformed_scale3 = r#"{
+            "sdkVersion":"0.6.0",
+            "worlds":{"world":{"decorations":[{"asset":"chair","scale3":[1,2]}]}}
+        }"#;
+        GamePackageDefinition::parse(malformed_scale3)
+            .expect_err("scale3 must contain exactly three values");
 
         let top_level = r##"{
             "sdkVersion":"0.4.0",
@@ -1259,7 +1297,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("require sdkVersion 0.4.0 or 0.5.0")
+                .contains("require sdkVersion 0.4.0, 0.5.0, or 0.6.0")
         );
 
         let current_terrain = r##"{
