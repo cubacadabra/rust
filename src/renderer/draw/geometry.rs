@@ -47,6 +47,14 @@ impl super::super::Renderer {
                     material,
                     self.package_image_regions[&material.image],
                 );
+            } else if let Some(material) = block.builtin_material {
+                super::super::add_builtin_cuboid(
+                    &mut mesh,
+                    Vec3::from_array(block.position),
+                    Vec3::from_array(block.size),
+                    block.color,
+                    material,
+                );
             } else {
                 add_cuboid(
                     &mut mesh,

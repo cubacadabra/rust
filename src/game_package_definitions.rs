@@ -671,6 +671,8 @@ pub(crate) struct BlockDefinition {
     #[serde(default)]
     pub(crate) material: Option<String>,
     #[serde(default = "default_true")]
+    pub(crate) collidable: bool,
+    #[serde(default = "default_true")]
     pub(crate) outline: bool,
 }
 

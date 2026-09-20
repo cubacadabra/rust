@@ -394,6 +394,7 @@ impl Engine {
                 let obstacles = definition
                     .blocks
                     .iter()
+                    .filter(|block| block.collidable)
                     .map(|block| block_bounds(block.position(), block.size()))
                     .collect::<Vec<_>>();
                 let physics = PhysicsSettings {

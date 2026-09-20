@@ -416,7 +416,16 @@ fn resolve_world(
                 position: block.position(),
                 size: block.size(),
                 color: resolve_color(&definition.palette, &block.color, super::color(0xffffff)),
-                material: block.material.as_deref().and_then(resolve_material),
+                material: block
+                    .material
+                    .as_deref()
+                    .filter(|material| !material.starts_with("builtin:"))
+                    .and_then(resolve_material),
+                builtin_material: block
+                    .material
+                    .as_deref()
+                    .and_then(crate::terrain::TerrainMaterial::parse)
+                    .map(|material| material as u8),
                 outline: block.outline,
             })
             .collect(),

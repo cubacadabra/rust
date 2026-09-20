@@ -71,6 +71,22 @@ fn add_cuboid(vertices: &mut Vec<Vertex>, center: Vec3, size: Vec3, color: [f32;
     add_transformed_cuboid(vertices, Mat4::from_translation(center), size, color);
 }
 
+fn add_builtin_cuboid(
+    vertices: &mut Vec<Vertex>,
+    center: Vec3,
+    size: Vec3,
+    color: [f32; 4],
+    material: u8,
+) {
+    add_transformed_cuboid_with_material(
+        vertices,
+        Mat4::from_translation(center),
+        size,
+        color,
+        Some(material),
+    );
+}
+
 fn add_cuboid_outline(
     vertices: &mut Vec<Vertex>,
     center: Vec3,
@@ -117,6 +133,16 @@ fn add_transformed_cuboid(
     size: Vec3,
     color: [f32; 4],
 ) {
+    add_transformed_cuboid_with_material(vertices, transform, size, color, None);
+}
+
+fn add_transformed_cuboid_with_material(
+    vertices: &mut Vec<Vertex>,
+    transform: Mat4,
+    size: Vec3,
+    color: [f32; 4],
+    material: Option<u8>,
+) {
     let half = size * 0.5;
     let corners = [
         Vec3::new(-half.x, -half.y, -half.z),
@@ -130,7 +156,7 @@ fn add_transformed_cuboid(
     ]
     .map(|corner| transform.transform_point3(corner));
     let normal = |direction: Vec3| transform.transform_vector3(direction).normalize_or_zero();
-    add_quad(
+    add_quad_with_material(
         vertices,
         corners[0],
         corners[1],
@@ -138,8 +164,9 @@ fn add_transformed_cuboid(
         corners[3],
         normal(Vec3::NEG_Z),
         color,
+        material,
     );
-    add_quad(
+    add_quad_with_material(
         vertices,
         corners[5],
         corners[4],
@@ -147,8 +174,9 @@ fn add_transformed_cuboid(
         corners[6],
         normal(Vec3::Z),
         color,
+        material,
     );
-    add_quad(
+    add_quad_with_material(
         vertices,
         corners[1],
         corners[5],
@@ -156,8 +184,9 @@ fn add_transformed_cuboid(
         corners[2],
         normal(Vec3::X),
         color,
+        material,
     );
-    add_quad(
+    add_quad_with_material(
         vertices,
         corners[4],
         corners[0],
@@ -165,8 +194,9 @@ fn add_transformed_cuboid(
         corners[7],
         normal(Vec3::NEG_X),
         color,
+        material,
     );
-    add_quad(
+    add_quad_with_material(
         vertices,
         corners[3],
         corners[2],
@@ -174,8 +204,9 @@ fn add_transformed_cuboid(
         corners[7],
         normal(Vec3::Y),
         color,
+        material,
     );
-    add_quad(
+    add_quad_with_material(
         vertices,
         corners[4],
         corners[5],
@@ -183,6 +214,7 @@ fn add_transformed_cuboid(
         corners[0],
         normal(Vec3::NEG_Y),
         color,
+        material,
     );
 }
 

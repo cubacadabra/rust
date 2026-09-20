@@ -196,7 +196,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
             let terrain_lod = clamp(log2(max(distance_to_camera * 0.04, 1.0)), 0.0, 9.0);
             terrain = built_in_terrain_texture(input.tex_coords.x, input.world_position, normal, terrain_lod);
         }
-        var graded = terrain * lighting + vec3<f32>(rim);
+        var graded = terrain * input.color.rgb * lighting + vec3<f32>(rim);
         graded *= globals.color_grade.x;
         let luminance = dot(graded, vec3<f32>(0.2126, 0.7152, 0.0722));
         graded = mix(vec3<f32>(luminance), graded, globals.color_grade.z);

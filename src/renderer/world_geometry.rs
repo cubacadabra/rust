@@ -718,6 +718,20 @@ fn add_quad(
     add_triangle(vertices, a, c, d, normal, color);
 }
 
+fn add_quad_with_material(
+    vertices: &mut Vec<Vertex>,
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    d: Vec3,
+    normal: Vec3,
+    color: [f32; 4],
+    material: Option<u8>,
+) {
+    add_triangle_with_material(vertices, a, b, c, normal, color, material);
+    add_triangle_with_material(vertices, a, c, d, normal, color, material);
+}
+
 fn add_triangle(
     vertices: &mut Vec<Vertex>,
     a: Vec3,
@@ -726,30 +740,44 @@ fn add_triangle(
     normal: Vec3,
     color: [f32; 4],
 ) {
+    add_triangle_with_material(vertices, a, b, c, normal, color, None);
+}
+
+fn add_triangle_with_material(
+    vertices: &mut Vec<Vertex>,
+    a: Vec3,
+    b: Vec3,
+    c: Vec3,
+    normal: Vec3,
+    color: [f32; 4],
+    material: Option<u8>,
+) {
     let normal = normal.to_array();
+    let tex_coords = material.map_or([0.0, 0.0], |material| [f32::from(material), 0.0]);
+    let image_invert = material.map_or(0.0, |_| 2.0);
     vertices.extend([
         Vertex {
             position: a.to_array(),
             normal,
             color,
-        tex_coords: [0.0, 0.0],
-        image_invert: 0.0,
+        tex_coords,
+        image_invert,
         texture_bounds: [0.0, 0.0, 1.0, 1.0],
         },
         Vertex {
             position: b.to_array(),
             normal,
             color,
-        tex_coords: [0.0, 0.0],
-        image_invert: 0.0,
+        tex_coords,
+        image_invert,
         texture_bounds: [0.0, 0.0, 1.0, 1.0],
         },
         Vertex {
             position: c.to_array(),
             normal,
             color,
-        tex_coords: [0.0, 0.0],
-        image_invert: 0.0,
+        tex_coords,
+        image_invert,
         texture_bounds: [0.0, 0.0, 1.0, 1.0],
         },
     ]);

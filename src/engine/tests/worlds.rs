@@ -179,6 +179,24 @@ fn package_terrain_drives_world_collision_and_can_replace_the_flat_floor() {
 }
 
 #[test]
+fn non_collidable_world_blocks_render_without_becoming_obstacles() {
+    let manifest = r#"{
+        "startWorld":"world",
+        "worlds":{"world":{
+            "world":{"spawn":[0,2,0]},
+            "blocks":[
+                {"position":[0,1,0],"size":[4,2,4],"collidable":false},
+                {"position":[8,1,0],"size":[4,2,4]}
+            ]
+        }}
+    }"#;
+    let mut engine = Engine::new();
+    engine.package_buffer = manifest.as_bytes().to_vec();
+    assert!(engine.load_package_buffer());
+    assert_eq!(engine.obstacles.len(), 1);
+}
+
+#[test]
 fn package_loading_rejects_unsupported_terrain_materials() {
     let manifest = r#"{
         "sdkVersion":"0.4.0",

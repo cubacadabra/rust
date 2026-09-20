@@ -6,6 +6,7 @@ pub(super) struct RenderBlock {
     pub(super) size: [f32; 3],
     pub(super) color: [f32; 4],
     pub(super) material: Option<RenderMaterial>,
+    pub(super) builtin_material: Option<u8>,
     pub(super) outline: bool,
 }
 
