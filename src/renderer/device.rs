@@ -528,6 +528,9 @@ impl Renderer {
         let dynamic_vertex_capacity = 16_384;
         let ui_vertex_capacity = 8_192;
         let static_vertex_buffer = create_vertex_buffer(&device, static_vertex_capacity);
+        let static_shadow_vertex_capacity = 16_384;
+        let static_shadow_vertex_buffer =
+            create_vertex_buffer(&device, static_shadow_vertex_capacity);
         let dynamic_vertex_buffer = create_vertex_buffer(&device, dynamic_vertex_capacity);
         let ui_vertex_buffer = create_vertex_buffer(&device, ui_vertex_capacity);
 
@@ -556,6 +559,9 @@ impl Renderer {
             static_vertex_buffer,
             static_vertex_capacity,
             static_vertex_count: 0,
+            static_shadow_vertex_buffer,
+            static_shadow_vertex_capacity,
+            static_shadow_vertex_count: 0,
             terrain_meshes: Vec::new(),
             world_meshes: super::world_mesh::WorldMeshRegistry::default(),
             dynamic_vertex_buffer,

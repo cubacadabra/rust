@@ -115,6 +115,7 @@ mod tests {
                     "position":[0,1,2],
                     "size":[3,4,5],
                     "color":"paper",
+                    "castShadow":false,
                     "outline":false
                 }]
             }"##,
@@ -131,6 +132,11 @@ mod tests {
         assert_eq!(lobby.world.clouds[0].position(), [4.0, 5.0, 6.0]);
         assert_eq!(lobby.launch_pads[0].label, "SUN COURT");
         assert!(!lobby.blocks[0].outline);
+        assert!(!lobby.blocks[0].cast_shadow);
+
+        let defaults = GamePackageDefinition::parse(r#"{"blocks":[{}]}"#)
+            .expect("legacy blocks should retain shadow casting by default");
+        assert!(defaults.world_entries()[0].1.blocks[0].cast_shadow);
     }
 
     #[test]

@@ -352,9 +352,9 @@ impl super::super::Renderer {
                 1.0,
             );
             pass.set_pipeline(&self.shadow_pipeline);
-            if self.static_vertex_count > 0 {
-                pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
-                pass.draw(0..self.static_vertex_count as u32, 0..1);
+            if self.static_shadow_vertex_count > 0 {
+                pass.set_vertex_buffer(0, self.static_shadow_vertex_buffer.slice(..));
+                pass.draw(0..self.static_shadow_vertex_count as u32, 0..1);
             }
             for chunk in &self.terrain_meshes {
                 pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));

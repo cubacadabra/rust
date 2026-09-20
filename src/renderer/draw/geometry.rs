@@ -1,8 +1,117 @@
+use super::super::RenderBlock;
 use super::*;
 
+fn add_static_pair<F>(mesh: &mut Vec<Vertex>, shadow_mesh: &mut Vec<Vertex>, add: F)
+where
+    F: Fn(&mut Vec<Vertex>),
+{
+    add(mesh);
+    add(shadow_mesh);
+}
+
+#[cfg(test)]
+mod block_shadow_tests {
+    use super::*;
+
+    fn block(cast_shadow: bool) -> RenderBlock {
+        RenderBlock {
+            position: [0.0, 1.0, 0.0],
+            size: [2.0, 2.0, 2.0],
+            color: [0.4, 0.5, 0.6, 1.0],
+            material: None,
+            builtin_material: None,
+            cast_shadow,
+            outline: false,
+        }
+    }
+
+    #[test]
+    fn non_shadowing_blocks_remain_visible_but_are_omitted_from_shadow_geometry() {
+        let mut world = Vec::new();
+        let mut shadow = Vec::new();
+        append_block_geometry_pair(
+            &mut world,
+            &mut shadow,
+            &block(false),
+            [1.0; 4],
+            &std::collections::BTreeMap::new(),
+        );
+        assert!(!world.is_empty());
+        assert!(shadow.is_empty());
+    }
+
+    #[test]
+    fn shadow_casting_defaults_to_including_block_geometry() {
+        let mut world = Vec::new();
+        let mut shadow = Vec::new();
+        append_block_geometry_pair(
+            &mut world,
+            &mut shadow,
+            &block(true),
+            [1.0; 4],
+            &std::collections::BTreeMap::new(),
+        );
+        assert_eq!(world.len(), shadow.len());
+        assert!(!shadow.is_empty());
+    }
+}
+
+fn append_block_geometry_pair(
+    mesh: &mut Vec<Vertex>,
+    shadow_mesh: &mut Vec<Vertex>,
+    block: &RenderBlock,
+    outline_color: [f32; 4],
+    image_regions: &std::collections::BTreeMap<String, [f32; 4]>,
+) {
+    let append = |vertices: &mut Vec<Vertex>| {
+        if let Some(material) = block
+            .material
+            .as_ref()
+            .filter(|material| image_regions.contains_key(&material.image))
+        {
+            add_textured_cuboid(
+                vertices,
+                Vec3::from_array(block.position),
+                Vec3::from_array(block.size),
+                material,
+                image_regions[&material.image],
+            );
+        } else if let Some(material) = block.builtin_material {
+            super::super::add_builtin_cuboid(
+                vertices,
+                Vec3::from_array(block.position),
+                Vec3::from_array(block.size),
+                block.color,
+                material,
+            );
+        } else {
+            add_cuboid(
+                vertices,
+                Vec3::from_array(block.position),
+                Vec3::from_array(block.size),
+                block.color,
+            );
+        }
+        if block.outline {
+            add_cuboid_outline(
+                vertices,
+                Vec3::from_array(block.position),
+                Vec3::from_array(block.size),
+                0.025,
+                faded(outline_color, 0.22),
+            );
+        }
+    };
+    append(mesh);
+    if block.cast_shadow {
+        append(shadow_mesh);
+    }
+}
+
 impl super::super::Renderer {
-    fn build_static_vertices(&self) -> Vec<Vertex> {
+    fn build_static_vertices(&self) -> (Vec<Vertex>, Vec<Vertex>) {
         let mut mesh = Vec::with_capacity(16_384);
+        let mut shadow_mesh = Vec::with_capacity(16_384);
         let world = &self.scene.world;
         if !world.hide_default_ground
             && let Some(material) = world
@@ -10,82 +119,64 @@ impl super::super::Renderer {
                 .as_ref()
                 .filter(|material| self.package_image_regions.contains_key(&material.image))
         {
-            add_textured_cuboid(
-                &mut mesh,
-                Vec3::new(0.0, world.ground_y - 0.08, 0.0),
-                Vec3::new(world.ground_size, 0.16, world.ground_size),
-                material,
-                self.package_image_regions[&material.image],
-            );
-        } else if !world.hide_default_ground {
-            add_cuboid(
-                &mut mesh,
-                Vec3::new(0.0, world.ground_y - 0.08, 0.0),
-                Vec3::new(world.ground_size, 0.16, world.ground_size),
-                world.palette.ground,
-            );
-        }
-        if !world.hide_default_ground {
-            add_cuboid_outline(
-                &mut mesh,
-                Vec3::new(0.0, world.ground_y - 0.08, 0.0),
-                Vec3::new(world.ground_size, 0.16, world.ground_size),
-                0.035,
-                faded(world.palette.ground_edge, 0.46),
-            );
-        }
-        for block in &world.blocks {
-            if let Some(material) = block
-                .material
-                .as_ref()
-                .filter(|material| self.package_image_regions.contains_key(&material.image))
-            {
+            add_static_pair(&mut mesh, &mut shadow_mesh, |vertices| {
                 add_textured_cuboid(
-                    &mut mesh,
-                    Vec3::from_array(block.position),
-                    Vec3::from_array(block.size),
+                    vertices,
+                    Vec3::new(0.0, world.ground_y - 0.08, 0.0),
+                    Vec3::new(world.ground_size, 0.16, world.ground_size),
                     material,
                     self.package_image_regions[&material.image],
                 );
-            } else if let Some(material) = block.builtin_material {
-                super::super::add_builtin_cuboid(
-                    &mut mesh,
-                    Vec3::from_array(block.position),
-                    Vec3::from_array(block.size),
-                    block.color,
-                    material,
-                );
-            } else {
+            });
+        } else if !world.hide_default_ground {
+            add_static_pair(&mut mesh, &mut shadow_mesh, |vertices| {
                 add_cuboid(
-                    &mut mesh,
-                    Vec3::from_array(block.position),
-                    Vec3::from_array(block.size),
-                    block.color,
+                    vertices,
+                    Vec3::new(0.0, world.ground_y - 0.08, 0.0),
+                    Vec3::new(world.ground_size, 0.16, world.ground_size),
+                    world.palette.ground,
                 );
-            }
-            if block.outline {
+            });
+        }
+        if !world.hide_default_ground {
+            add_static_pair(&mut mesh, &mut shadow_mesh, |vertices| {
                 add_cuboid_outline(
-                    &mut mesh,
-                    Vec3::from_array(block.position),
-                    Vec3::from_array(block.size),
-                    0.025,
-                    faded(world.palette.paper, 0.22),
+                    vertices,
+                    Vec3::new(0.0, world.ground_y - 0.08, 0.0),
+                    Vec3::new(world.ground_size, 0.16, world.ground_size),
+                    0.035,
+                    faded(world.palette.ground_edge, 0.46),
                 );
-            }
+            });
+        }
+        for block in &world.blocks {
+            append_block_geometry_pair(
+                &mut mesh,
+                &mut shadow_mesh,
+                block,
+                world.palette.paper,
+                &self.package_image_regions,
+            );
         }
         for decoration in &world.decorations {
             // Asset-backed decorations are rendered by WorldMeshRegistry below;
             // they must not also become fallback procedural spheres here.
             if !decoration.kind.eq_ignore_ascii_case("mesh") {
-                add_decoration(&mut mesh, decoration, world.palette);
+                add_static_pair(&mut mesh, &mut shadow_mesh, |vertices| {
+                    add_decoration(vertices, decoration, world.palette);
+                });
             }
         }
         for ladder in &world.ladders {
-            add_ladder(&mut mesh, ladder);
+            add_static_pair(&mut mesh, &mut shadow_mesh, |vertices| {
+                add_ladder(vertices, ladder);
+            });
         }
         for billboard in &world.billboards {
             if let Some(&texture_bounds) = self.package_image_regions.get(&billboard.image) {
-                add_billboard(&mut mesh, billboard, world.palette, texture_bounds);
+                add_static_pair(&mut mesh, &mut shadow_mesh, |vertices| {
+                    add_billboard(vertices, billboard, world.palette, texture_bounds);
+                });
             }
         }
         if world.show_grid {
@@ -94,21 +185,23 @@ impl super::super::Renderer {
             let grid_step = world.grid_size / divisions as f32;
             for index in 0..=divisions {
                 let offset = -half + index as f32 * grid_step;
-                add_cuboid(
-                    &mut mesh,
-                    Vec3::new(offset, world.ground_y + 0.015, 0.0),
-                    Vec3::new(0.018, 0.025, world.grid_size),
-                    faded(world.palette.grid, 0.34),
-                );
-                add_cuboid(
-                    &mut mesh,
-                    Vec3::new(0.0, world.ground_y + 0.016, offset),
-                    Vec3::new(world.grid_size, 0.026, 0.018),
-                    faded(world.palette.grid, 0.34),
-                );
+                add_static_pair(&mut mesh, &mut shadow_mesh, |vertices| {
+                    add_cuboid(
+                        vertices,
+                        Vec3::new(offset, world.ground_y + 0.015, 0.0),
+                        Vec3::new(0.018, 0.025, world.grid_size),
+                        faded(world.palette.grid, 0.34),
+                    );
+                    add_cuboid(
+                        vertices,
+                        Vec3::new(0.0, world.ground_y + 0.016, offset),
+                        Vec3::new(world.grid_size, 0.026, 0.018),
+                        faded(world.palette.grid, 0.34),
+                    );
+                });
             }
         }
-        mesh
+        (mesh, shadow_mesh)
     }
 
     pub(super) fn build_dynamic_vertices(&mut self) -> Vec<Vertex> {
@@ -340,7 +433,7 @@ impl super::super::Renderer {
     }
 
     pub(crate) fn rebuild_static_vertices(&mut self) {
-        let all = self.build_static_vertices();
+        let (all, shadow_all) = self.build_static_vertices();
         let mut vertices = Vec::with_capacity(all.len());
         self.static_translucent_vertices.clear();
         split_world_vertices(&all, &mut vertices, &mut self.static_translucent_vertices);
@@ -358,6 +451,24 @@ impl super::super::Renderer {
                 &self.static_vertex_buffer,
                 0,
                 bytemuck::cast_slice(&vertices),
+            );
+        }
+        let mut shadow_vertices = Vec::with_capacity(shadow_all.len());
+        let mut ignored_translucent = Vec::new();
+        split_world_vertices(&shadow_all, &mut shadow_vertices, &mut ignored_translucent);
+        if !self.ensure_static_shadow_vertex_capacity(shadow_vertices.len()) {
+            log::error!(
+                "static shadow geometry exceeds this GPU's maximum vertex-buffer size; skipping it"
+            );
+            self.static_shadow_vertex_count = 0;
+        } else {
+            self.static_shadow_vertex_count = shadow_vertices.len();
+        }
+        if self.static_shadow_vertex_count > 0 {
+            self.queue.write_buffer(
+                &self.static_shadow_vertex_buffer,
+                0,
+                bytemuck::cast_slice(&shadow_vertices),
             );
         }
         self.terrain_meshes.clear();
@@ -381,6 +492,20 @@ impl super::super::Renderer {
         self.static_vertex_capacity = capacity;
         self.static_vertex_buffer =
             super::super::device::create_vertex_buffer(&self.device, self.static_vertex_capacity);
+        true
+    }
+
+    fn ensure_static_shadow_vertex_capacity(&mut self, required: usize) -> bool {
+        if required <= self.static_shadow_vertex_capacity {
+            return true;
+        }
+        let Some(capacity) = vertex_capacity_for(required, self.device.limits().max_buffer_size)
+        else {
+            return false;
+        };
+        self.static_shadow_vertex_capacity = capacity;
+        self.static_shadow_vertex_buffer =
+            super::super::device::create_vertex_buffer(&self.device, capacity);
         true
     }
 

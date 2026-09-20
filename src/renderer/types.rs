@@ -7,6 +7,7 @@ pub(super) struct RenderBlock {
     pub(super) color: [f32; 4],
     pub(super) material: Option<RenderMaterial>,
     pub(super) builtin_material: Option<u8>,
+    pub(super) cast_shadow: bool,
     pub(super) outline: bool,
 }
 
@@ -431,6 +432,9 @@ pub struct Renderer {
     pub(super) static_vertex_buffer: wgpu::Buffer,
     pub(super) static_vertex_capacity: usize,
     pub(super) static_vertex_count: usize,
+    pub(super) static_shadow_vertex_buffer: wgpu::Buffer,
+    pub(super) static_shadow_vertex_capacity: usize,
+    pub(super) static_shadow_vertex_count: usize,
     pub(super) terrain_meshes: Vec<TerrainRenderChunk>,
     pub(super) world_meshes: world_mesh::WorldMeshRegistry,
     pub(super) dynamic_vertex_buffer: wgpu::Buffer,

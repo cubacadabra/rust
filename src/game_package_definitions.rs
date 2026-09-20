@@ -673,6 +673,8 @@ pub(crate) struct BlockDefinition {
     #[serde(default = "default_true")]
     pub(crate) collidable: bool,
     #[serde(default = "default_true")]
+    pub(crate) cast_shadow: bool,
+    #[serde(default = "default_true")]
     pub(crate) outline: bool,
 }
 

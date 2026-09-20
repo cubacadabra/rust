@@ -426,6 +426,7 @@ fn resolve_world(
                     .as_deref()
                     .and_then(crate::terrain::TerrainMaterial::parse)
                     .map(|material| material as u8),
+                cast_shadow: block.cast_shadow,
                 outline: block.outline,
             })
             .collect(),
