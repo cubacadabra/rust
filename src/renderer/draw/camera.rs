@@ -8,6 +8,25 @@ impl super::super::Renderer {
     #[cfg(feature = "studio-ui")]
     pub(crate) fn studio_project_world_point(&self, point: [f32; 3]) -> Option<[f32; 2]> {
         let (view_projection, viewport) = self.studio_view_projection();
+        Self::project_world_point(view_projection, viewport, point)
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn studio_project_world_points(&self, points: &[[f32; 3]]) -> Vec<Option<[f32; 2]>> {
+        let (view_projection, viewport) = self.studio_view_projection();
+        points
+            .iter()
+            .copied()
+            .map(|point| Self::project_world_point(view_projection, viewport, point))
+            .collect()
+    }
+
+    #[cfg(feature = "studio-ui")]
+    fn project_world_point(
+        view_projection: Mat4,
+        viewport: (f32, f32, f32, f32),
+        point: [f32; 3],
+    ) -> Option<[f32; 2]> {
         let clip = view_projection * Vec3::from_array(point).extend(1.0);
         if !clip.is_finite() || clip.w <= 0.0001 {
             return None;

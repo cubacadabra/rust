@@ -200,6 +200,11 @@ pub mod native {
         }
 
         #[cfg(feature = "studio-ui")]
+        pub fn studio_project_world_points(&self, points: &[[f32; 3]]) -> Vec<Option<[f32; 2]>> {
+            self.inner.studio_project_world_points(points)
+        }
+
+        #[cfg(feature = "studio-ui")]
         pub fn studio_world_point_on_horizontal_plane(
             &self,
             screen: [f32; 2],
