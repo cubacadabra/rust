@@ -27,11 +27,13 @@ use super::{
 mod resources {
     include!("device/resources.rs");
 }
+#[cfg(any(feature = "dev-showcase", test))]
+pub(super) use resources::clear_shadow_depth;
 pub(super) use resources::{
-    clear_shadow_depth, create_shadow_resources, create_terrain_texture_bind_group,
-    create_vertex_buffer, create_world_texture_bind_group, shadow_bind_group_layout,
-    shadow_globals_layout, shadow_pipeline, sky_resources, terrain_texture_bind_group_layout,
-    ui_resources, world_mesh_pipeline, world_mesh_shadow_pipeline, world_pipeline,
+    create_shadow_resources, create_terrain_texture_bind_group, create_vertex_buffer,
+    create_world_texture_bind_group, shadow_bind_group_layout, shadow_globals_layout,
+    shadow_pipeline, sky_resources, terrain_texture_bind_group_layout, ui_resources,
+    world_mesh_pipeline, world_mesh_shadow_pipeline, world_pipeline,
     world_texture_bind_group_layout,
 };
 
