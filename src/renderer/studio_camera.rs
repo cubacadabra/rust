@@ -7,8 +7,8 @@ use crate::StudioCameraPreset;
 pub(super) struct StudioCamera {
     yaw: f32,
     pitch: f32,
-    zoom: f32,
-    pan: Vec3,
+    distance: Option<f32>,
+    target: Option<Vec3>,
 }
 
 impl StudioCamera {
@@ -37,8 +37,10 @@ impl StudioCamera {
         // Fit the projected corners, not a sphere containing all the empty
         // space around a flat island. Use the preset orientation for a stable
         // orbit distance while dragging.
-        let distance = fit_distance(minimum, maximum, base_direction, aspect) * self.zoom.exp();
-        let target = center + self.pan;
+        let distance = self
+            .distance
+            .unwrap_or_else(|| fit_distance(minimum, maximum, base_direction, aspect));
+        let target = self.target.unwrap_or(center);
         (target + direction * distance, target)
     }
 
@@ -64,13 +66,41 @@ impl StudioCamera {
             .rem_euclid(std::f32::consts::TAU);
         let current_pitch = (camera - target).normalize().y.asin();
         self.pitch += (current_pitch + orbit[1] * 0.005).clamp(-1.5, 1.5) - current_pitch;
-        self.zoom = (self.zoom - zoom * 0.1).clamp(-5.0, 4.0);
         let forward = (target - camera).normalize();
         let right = forward.cross(Vec3::Y).normalize();
         let up = right.cross(forward);
         let units_per_point =
             2.0 * camera.distance(target) * 31.0_f32.to_radians().tan() / viewport_height;
-        self.pan += (-right * pan[0] + up * pan[1]) * units_per_point;
+        self.target = Some(target + (-right * pan[0] + up * pan[1]) * units_per_point);
+        self.distance = Some(
+            (camera.distance(target) * (-zoom * 0.1).clamp(-5.0, 4.0).exp()).clamp(0.25, 10_000.0),
+        );
+    }
+
+    pub(super) fn focus(&mut self, point: Vec3, radius: f32) {
+        if !point.is_finite() || !radius.is_finite() {
+            return;
+        }
+        self.target = Some(point);
+        let desired_distance = (radius.max(0.25) * 2.4).max(2.0);
+        self.distance = Some(desired_distance);
+    }
+
+    pub(super) fn ground_axes(
+        &self,
+        preset: StudioCameraPreset,
+        minimum: Vec3,
+        maximum: Vec3,
+        aspect: f32,
+    ) -> ([f32; 2], [f32; 2]) {
+        let (camera, target) = self.view(preset, minimum, maximum, aspect);
+        let forward = target - camera;
+        let ground_forward = Vec3::new(forward.x, 0.0, forward.z).normalize_or_zero();
+        let ground_right = ground_forward.cross(Vec3::Y).normalize_or_zero();
+        (
+            [ground_right.x, ground_right.z],
+            [ground_forward.x, ground_forward.z],
+        )
     }
 }
 
@@ -148,5 +178,61 @@ mod tests {
             600.0,
         );
         assert_eq!(view(&camera), (zoomed, panned));
+    }
+
+    #[test]
+    fn focus_centers_an_object_without_changing_the_orbit_direction() {
+        let mut camera = StudioCamera::default();
+        camera.navigate(
+            [80.0, 30.0],
+            [0.0; 2],
+            0.0,
+            Vec3::new(20.0, 10.0, 20.0),
+            Vec3::ZERO,
+            600.0,
+        );
+        let before = camera.ground_axes(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        let point = Vec3::new(12.0, 3.0, -8.0);
+        camera.focus(point, 2.0);
+        let (eye, target) = camera.view(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        assert_eq!(target, point);
+        assert!(eye.distance(target) >= 4.0);
+        let after = camera.ground_axes(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        for (actual, expected) in after
+            .0
+            .into_iter()
+            .chain(after.1)
+            .zip(before.0.into_iter().chain(before.1))
+        {
+            assert!((actual - expected).abs() < 0.0001);
+        }
+    }
+
+    #[test]
+    fn ground_axes_follow_the_visible_camera() {
+        let mut camera = StudioCamera::default();
+        let before = camera.ground_axes(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        let (eye, target) = camera.view(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        camera.navigate([120.0, 0.0], [0.0; 2], 0.0, eye, target, 600.0);
+        let after = camera.ground_axes(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        assert_ne!(before, after);
+        for axis in [after.0, after.1] {
+            assert!((axis[0].hypot(axis[1]) - 1.0).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn navigated_camera_survives_changed_world_bounds() {
+        let mut camera = StudioCamera::default();
+        let (eye, target) = camera.view(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        camera.navigate([25.0, -10.0], [18.0, 12.0], 3.0, eye, target, 600.0);
+        let preserved = camera.view(StudioCameraPreset::Showcase, MIN, MAX, 1.5);
+        let rebuilt = camera.view(
+            StudioCameraPreset::Showcase,
+            MIN - Vec3::splat(100.0),
+            MAX + Vec3::splat(200.0),
+            1.5,
+        );
+        assert_eq!(preserved, rebuilt);
     }
 }

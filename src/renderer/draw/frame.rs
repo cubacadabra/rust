@@ -117,6 +117,10 @@ impl super::super::Renderer {
         let character_ink = self.scene.world.palette.ink;
         let reduced_effects = self.scene.reduced_effects;
         let lods = &mut self.scene.lods;
+        #[cfg(feature = "studio-ui")]
+        let runtime_players_visible = !self.studio_edit_mode;
+        #[cfg(not(feature = "studio-ui"))]
+        let runtime_players_visible = true;
         let mut add_character = |characters: &mut super::super::character_gpu::CharacterRenderer,
                                  entity: RenderEntity,
                                  style: super::super::AvatarStyle,
@@ -152,19 +156,23 @@ impl super::super::Renderer {
         if magic_mode {
             // Local player first gives deterministic priority if a development
             // caller supplies more than the bounded render-only crowd capacity.
-            if self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE {
+            if runtime_players_visible
+                && self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE
+            {
                 let mut local = self.scene.player;
                 local.camera_fade = crate::camera::fade(distance);
                 add_character(&mut self.characters, local, local.style, 0, reduced_effects);
             }
-            for (index, player) in self.scene.remote_players.iter().enumerate() {
-                add_character(
-                    &mut self.characters,
-                    *player,
-                    player.style,
-                    index + 1,
-                    reduced_effects,
-                );
+            if runtime_players_visible {
+                for (index, player) in self.scene.remote_players.iter().enumerate() {
+                    add_character(
+                        &mut self.characters,
+                        *player,
+                        player.style,
+                        index + 1,
+                        reduced_effects,
+                    );
+                }
             }
             for (index, agent) in self.scene.agents.iter().enumerate() {
                 let style = self
@@ -184,14 +192,20 @@ impl super::super::Renderer {
         }
         self.characters.upload(&self.queue);
         let mut ui_vertices = Vec::new();
-        self.add_world_labels(
-            &mut ui_vertices,
-            view_projection,
-            camera_position,
-            world_viewport,
-        );
-        if !self.avatar_preview_mode {
-            ui_vertices.extend(super::super::ui::build_ui_vertices(&self.ui_frame));
+        #[cfg(feature = "studio-ui")]
+        let runtime_ui_visible = !self.studio_edit_mode;
+        #[cfg(not(feature = "studio-ui"))]
+        let runtime_ui_visible = true;
+        if runtime_ui_visible {
+            self.add_world_labels(
+                &mut ui_vertices,
+                view_projection,
+                camera_position,
+                world_viewport,
+            );
+            if !self.avatar_preview_mode {
+                ui_vertices.extend(super::super::ui::build_ui_vertices(&self.ui_frame));
+            }
         }
         #[cfg(target_os = "android")]
         if !super::super::device::ANDROID_FIRST_FRAME_REPORTED

@@ -86,8 +86,6 @@ impl Renderer {
             self.scene.lods.clear();
             self.active_world = engine.active_world;
             self.scene.world = world;
-            #[cfg(feature = "studio-ui")]
-            self.reset_studio_camera();
             self.rebuild_static_vertices();
         }
 

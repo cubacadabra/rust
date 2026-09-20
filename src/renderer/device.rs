@@ -142,6 +142,11 @@ impl Renderer {
         }
     }
 
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn set_studio_edit_mode(&mut self, enabled: bool) {
+        self.studio_edit_mode = enabled;
+    }
+
     #[cfg(any(target_os = "android", target_os = "ios"))]
     pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
         if layer.is_null() || width <= 0.0 || height <= 0.0 {
@@ -587,6 +592,8 @@ impl Renderer {
             studio_camera_preset: crate::StudioCameraPreset::Gameplay,
             #[cfg(feature = "studio-ui")]
             studio_camera: Default::default(),
+            #[cfg(feature = "studio-ui")]
+            studio_edit_mode: false,
         }
     }
 
@@ -608,9 +615,6 @@ impl Renderer {
     /// camera state or snapshots.
     #[cfg(feature = "studio-ui")]
     pub(crate) fn set_studio_camera_preset(&mut self, preset: crate::StudioCameraPreset) {
-        if self.studio_camera_preset != preset {
-            self.reset_studio_camera();
-        }
         self.studio_camera_preset = preset;
     }
 

@@ -105,6 +105,26 @@ impl super::super::Renderer {
             .navigate(orbit, pan, zoom, camera, target, viewport_height);
     }
 
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn focus_studio_camera(&mut self, point: [f32; 3], radius: f32) {
+        if self.studio_camera_preset == crate::StudioCameraPreset::Gameplay {
+            return;
+        }
+        self.studio_camera.focus(Vec3::from_array(point), radius);
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn studio_camera_ground_axes(&self) -> ([f32; 2], [f32; 2]) {
+        let (_, _, width, height) = self.world_viewport();
+        let (minimum, maximum) = self.presentation_bounds();
+        self.studio_camera.ground_axes(
+            self.studio_camera_preset,
+            minimum,
+            maximum,
+            width / height.max(1.0),
+        )
+    }
+
     pub(super) fn camera_far_plane(&self, camera: Vec3, target: Vec3) -> f32 {
         #[cfg(not(feature = "studio-ui"))]
         let _ = (camera, target);

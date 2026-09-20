@@ -463,6 +463,8 @@ pub struct Renderer {
     pub(super) studio_camera_preset: crate::StudioCameraPreset,
     #[cfg(feature = "studio-ui")]
     studio_camera: studio_camera::StudioCamera,
+    #[cfg(feature = "studio-ui")]
+    pub(super) studio_edit_mode: bool,
 }
 
 fn default_player_style() -> AvatarStyle {

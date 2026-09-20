@@ -174,6 +174,18 @@ pub mod native {
                 .navigate_studio_camera(orbit, pan, zoom, viewport_height);
         }
 
+        /// Frames one authored object in the current Studio camera.
+        #[cfg(feature = "studio-ui")]
+        pub fn focus_studio_camera(&mut self, point: [f32; 3], radius: f32) {
+            self.inner.focus_studio_camera(point, radius);
+        }
+
+        /// Returns visible-camera right and away axes projected onto the ground plane.
+        #[cfg(feature = "studio-ui")]
+        pub fn studio_camera_ground_axes(&self) -> ([f32; 2], [f32; 2]) {
+            self.inner.studio_camera_ground_axes()
+        }
+
         pub fn device(&self) -> &wgpu::Device {
             &self.inner.device
         }
@@ -230,6 +242,12 @@ pub mod native {
         #[cfg(feature = "studio-ui")]
         pub fn set_avatar_preview_mode(&mut self, enabled: bool) {
             self.inner.set_avatar_preview_mode(enabled);
+        }
+
+        /// Hides runtime-only players and HUD while Studio is authoring.
+        #[cfg(feature = "studio-ui")]
+        pub fn set_studio_edit_mode(&mut self, enabled: bool) {
+            self.inner.set_studio_edit_mode(enabled);
         }
     }
 }

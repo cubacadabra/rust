@@ -229,10 +229,16 @@ impl super::super::Renderer {
             );
         }
         if self.character_render_mode == CharacterRenderMode::Legacy {
+            #[cfg(feature = "studio-ui")]
+            let runtime_players_visible = !self.studio_edit_mode;
+            #[cfg(not(feature = "studio-ui"))]
+            let runtime_players_visible = true;
             // This is the complete rollback path: it uses the established
             // hard-cuboid avatar and legacy package colors, while preserving
             // the typed pose inputs supplied by the current engine.
-            if self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE {
+            if runtime_players_visible
+                && self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE
+            {
                 super::super::add_legacy_avatar(
                     &mut mesh,
                     self.scene.player,
@@ -240,13 +246,15 @@ impl super::super::Renderer {
                     self.scene.world.palette.ink,
                 );
             }
-            for player in &self.scene.remote_players {
-                super::super::add_legacy_avatar(
-                    &mut mesh,
-                    *player,
-                    player.style,
-                    self.scene.world.palette.ink,
-                );
+            if runtime_players_visible {
+                for player in &self.scene.remote_players {
+                    super::super::add_legacy_avatar(
+                        &mut mesh,
+                        *player,
+                        player.style,
+                        self.scene.world.palette.ink,
+                    );
+                }
             }
             for (index, agent) in self.scene.agents.iter().enumerate() {
                 let style = self
@@ -305,11 +313,17 @@ impl super::super::Renderer {
                 super::super::faded(self.scene.world.palette.ink, alpha),
             );
         };
-        if self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE {
+        #[cfg(feature = "studio-ui")]
+        let runtime_players_visible = !self.studio_edit_mode;
+        #[cfg(not(feature = "studio-ui"))]
+        let runtime_players_visible = true;
+        if runtime_players_visible && self.scene.camera[2] > crate::camera::FIRST_PERSON_DISTANCE {
             add(self.scene.player);
         }
-        for entity in &self.scene.remote_players {
-            add(*entity);
+        if runtime_players_visible {
+            for entity in &self.scene.remote_players {
+                add(*entity);
+            }
         }
         for entity in &self.scene.agents {
             add(*entity);
