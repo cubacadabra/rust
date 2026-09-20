@@ -142,6 +142,48 @@ fn triangle_ceiling_stops_a_jump_and_floor_reports_landing() {
 }
 
 #[test]
+fn vegas_chair_collision_provides_seat_and_upper_support() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../examples/vegas-101/assets/models/vegas-chair-2.collision.json");
+    let collision: Value = serde_json::from_str(
+        &std::fs::read_to_string(&fixture)
+            .unwrap_or_else(|error| panic!("read {}: {error}", fixture.display())),
+    )
+    .expect("chair collision fixture should be valid JSON");
+    let triangles: Vec<[[f32; 3]; 3]> = serde_json::from_value(
+        collision
+            .get("triangles")
+            .cloned()
+            .expect("chair collision should contain triangles"),
+    )
+    .expect("chair collision triangles should have the runtime shape");
+
+    let mut seat = collision_engine(
+        [0.0, 4.0, 0.0],
+        json!({"groundCollision": false, "deathY": -50}),
+        triangles.clone(),
+    );
+    seat.player.grounded = false;
+    for _ in 0..120 {
+        seat.step(1.0 / 60.0);
+    }
+    assert!(seat.player.grounded);
+    assert!((seat.player.position[1] - 1.093).abs() < 0.01);
+
+    let mut upper = collision_engine(
+        [0.0, 5.0, 1.65],
+        json!({"groundCollision": false, "deathY": -50}),
+        triangles,
+    );
+    upper.player.grounded = false;
+    for _ in 0..120 {
+        upper.step(1.0 / 60.0);
+    }
+    assert!(upper.player.grounded);
+    assert!((upper.player.position[1] - 1.948).abs() < 0.01);
+}
+
+#[test]
 fn triangle_wall_occludes_the_camera_sphere() {
     let wall = quad(
         [-3.0, 0.0, 4.0],
