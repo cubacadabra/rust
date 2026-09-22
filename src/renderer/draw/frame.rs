@@ -115,6 +115,9 @@ impl super::super::Renderer {
         if self.studio_static_translucent_sort_enabled {
             sort_translucent(&mut self.translucent_vertices, camera_position, target);
         } else {
+            // Static translucent geometry is authored once and can be very
+            // large. Keep it in authored order; only dynamic translucent
+            // geometry needs camera-dependent sorting each frame.
             sort_translucent(
                 &mut self.translucent_vertices[static_translucent_vertex_count..],
                 camera_position,
