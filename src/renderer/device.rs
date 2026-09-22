@@ -607,6 +607,8 @@ impl Renderer {
             studio_edit_mode: false,
             #[cfg(feature = "studio-ui")]
             studio_shadows_enabled: true,
+            #[cfg(feature = "studio-ui")]
+            studio_draw_timings_ms: [0.0; 4],
         }
     }
 

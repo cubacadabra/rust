@@ -261,5 +261,12 @@ pub mod native {
         pub fn set_studio_shadows_enabled(&mut self, enabled: bool) {
             self.inner.set_studio_shadows_enabled(enabled);
         }
+
+        /// Returns the last Studio renderer draw sub-timings in milliseconds:
+        /// encode, presenter/composite, queue submit, and frame present.
+        #[cfg(feature = "studio-ui")]
+        pub fn studio_draw_timings_ms(&self) -> [f32; 4] {
+            self.inner.studio_draw_timings_ms
+        }
     }
 }

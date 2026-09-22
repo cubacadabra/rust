@@ -472,6 +472,8 @@ pub struct Renderer {
     pub(super) studio_edit_mode: bool,
     #[cfg(feature = "studio-ui")]
     pub(super) studio_shadows_enabled: bool,
+    #[cfg(feature = "studio-ui")]
+    pub(super) studio_draw_timings_ms: [f32; 4],
 }
 
 fn default_player_style() -> AvatarStyle {
