@@ -113,6 +113,10 @@ impl super::super::Renderer {
         let dynamic_count =
             self.opaque_vertices.len() + shadow_vertices.len() + self.translucent_vertices.len();
         let magic_mode = self.character_render_mode == CharacterRenderMode::Magic;
+        #[cfg(feature = "studio-ui")]
+        let shadows_enabled = self.studio_shadows_enabled;
+        #[cfg(not(feature = "studio-ui"))]
+        let shadows_enabled = true;
         self.characters.begin();
         let character_ink = self.scene.world.palette.ink;
         let reduced_effects = self.scene.reduced_effects;
@@ -326,7 +330,7 @@ impl super::super::Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("cubacadabra frame encoder"),
             });
-        {
+        if shadows_enabled {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("cubacadabra directional shadow pass"),
                 color_attachments: &[],

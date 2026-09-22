@@ -147,6 +147,11 @@ impl Renderer {
         self.studio_edit_mode = enabled;
     }
 
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn set_studio_shadows_enabled(&mut self, enabled: bool) {
+        self.studio_shadows_enabled = enabled;
+    }
+
     #[cfg(any(target_os = "android", target_os = "ios"))]
     pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
         if layer.is_null() || width <= 0.0 || height <= 0.0 {
@@ -600,6 +605,8 @@ impl Renderer {
             studio_camera: Default::default(),
             #[cfg(feature = "studio-ui")]
             studio_edit_mode: false,
+            #[cfg(feature = "studio-ui")]
+            studio_shadows_enabled: true,
         }
     }
 

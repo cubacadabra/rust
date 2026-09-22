@@ -254,5 +254,12 @@ pub mod native {
         pub fn set_studio_edit_mode(&mut self, enabled: bool) {
             self.inner.set_studio_edit_mode(enabled);
         }
+
+        /// Enables or disables Studio's directional static-shadow pass.
+        /// This is a presentation-only diagnostic control.
+        #[cfg(feature = "studio-ui")]
+        pub fn set_studio_shadows_enabled(&mut self, enabled: bool) {
+            self.inner.set_studio_shadows_enabled(enabled);
+        }
     }
 }

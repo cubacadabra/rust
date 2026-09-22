@@ -470,6 +470,8 @@ pub struct Renderer {
     studio_camera: studio_camera::StudioCamera,
     #[cfg(feature = "studio-ui")]
     pub(super) studio_edit_mode: bool,
+    #[cfg(feature = "studio-ui")]
+    pub(super) studio_shadows_enabled: bool,
 }
 
 fn default_player_style() -> AvatarStyle {
