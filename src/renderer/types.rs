@@ -473,6 +473,8 @@ pub struct Renderer {
     #[cfg(feature = "studio-ui")]
     pub(super) studio_shadows_enabled: bool,
     #[cfg(feature = "studio-ui")]
+    pub(super) studio_static_translucent_sort_enabled: bool,
+    #[cfg(feature = "studio-ui")]
     pub(super) studio_draw_timings_ms: [f32; 4],
 }
 

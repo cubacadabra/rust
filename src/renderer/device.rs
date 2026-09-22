@@ -152,6 +152,11 @@ impl Renderer {
         self.studio_shadows_enabled = enabled;
     }
 
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn set_studio_static_translucent_sort_enabled(&mut self, enabled: bool) {
+        self.studio_static_translucent_sort_enabled = enabled;
+    }
+
     #[cfg(any(target_os = "android", target_os = "ios"))]
     pub fn new(layer: *mut c_void, width: f32, height: f32) -> Option<Self> {
         if layer.is_null() || width <= 0.0 || height <= 0.0 {
@@ -607,6 +612,8 @@ impl Renderer {
             studio_edit_mode: false,
             #[cfg(feature = "studio-ui")]
             studio_shadows_enabled: true,
+            #[cfg(feature = "studio-ui")]
+            studio_static_translucent_sort_enabled: true,
             #[cfg(feature = "studio-ui")]
             studio_draw_timings_ms: [0.0; 4],
         }

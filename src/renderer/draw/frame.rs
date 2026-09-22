@@ -102,6 +102,8 @@ impl super::super::Renderer {
         };
         self.opaque_vertices.clear();
         self.translucent_vertices.clear();
+        #[cfg(feature = "studio-ui")]
+        let static_translucent_vertex_count = self.static_translucent_vertices.len();
         self.translucent_vertices
             .extend_from_slice(&self.static_translucent_vertices);
         split_world_vertices(
@@ -109,6 +111,17 @@ impl super::super::Renderer {
             &mut self.opaque_vertices,
             &mut self.translucent_vertices,
         );
+        #[cfg(feature = "studio-ui")]
+        if self.studio_static_translucent_sort_enabled {
+            sort_translucent(&mut self.translucent_vertices, camera_position, target);
+        } else {
+            sort_translucent(
+                &mut self.translucent_vertices[static_translucent_vertex_count..],
+                camera_position,
+                target,
+            );
+        }
+        #[cfg(not(feature = "studio-ui"))]
         sort_translucent(&mut self.translucent_vertices, camera_position, target);
         let dynamic_count =
             self.opaque_vertices.len() + shadow_vertices.len() + self.translucent_vertices.len();

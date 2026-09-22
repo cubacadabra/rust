@@ -262,6 +262,14 @@ pub mod native {
             self.inner.set_studio_shadows_enabled(enabled);
         }
 
+        /// Enables or disables per-frame depth sorting of static translucent
+        /// Studio geometry. This is a presentation-only diagnostic control.
+        #[cfg(feature = "studio-ui")]
+        pub fn set_studio_static_translucent_sort_enabled(&mut self, enabled: bool) {
+            self.inner
+                .set_studio_static_translucent_sort_enabled(enabled);
+        }
+
         /// Returns the last Studio renderer draw sub-timings in milliseconds:
         /// encode, presenter/composite, queue submit, and frame present.
         #[cfg(feature = "studio-ui")]
