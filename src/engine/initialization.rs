@@ -20,6 +20,7 @@ impl Engine {
             data_model: crate::data_model::DataModel::new(),
             player: Player::default(),
             agents: Vec::with_capacity(MAX_AGENTS),
+            authored_actors: Vec::new(),
             remote_players: Vec::with_capacity(MAX_AGENTS),
             obstacles: obstacles.clone(),
             base_obstacles: obstacles.clone(),

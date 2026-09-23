@@ -215,6 +215,12 @@ pub(super) struct RenderMeshInstance {
 }
 
 #[derive(Clone)]
+pub(super) struct RenderActor {
+    pub(super) name: String,
+    pub(super) style: AvatarStyle,
+}
+
+#[derive(Clone)]
 pub(super) struct RenderWorld {
     pub(super) blocks: Vec<RenderBlock>,
     pub(super) terrain: Option<crate::terrain::TerrainGrid>,
@@ -235,6 +241,7 @@ pub(super) struct RenderWorld {
     pub(super) signs: Vec<RenderSign>,
     pub(super) billboards: Vec<RenderBillboard>,
     pub(super) interactions: Vec<RenderInteraction>,
+    pub(super) actors: Vec<RenderActor>,
     pub(super) effect_templates: std::collections::BTreeMap<String, RenderEffectTemplate>,
     pub(super) decorations: Vec<RenderDecoration>,
     pub(super) mesh_instances: Vec<RenderMeshInstance>,
@@ -274,6 +281,7 @@ impl Default for RenderWorld {
             signs: Vec::new(),
             billboards: Vec::new(),
             interactions: Vec::new(),
+            actors: Vec::new(),
             effect_templates: std::collections::BTreeMap::new(),
             decorations: Vec::new(),
             mesh_instances: Vec::new(),
@@ -359,6 +367,7 @@ pub(super) struct PostGlobals {
 pub(super) struct Scene {
     pub(super) world: RenderWorld,
     pub(super) agents: Vec<RenderEntity>,
+    pub(super) authored_actors: Vec<RenderEntity>,
     pub(super) remote_players: Vec<RenderEntity>,
     pub(super) remote_names: Vec<String>,
     pub(super) player: RenderEntity,
@@ -386,6 +395,7 @@ impl Default for Scene {
         Self {
             world: RenderWorld::default(),
             agents: Vec::new(),
+            authored_actors: Vec::new(),
             remote_players: Vec::new(),
             remote_names: Vec::new(),
             player: RenderEntity::default(),

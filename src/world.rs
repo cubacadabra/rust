@@ -1,5 +1,13 @@
 use crate::types::LaunchPadPhase;
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct AuthoredActor {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) position: [f32; 3],
+    pub(crate) yaw: f32,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Aabb {
     pub(crate) min_x: f32,
@@ -55,6 +63,7 @@ pub(crate) struct RuntimeWorld {
     pub(crate) checkpoints: Vec<Checkpoint>,
     pub(crate) portals: Vec<Portal>,
     pub(crate) interactions: Vec<InteractionZone>,
+    pub(crate) actors: Vec<AuthoredActor>,
     pub(crate) hazards: Vec<HazardVolume>,
     pub(crate) safe_zones: Vec<SafeZone>,
 }

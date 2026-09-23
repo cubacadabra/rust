@@ -28,8 +28,8 @@ use crate::types::{
 };
 use crate::ui::UiRuntime;
 use crate::world::{
-    Aabb, Checkpoint, HazardVolume, HealthSettings, LadderVolume, LaunchPad, PhysicsSettings,
-    RespawnSettings, RuntimeWorld, SafeZone,
+    Aabb, AuthoredActor, Checkpoint, HazardVolume, HealthSettings, LadderVolume, LaunchPad,
+    PhysicsSettings, RespawnSettings, RuntimeWorld, SafeZone,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
@@ -79,6 +79,7 @@ pub struct Engine {
     pub(crate) data_model: DataModel,
     pub(crate) player: Player,
     pub(crate) agents: Vec<Agent>,
+    pub(crate) authored_actors: Vec<AuthoredActor>,
     pub(crate) remote_players: Vec<RemotePlayer>,
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) base_obstacles: Vec<Aabb>,

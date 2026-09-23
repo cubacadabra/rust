@@ -587,5 +587,15 @@ impl super::super::Renderer {
             let name = format!("BOT {}", index + 1);
             add(*agent, &name);
         }
+        for (index, actor) in self.scene.authored_actors.iter().enumerate() {
+            let name = self
+                .scene
+                .world
+                .actors
+                .get(index)
+                .map(|actor| actor.name.as_str())
+                .unwrap_or("ACTOR");
+            add(*actor, name);
+        }
     }
 }

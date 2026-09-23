@@ -5,9 +5,9 @@ use crate::math::horizontal_distance;
 use crate::terrain::TerrainGrid;
 use crate::types::{AgentPhase, BuildBlock, Input};
 use crate::world::{
-    Checkpoint, HazardVolume, HealthSettings, HorizontalBounds, LadderAxis, LadderVolume,
-    LaunchPad, PhysicsSettings, Portal, RespawnMode, RespawnSettings, RuntimeWorld, SafeZone,
-    WorldCamera, block_bounds, slot_offset,
+    AuthoredActor, Checkpoint, HazardVolume, HealthSettings, HorizontalBounds, LadderAxis,
+    LadderVolume, LaunchPad, PhysicsSettings, Portal, RespawnMode, RespawnSettings, RuntimeWorld,
+    SafeZone, WorldCamera, block_bounds, slot_offset,
 };
 use std::sync::Arc;
 
@@ -157,6 +157,7 @@ impl Engine {
         self.checkpoints = world.checkpoints;
         self.hazards = world.hazards;
         self.safe_zones = world.safe_zones;
+        self.authored_actors = world.actors;
         self.set_interaction_world(world.interactions);
         self.build_blocks.clear();
         self.pending_reconciliation = [0.0; 3];
@@ -513,6 +514,16 @@ impl Engine {
                     .collect::<Vec<_>>();
                 let interactions =
                     InteractionRuntime::from_definitions(&definition.interactions).world;
+                let actors = definition
+                    .actors
+                    .iter()
+                    .map(|actor| AuthoredActor {
+                        id: actor.id.clone(),
+                        name: actor.name.clone(),
+                        position: actor.position(),
+                        yaw: actor.yaw,
+                    })
+                    .collect::<Vec<_>>();
                 RuntimeWorld {
                     spawn: definition.world.spawn(),
                     camera: definition.world.camera.map(|camera| WorldCamera {
@@ -532,6 +543,7 @@ impl Engine {
                     checkpoints,
                     portals,
                     interactions,
+                    actors,
                     hazards,
                     safe_zones,
                 }

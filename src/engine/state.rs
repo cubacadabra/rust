@@ -115,6 +115,12 @@ impl Engine {
             hash.f32(agent.vertical_velocity);
             hash.bool(agent.grounded);
         }
+        for actor in &self.authored_actors {
+            hash.string(&actor.id);
+            hash.string(&actor.name);
+            hash.array3(actor.position);
+            hash.f32(actor.yaw);
+        }
         for player in &self.remote_players {
             hash.array3(player.position);
             hash.f32(player.yaw);
@@ -310,6 +316,37 @@ impl Engine {
                             emote_sequence: 0,
                             appearance_revision: 0,
                         }
+                    }),
+            )
+            .chain(
+                self.authored_actors
+                    .iter()
+                    .enumerate()
+                    .map(move |(slot, actor)| CharacterMotionSample {
+                        key: CharacterEntityKey {
+                            kind: CharacterEntityKind::AuthoredActor,
+                            slot,
+                            generation: 0,
+                            identity: 0,
+                        },
+                        sequence,
+                        time,
+                        position: actor.position,
+                        facing_yaw: actor.yaw,
+                        look_yaw: actor.yaw,
+                        planar_velocity: None,
+                        vertical_velocity: Some(0.0),
+                        support: CharacterSupport::Grounded {
+                            height: actor.position[1],
+                        },
+                        stride_phase: 0.0,
+                        moving: false,
+                        sprinting: false,
+                        source: CharacterMotionSource::Simulation,
+                        event: CharacterMotionEvent::None,
+                        emote: CharacterEmote::None,
+                        emote_sequence: 0,
+                        appearance_revision: 0,
                     }),
             )
             .chain(

@@ -206,6 +206,7 @@ impl GamePackageDefinition {
             signs: self.signs.clone(),
             billboards: self.billboards.clone(),
             interactions: Vec::new(),
+            actors: Vec::new(),
             ladders: Vec::new(),
             checkpoints: Vec::new(),
             hazards: Vec::new(),
@@ -273,6 +274,8 @@ pub(crate) struct WorldDefinition {
     #[serde(default)]
     pub(crate) interactions: Vec<InteractionDefinition>,
     #[serde(default)]
+    pub(crate) actors: Vec<ActorDefinition>,
+    #[serde(default)]
     pub(crate) ladders: Vec<LadderDefinition>,
     #[serde(default)]
     pub(crate) checkpoints: Vec<CheckpointDefinition>,
@@ -282,6 +285,31 @@ pub(crate) struct WorldDefinition {
     pub(crate) safe_zones: Vec<SafeZoneDefinition>,
     #[serde(default)]
     pub(crate) decorations: Vec<DecorationDefinition>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ActorDefinition {
+    #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) position: Vec<f32>,
+    #[serde(default)]
+    pub(crate) yaw: f32,
+    #[serde(default)]
+    pub(crate) appearance: AvatarDefinition,
+}
+
+impl ActorDefinition {
+    pub(crate) fn position(&self) -> [f32; 3] {
+        [
+            self.position.first().copied().unwrap_or(0.0),
+            self.position.get(1).copied().unwrap_or(0.0),
+            self.position.get(2).copied().unwrap_or(0.0),
+        ]
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

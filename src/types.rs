@@ -64,6 +64,7 @@ pub(crate) struct RemotePlayer {
 pub(crate) enum CharacterEntityKind {
     LocalPlayer,
     LocalNpc,
+    AuthoredActor,
     RemotePlayer,
 }
 

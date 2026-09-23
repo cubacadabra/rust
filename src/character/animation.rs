@@ -841,6 +841,7 @@ fn presentation_seed(key: CharacterEntityKey) -> u32 {
     let kind: u32 = match key.kind {
         crate::types::CharacterEntityKind::LocalPlayer => 1,
         crate::types::CharacterEntityKind::LocalNpc => 2,
+        crate::types::CharacterEntityKind::AuthoredActor => 2,
         crate::types::CharacterEntityKind::RemotePlayer => 3,
     };
     let mut value =

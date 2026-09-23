@@ -16,9 +16,9 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{
-    AvatarStyle, RenderBillboard, RenderBlock, RenderCloud, RenderDecoration, RenderEntity,
-    RenderInteraction, RenderLadder, RenderMeshInstance, RenderPad, RenderPalette, RenderSign,
-    RenderWorld, Renderer,
+    AvatarStyle, RenderActor, RenderBillboard, RenderBlock, RenderCloud, RenderDecoration,
+    RenderEntity, RenderInteraction, RenderLadder, RenderMeshInstance, RenderPad, RenderPalette,
+    RenderSign, RenderWorld, Renderer,
 };
 
 #[cfg(target_os = "ios")]
@@ -91,6 +91,7 @@ impl Renderer {
 
         self.scene.player = RenderEntity::default();
         self.scene.agents.clear();
+        self.scene.authored_actors.clear();
         self.scene.remote_players.clear();
         self.scene.remote_names.clear();
         self.scene.morph_assets.clear();
@@ -118,6 +119,13 @@ impl Renderer {
                     .get(sample.key.slot % self.scene.npc_styles.len().max(1))
                     .copied()
                     .unwrap_or(self.scene.player_style),
+                CharacterEntityKind::AuthoredActor => self
+                    .scene
+                    .world
+                    .actors
+                    .get(sample.key.slot)
+                    .map(|actor| actor.style)
+                    .unwrap_or(self.scene.player_style),
                 CharacterEntityKind::LocalPlayer => self.scene.player_style,
                 CharacterEntityKind::RemotePlayer => engine
                     .remote_appearance(sample.key)
@@ -133,7 +141,7 @@ impl Renderer {
                     .remote_appearance(sample.key)
                     .map(morph_assets_for_appearance)
                     .unwrap_or_default(),
-                CharacterEntityKind::LocalNpc => Vec::new(),
+                CharacterEntityKind::LocalNpc | CharacterEntityKind::AuthoredActor => Vec::new(),
             };
             let authored_morph = match sample.key.kind {
                 CharacterEntityKind::LocalPlayer => {
@@ -142,7 +150,7 @@ impl Renderer {
                 CharacterEntityKind::RemotePlayer => engine
                     .remote_appearance(sample.key)
                     .is_some_and(|appearance| appearance.morph_loadout.is_some()),
-                CharacterEntityKind::LocalNpc => false,
+                CharacterEntityKind::LocalNpc | CharacterEntityKind::AuthoredActor => false,
             };
             if !morph_assets.is_empty() {
                 self.scene.morph_assets.insert(sample.key, morph_assets);
@@ -164,6 +172,10 @@ impl Renderer {
                         .agents
                         .push(render_entity(sample, style, animation, authored_morph))
                 }
+                CharacterEntityKind::AuthoredActor => self
+                    .scene
+                    .authored_actors
+                    .push(render_entity(sample, style, animation, authored_morph)),
                 CharacterEntityKind::RemotePlayer => self.scene.remote_players.push(render_entity(
                     sample,
                     style,
@@ -529,6 +541,21 @@ fn resolve_world(
                 yaw: decoration.yaw,
                 color: resolve_color(&definition.palette, &decoration.color, palette.paper),
                 variant: decoration.variant,
+            })
+            .collect(),
+        actors: definition
+            .actors
+            .iter()
+            .enumerate()
+            .map(|(index, actor)| {
+                let defaults = super::default_npc_styles();
+                RenderActor {
+                    name: display_name(&actor.name, &format!("ACTOR {}", index + 1)),
+                    style: resolve_avatar_style(
+                        &actor.appearance,
+                        defaults[index % defaults.len()],
+                    ),
+                }
             })
             .collect(),
         mesh_instances: definition
