@@ -79,6 +79,7 @@ pub(super) struct RenderEffectNode {
     pub(super) shape: String,
     pub(super) position: [f32; 3],
     pub(super) size: [f32; 3],
+    pub(super) rotation: [f32; 3],
     pub(super) color: [f32; 4],
     pub(super) interaction_color: bool,
     pub(super) opacity: f32,

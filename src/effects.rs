@@ -64,6 +64,8 @@ pub(crate) struct EffectNodeDefinition {
     #[serde(default)]
     pub(crate) size: Vec<f32>,
     #[serde(default)]
+    pub(crate) rotation: Vec<f32>,
+    #[serde(default)]
     pub(crate) color: String,
     #[serde(default = "default_effect_opacity")]
     pub(crate) opacity: f32,
@@ -87,6 +89,10 @@ impl EffectNodeDefinition {
     pub(crate) fn size(&self) -> [f32; 3] {
         vector3(&self.size, [1.0; 3])
     }
+
+    pub(crate) fn rotation(&self) -> [f32; 3] {
+        vector3(&self.rotation, [0.0; 3])
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -96,6 +102,7 @@ pub(crate) struct EffectNodeVariantDefinition {
     pub(crate) visible_states: Vec<String>,
     pub(crate) position: Option<Vec<f32>>,
     pub(crate) size: Option<Vec<f32>>,
+    pub(crate) rotation: Option<Vec<f32>>,
     pub(crate) color: Option<String>,
     pub(crate) opacity: Option<f32>,
     pub(crate) count: Option<usize>,
@@ -126,6 +133,14 @@ pub(crate) struct EffectAnimationDefinition {
     pub(crate) radial_amount: f32,
     #[serde(default)]
     pub(crate) fade: bool,
+    /// Optional endpoints for a one-shot effect. They are relative to the
+    /// effect instance origin, just like the node's position.
+    #[serde(default)]
+    pub(crate) travel_to: Option<[f32; 3]>,
+    #[serde(default)]
+    pub(crate) travel_size: Option<[f32; 3]>,
+    #[serde(default)]
+    pub(crate) travel_rotation: Option<[f32; 3]>,
 }
 
 impl EffectAnimationDefinition {
@@ -141,6 +156,9 @@ impl EffectAnimationDefinition {
             expand_amount: value.expand_amount.unwrap_or(self.expand_amount),
             radial_amount: value.radial_amount.unwrap_or(self.radial_amount),
             fade: value.fade.unwrap_or(self.fade),
+            travel_to: value.travel_to.or(self.travel_to),
+            travel_size: value.travel_size.or(self.travel_size),
+            travel_rotation: value.travel_rotation.or(self.travel_rotation),
         }
     }
 }
@@ -158,6 +176,9 @@ pub(crate) struct EffectAnimationOverrideDefinition {
     pub(crate) expand_amount: Option<f32>,
     pub(crate) radial_amount: Option<f32>,
     pub(crate) fade: Option<bool>,
+    pub(crate) travel_to: Option<[f32; 3]>,
+    pub(crate) travel_size: Option<[f32; 3]>,
+    pub(crate) travel_rotation: Option<[f32; 3]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

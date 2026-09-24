@@ -76,6 +76,11 @@ fn resolve_node(
         .map(|value| vector3(value, node.size()))
         .unwrap_or_else(|| node.size())
         .map(|value| finite_clamp(value.abs(), 0.01, 100.0, 1.0));
+    let rotation = variant
+        .and_then(|value| value.rotation.as_deref())
+        .map(|value| vector3(value, node.rotation()))
+        .unwrap_or_else(|| node.rotation())
+        .map(|value| finite_clamp(value, -std::f32::consts::TAU, std::f32::consts::TAU, 0.0));
     let color_name = variant
         .and_then(|value| value.color.as_deref())
         .unwrap_or(&node.color);
@@ -97,11 +102,21 @@ fn resolve_node(
     animation.spin_speed = finite_clamp(animation.spin_speed, -20.0, 20.0, 0.0);
     animation.expand_amount = finite_clamp(animation.expand_amount, 0.0, 100.0, 0.0);
     animation.radial_amount = finite_clamp(animation.radial_amount, -100.0, 100.0, 0.0);
+    animation.travel_to = animation
+        .travel_to
+        .map(|value| value.map(|value| finite_clamp(value, -10_000.0, 10_000.0, 0.0)));
+    animation.travel_size = animation
+        .travel_size
+        .map(|value| value.map(|value| finite_clamp(value.abs(), 0.01, 100.0, 1.0)));
+    animation.travel_rotation = animation.travel_rotation.map(|value| {
+        value.map(|value| finite_clamp(value, -std::f32::consts::TAU, std::f32::consts::TAU, 0.0))
+    });
 
     RenderEffectNode {
         shape: node.shape.clone(),
         position,
         size,
+        rotation,
         color,
         interaction_color,
         opacity: finite_clamp(
@@ -211,6 +226,19 @@ pub(super) fn add_template(
                 + progress.unwrap_or(0.0) * node.animation.radial_amount;
             let orbit_angle = phase + elapsed * node.animation.orbit_speed * animation_scale;
             let mut position = Vec3::from_array(node.position);
+            let mut size = Vec3::from_array(node.size);
+            let mut rotation = Vec3::from_array(node.rotation);
+            if let Some(progress) = progress {
+                if let Some(destination) = node.animation.travel_to {
+                    position = position.lerp(Vec3::from_array(destination), progress);
+                }
+                if let Some(destination) = node.animation.travel_size {
+                    size = size.lerp(Vec3::from_array(destination), progress);
+                }
+                if let Some(destination) = node.animation.travel_rotation {
+                    rotation = rotation.lerp(Vec3::from_array(destination), progress);
+                }
+            }
             position.x += orbit_angle.cos() * orbit_radius;
             position.z += orbit_angle.sin() * orbit_radius;
             position.y += (elapsed * node.animation.bob_speed * animation_scale + phase).sin()
@@ -222,7 +250,7 @@ pub(super) fn add_template(
                     * node.animation.pulse_amount
                     * animation_scale;
             let expansion = 1.0 + progress.unwrap_or(0.0) * node.animation.expand_amount;
-            let size = Vec3::from_array(node.size) * pulse.max(0.05) * expansion;
+            size *= pulse.max(0.05) * expansion;
             let mut color = if node.interaction_color {
                 interaction_color
             } else {
@@ -236,8 +264,11 @@ pub(super) fn add_template(
             let center = origin + position;
             match node.shape.as_str() {
                 "box" => {
-                    let rotation = Quat::from_rotation_y(
-                        phase + elapsed * node.animation.spin_speed * animation_scale,
+                    let rotation = Quat::from_euler(
+                        glam::EulerRot::XYZ,
+                        rotation.x,
+                        rotation.y + phase + elapsed * node.animation.spin_speed * animation_scale,
+                        rotation.z,
                     );
                     super::add_transformed_cuboid(
                         vertices,
@@ -299,6 +330,7 @@ mod tests {
                 shape: "sphere".to_owned(),
                 position: [0.0; 3],
                 size: [1.0; 3],
+                rotation: [0.0; 3],
                 color: [1.0; 4],
                 interaction_color: false,
                 opacity: 1.0,
