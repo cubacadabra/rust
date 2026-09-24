@@ -225,6 +225,7 @@ impl MorphRegistry {
         root: Mat4,
         joints: [Mat4; 15],
         style: AvatarStyle,
+        opacity: f32,
     ) {
         let Some(asset) = self.assets.get(asset_id) else {
             return;
@@ -297,7 +298,9 @@ impl MorphRegistry {
                 .surfaces
                 .iter()
                 .map(|surface| {
-                    let (tint, material) = morph_surface_appearance(asset.kind, *surface, style);
+                    let (mut tint, material) =
+                        morph_surface_appearance(asset.kind, *surface, style);
+                    tint[3] *= opacity;
                     CharacterInstance::new(root * attachment, tint, material)
                 })
                 .collect();
@@ -313,7 +316,8 @@ impl MorphRegistry {
             return;
         };
         for (surface_index, surface) in asset.lods[lod.index()].surfaces.iter().enumerate() {
-            let (tint, material) = morph_surface_appearance(asset.kind, *surface, style);
+            let (mut tint, material) = morph_surface_appearance(asset.kind, *surface, style);
+            tint[3] *= opacity;
             self.batches
                 .entry((asset_id.clone(), lod.index(), surface_index))
                 .or_default()

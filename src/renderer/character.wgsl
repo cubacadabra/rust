@@ -113,13 +113,6 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
     // Derivatives must be evaluated before material branches/discards for
     // WebGPU's uniform-control-flow contract (also valid on Metal and GL).
     let uv_footprint = max(fwidth(input.uv.x), fwidth(input.uv.y));
-    // Ordered coverage fade preserves depth and avoids sorting the many rigid
-    // pieces as the local camera enters the head. No extra transparency pass.
-    if input.tint.a < 1.0 && input.material.z <= 0.0 {
-        let cell = vec2<u32>(input.position.xy) % vec2<u32>(4u);
-        let bayer = array<f32, 16>(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
-        if input.tint.a <= (bayer[cell.y * 4u + cell.x] + 0.5) / 16.0 { discard; }
-    }
     // Analytic graphic faces keep curved eyes and smiles crisp at close range
     // without extra meshes or a face texture. Discard preserves occlusion.
     if (input.material.w >= 4.0 && input.material.w <= 7.0) || input.material.w == 9.0 || input.material.w == 10.0 || input.material.w == 18.0 {
@@ -239,7 +232,7 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
             color *= 0.92;
         }
         let fog = smoothstep(globals.atmosphere.x, globals.atmosphere.y, distance(input.world, globals.camera_position.xyz));
-        return vec4<f32>(mix(grade_color(color), globals.fog_color.rgb, fog), coverage);
+        return vec4<f32>(mix(grade_color(color), globals.fog_color.rgb, fog), coverage * input.tint.a);
     }
     let normal = normalize(input.normal);
     let light = normalize(-globals.sun_direction.xyz);

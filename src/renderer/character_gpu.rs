@@ -523,8 +523,14 @@ impl CharacterRenderer {
             Vec3::from_array(entity.position),
         );
         for morph_asset in morph_assets.iter().take(16) {
-            self.morphs
-                .add_instance(morph_asset, lod, root, joints, style);
+            self.morphs.add_instance(
+                morph_asset,
+                lod,
+                root,
+                joints,
+                style,
+                1.0 - entity.camera_fade.clamp(0.0, 1.0),
+            );
         }
         let authored_base = morph_assets
             .iter()

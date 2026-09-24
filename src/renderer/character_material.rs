@@ -125,6 +125,27 @@ pub(super) enum CharacterPass {
     Effect,
 }
 
+fn blend_state(pass: CharacterPass) -> Option<wgpu::BlendState> {
+    match pass {
+        // Character solids keep writing depth while they fade near the local
+        // camera. This avoids the animated screen-door holes that made cloth
+        // and facial cards sparkle on lower-density desktop displays.
+        CharacterPass::Opaque | CharacterPass::Face => Some(wgpu::BlendState::ALPHA_BLENDING),
+        CharacterPass::Effect => Some(wgpu::BlendState {
+            color: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::SrcAlpha,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+            alpha: wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::Zero,
+                dst_factor: wgpu::BlendFactor::One,
+                operation: wgpu::BlendOperation::Add,
+            },
+        }),
+    }
+}
+
 pub(super) fn pipeline(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
@@ -175,22 +196,7 @@ pub(super) fn pipeline(
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: super::targets::SCENE_FORMAT,
-                blend: if pass == CharacterPass::Face {
-                    Some(wgpu::BlendState::ALPHA_BLENDING)
-                } else {
-                    (pass == CharacterPass::Effect).then_some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::SrcAlpha,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::Zero,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                    })
-                },
+                blend: blend_state(pass),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -327,5 +333,21 @@ mod tests {
         );
         let tangent = transform.transform_vector3(Vec3::new(1.0, -1.0, 0.0));
         assert!(normal.dot(tangent).abs() < 1e-5);
+    }
+
+    #[test]
+    fn camera_faded_character_passes_use_smooth_alpha() {
+        assert_eq!(
+            blend_state(CharacterPass::Opaque),
+            Some(wgpu::BlendState::ALPHA_BLENDING)
+        );
+        assert_eq!(
+            blend_state(CharacterPass::Face),
+            Some(wgpu::BlendState::ALPHA_BLENDING)
+        );
+
+        let shader = include_str!("character.wgsl");
+        assert!(!shader.contains("bayer"));
+        assert!(shader.contains("coverage * input.tint.a"));
     }
 }
