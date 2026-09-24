@@ -227,19 +227,21 @@ impl super::super::Renderer {
             );
         }
         #[cfg(debug_assertions)]
-        add_floor_pixel_text(
-            &mut mesh,
-            super::super::DEBUG_GIT_SHA,
-            Vec3::new(
-                world.spawn[0],
-                world.spawn[1] + 0.035,
-                // Put the label toward the default camera, clear of the pad
-                // and the player standing on it.
-                world.spawn[2] + 5.5,
-            ),
-            9.0,
-            world.palette.ink,
-        );
+        if !self.about_rendering {
+            add_floor_pixel_text(
+                &mut mesh,
+                super::super::DEBUG_GIT_SHA,
+                Vec3::new(
+                    world.spawn[0],
+                    world.spawn[1] + 0.035,
+                    // Put the label toward the default camera, clear of the pad
+                    // and the player standing on it.
+                    world.spawn[2] + 5.5,
+                ),
+                9.0,
+                world.palette.ink,
+            );
+        }
         for (index, cloud) in world.clouds.iter().enumerate() {
             add_cloud(
                 &mut mesh,

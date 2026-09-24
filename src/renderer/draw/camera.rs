@@ -89,6 +89,9 @@ impl super::super::Renderer {
     }
 
     pub(super) fn camera_view(&self, aspect: f32) -> (Vec3, Vec3) {
+        if self.about_rendering {
+            return (Vec3::new(0.0, 4.1, 13.0), Vec3::new(0.0, 1.7, 0.0));
+        }
         #[cfg(not(feature = "studio-ui"))]
         let _ = aspect;
         let player = Vec3::from_array(self.scene.player.position);

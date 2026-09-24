@@ -533,6 +533,14 @@ impl Renderer {
             &post_processor,
             &presenter.layout,
         );
+        let about_targets = super::targets::SceneTargets::new(
+            &device,
+            super::about_preview::ABOUT_WIDTH,
+            super::about_preview::ABOUT_HEIGHT,
+            sample_count,
+            &post_processor,
+            &presenter.layout,
+        );
         let (ui_pipeline, ui_texture_bind_group) = ui_resources(&device, &queue);
         let static_vertex_capacity = 16_384;
         let dynamic_vertex_capacity = 16_384;
@@ -582,6 +590,7 @@ impl Renderer {
             ui_vertex_capacity,
             config,
             targets,
+            about_targets,
             presenter,
             sample_count,
             characters,
@@ -592,6 +601,7 @@ impl Renderer {
             width,
             height,
             scene: super::Scene::default(),
+            about_rendering: false,
             // Keep the current production visual as the default. Hosts can
             // select Legacy before their first sync for staged rollout or
             // instant comparison; changing this setting is presentation-only.

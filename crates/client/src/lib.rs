@@ -1,16 +1,11 @@
 mod protocol;
 mod session;
 
-#[cfg(feature = "about-animation")]
-mod about_animation;
-
 #[cfg(not(target_arch = "wasm32"))]
 mod ffi;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
-#[cfg(feature = "about-animation")]
-pub use about_animation::{AboutAnimation, AboutAnimationFrame};
 pub use cubacadabra_engine::Engine;
 #[cfg(feature = "studio-ui")]
 pub use cubacadabra_engine::StudioCameraPreset;

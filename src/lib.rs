@@ -194,6 +194,20 @@ pub mod native {
             self.inner.studio_overlay_format()
         }
 
+        /// Returns the live About preview texture. The view stays valid for
+        /// the lifetime of this renderer and is safe to register with egui's
+        /// native texture path.
+        #[cfg(feature = "studio-ui")]
+        pub fn about_preview_texture(&self) -> &wgpu::TextureView {
+            self.inner.about_preview_texture()
+        }
+
+        /// Renders the deterministic About showcase into its GPU texture.
+        #[cfg(feature = "studio-ui")]
+        pub fn render_about_preview(&mut self, elapsed: f32) {
+            self.inner.render_about_preview(elapsed);
+        }
+
         #[cfg(feature = "studio-ui")]
         pub fn studio_project_world_point(&self, point: [f32; 3]) -> Option<[f32; 2]> {
             self.inner.studio_project_world_point(point)
