@@ -82,3 +82,12 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# The bundled About animation is decoded in debug builds during local host
+# development. Keep the hot image-decoder path representative of release
+# performance without optimizing the entire debug build.
+[profile.dev.package.image-webp]
+opt-level = 3
+
+[profile.dev.package.moxcms]
+opt-level = 3
