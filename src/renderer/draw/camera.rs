@@ -90,7 +90,9 @@ impl super::super::Renderer {
 
     pub(super) fn camera_view(&self, aspect: f32) -> (Vec3, Vec3) {
         if self.about_rendering {
-            return (Vec3::new(0.0, 4.1, 13.0), Vec3::new(0.0, 1.7, 0.0));
+            // Keep the full starter route in view while the player walks
+            // across the loose lines near z=13.
+            return (Vec3::new(0.0, 4.1, 22.0), Vec3::new(0.0, 1.7, 0.0));
         }
         #[cfg(not(feature = "studio-ui"))]
         let _ = aspect;
