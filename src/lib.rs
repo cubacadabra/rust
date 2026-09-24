@@ -202,10 +202,10 @@ pub mod native {
             self.inner.about_preview_texture()
         }
 
-        /// Renders the deterministic About showcase into its GPU texture.
+        /// Renders an isolated live game session into the About GPU texture.
         #[cfg(feature = "studio-ui")]
-        pub fn render_about_preview(&mut self, elapsed: f32) {
-            self.inner.render_about_preview(elapsed);
+        pub fn render_about_preview(&mut self, engine: &Engine) {
+            self.inner.render_about_preview(engine);
         }
 
         #[cfg(feature = "studio-ui")]

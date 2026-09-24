@@ -103,24 +103,16 @@ impl super::super::Renderer {
         self.opaque_vertices.clear();
         self.translucent_vertices.clear();
         #[cfg(feature = "studio-ui")]
-        let static_translucent_vertex_count = if self.about_rendering {
-            0
-        } else {
-            self.static_translucent_vertices.len()
-        };
-        if !self.about_rendering {
-            self.translucent_vertices
-                .extend_from_slice(&self.static_translucent_vertices);
-        }
+        let static_translucent_vertex_count = self.static_translucent_vertices.len();
+        self.translucent_vertices
+            .extend_from_slice(&self.static_translucent_vertices);
         split_world_vertices(
             &dynamic_vertices,
             &mut self.opaque_vertices,
             &mut self.translucent_vertices,
         );
         #[cfg(feature = "studio-ui")]
-        if self.about_rendering {
-            // The About scene has no authored static translucent geometry.
-        } else if self.studio_static_translucent_sort_enabled {
+        if self.studio_static_translucent_sort_enabled {
             sort_translucent(&mut self.translucent_vertices, camera_position, target);
         } else {
             // Static translucent geometry is authored once and can be very
@@ -380,19 +372,17 @@ impl super::super::Renderer {
                 1.0,
             );
             pass.set_pipeline(&self.shadow_pipeline);
-            if !self.about_rendering && self.static_shadow_vertex_count > 0 {
+            if self.static_shadow_vertex_count > 0 {
                 pass.set_vertex_buffer(0, self.static_shadow_vertex_buffer.slice(..));
                 pass.draw(0..self.static_shadow_vertex_count as u32, 0..1);
             }
-            if !self.about_rendering {
-                for chunk in &self.terrain_meshes {
-                    pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
-                    pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..chunk.index_count, 0, 0..1);
-                }
-                self.world_meshes
-                    .draw_shadow(&mut pass, &self.world_mesh_shadow_pipeline);
+            for chunk in &self.terrain_meshes {
+                pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..chunk.index_count, 0, 0..1);
             }
+            self.world_meshes
+                .draw_shadow(&mut pass, &self.world_mesh_shadow_pipeline);
             if !self.opaque_vertices.is_empty() {
                 pass.set_pipeline(&self.shadow_pipeline);
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
@@ -446,22 +436,20 @@ impl super::super::Renderer {
             pass.set_bind_group(1, &self.world_texture_bind_group, &[]);
             pass.set_bind_group(2, &self.terrain_texture_bind_group, &[]);
             pass.set_bind_group(3, &self.shadow_bind_group, &[]);
-            if !self.about_rendering && self.static_vertex_count > 0 {
+            if self.static_vertex_count > 0 {
                 pass.set_vertex_buffer(0, self.static_vertex_buffer.slice(..));
                 pass.draw(0..self.static_vertex_count as u32, 0..1);
             }
-            if !self.about_rendering {
-                for chunk in &self.terrain_meshes {
-                    pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
-                    pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..chunk.index_count, 0, 0..1);
-                }
-                self.world_meshes.draw(
-                    &mut pass,
-                    &self.world_mesh_pipeline,
-                    &self.shadow_bind_group,
-                );
+            for chunk in &self.terrain_meshes {
+                pass.set_vertex_buffer(0, chunk.vertex_buffer.slice(..));
+                pass.set_index_buffer(chunk.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..chunk.index_count, 0, 0..1);
             }
+            self.world_meshes.draw(
+                &mut pass,
+                &self.world_mesh_pipeline,
+                &self.shadow_bind_group,
+            );
             if !self.opaque_vertices.is_empty() {
                 pass.set_pipeline(&self.pipeline);
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
