@@ -38,17 +38,30 @@ impl AboutAnimation {
     }
 
     pub fn current_frame(&mut self) -> Result<&AboutAnimationFrame, String> {
+        let elapsed = self.loop_started_at.elapsed();
+        self.current_frame_at(elapsed)
+    }
+
+    fn current_frame_at(&mut self, elapsed: Duration) -> Result<&AboutAnimationFrame, String> {
         if self.current.is_none() {
             self.load_next_frame()?;
+            // Decoding a WebP frame can take longer than its display duration.
+            // Do not try to catch up by decoding the whole backlog in this UI
+            // call; the next call can advance by one more frame.
+            return self
+                .current
+                .as_ref()
+                .ok_or_else(|| "the bundled About animation contains no frames".to_owned());
         }
 
-        let elapsed = self.loop_started_at.elapsed();
-        while elapsed >= self.next_frame_at {
+        if elapsed >= self.next_frame_at {
             if self.load_next_frame()? {
-                continue;
+                return self
+                    .current
+                    .as_ref()
+                    .ok_or_else(|| "the bundled About animation contains no frames".to_owned());
             }
             self.restart()?;
-            break;
         }
 
         self.current
@@ -87,5 +100,17 @@ impl AboutAnimation {
         self.next_frame_at = Duration::ZERO;
         self.load_next_frame()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_frame_does_not_catch_up_while_it_decodes() {
+        let mut animation = AboutAnimation::decode().unwrap();
+        let frame = animation.current_frame_at(Duration::from_secs(60)).unwrap();
+        assert_eq!(frame.id, 0);
     }
 }
