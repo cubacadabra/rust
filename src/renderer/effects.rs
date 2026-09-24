@@ -189,14 +189,16 @@ pub(super) fn add_interaction(
     } else {
         add_default_marker(vertices, interaction, interaction_state, elapsed, palette);
     }
-    super::add_pixel_text(
-        vertices,
-        &interaction.label,
-        Vec3::from_array(interaction.position) + Vec3::new(0.0, 1.72, -0.06),
-        0.0,
-        3.0,
-        palette.paper,
-    );
+    if !interaction.label.trim().is_empty() {
+        super::add_pixel_text(
+            vertices,
+            &interaction.label,
+            Vec3::from_array(interaction.position) + Vec3::new(0.0, 1.72, -0.06),
+            0.0,
+            3.0,
+            palette.paper,
+        );
+    }
 }
 
 pub(super) fn add_template(
@@ -435,5 +437,43 @@ mod tests {
             false,
         );
         assert!(vertices.is_empty());
+    }
+
+    #[test]
+    fn whitespace_interaction_labels_do_not_emit_text() {
+        let interaction = RenderInteraction {
+            id: "trigger".to_owned(),
+            label: " ".to_owned(),
+            position: [0.0; 3],
+            radius: 2.0,
+            color: [1.0; 4],
+            visual: Some("marker".to_owned()),
+        };
+        let mut whitespace_vertices = Vec::new();
+        add_interaction(
+            &mut whitespace_vertices,
+            &interaction,
+            None,
+            "default",
+            InteractionRenderState::default(),
+            0.0,
+            RenderPalette::default(),
+            false,
+        );
+        let mut named_vertices = Vec::new();
+        add_interaction(
+            &mut named_vertices,
+            &RenderInteraction {
+                label: "TRIGGER".to_owned(),
+                ..interaction
+            },
+            None,
+            "default",
+            InteractionRenderState::default(),
+            0.0,
+            RenderPalette::default(),
+            false,
+        );
+        assert!(whitespace_vertices.len() < named_vertices.len());
     }
 }
