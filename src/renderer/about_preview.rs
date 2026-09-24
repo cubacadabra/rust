@@ -1,10 +1,10 @@
-//! The Studio About surface renders a real, isolated game session.
+//! An About surface renders a real, isolated game session.
 //!
-//! The session and its scripted demo driver live in Studio. This module only
-//! provides the second render target and temporarily projects that session
-//! through the normal renderer. Keeping the scene conversion here means the
-//! About surface uses the same world, effects, interaction states, and player
-//! renderer as every other host.
+//! The session and its scripted demo driver are shared by the native hosts.
+//! This module provides the second render target and temporarily projects that
+//! session through the normal renderer. Keeping the scene conversion here
+//! means every About surface uses the same world, effects, interaction states,
+//! and player renderer as every other host.
 
 use crate::{engine::Engine, renderer::Scene};
 
