@@ -114,6 +114,7 @@ mod tests {
                 "blocks":[{
                     "position":[0,1,2],
                     "size":[3,4,5],
+                    "rotation":[0,0,0.25],
                     "color":"paper",
                     "castShadow":false,
                     "outline":false
@@ -133,6 +134,7 @@ mod tests {
         assert_eq!(lobby.launch_pads[0].label, "SUN COURT");
         assert!(!lobby.blocks[0].outline);
         assert!(!lobby.blocks[0].cast_shadow);
+        assert!((lobby.blocks[0].rotation()[2] - 0.25).abs() < 0.0001);
 
         let defaults = GamePackageDefinition::parse(r#"{"blocks":[{}]}"#)
             .expect("legacy blocks should retain shadow casting by default");

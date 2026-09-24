@@ -4,6 +4,7 @@ pub(super) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth3
 pub(super) struct RenderBlock {
     pub(super) position: [f32; 3],
     pub(super) size: [f32; 3],
+    pub(super) rotation: [f32; 3],
     pub(super) color: [f32; 4],
     pub(super) material: Option<RenderMaterial>,
     pub(super) builtin_material: Option<u8>,

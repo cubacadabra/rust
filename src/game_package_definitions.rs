@@ -694,6 +694,9 @@ pub(crate) struct BlockDefinition {
     pub(crate) position: Vec<f32>,
     #[serde(default)]
     pub(crate) size: Vec<f32>,
+    /// XYZ Euler rotation in radians. Omitted/empty is the legacy identity.
+    #[serde(default)]
+    pub(crate) rotation: Vec<f32>,
     #[serde(default)]
     pub(crate) color: String,
     #[serde(default)]
@@ -761,6 +764,14 @@ impl BlockDefinition {
             self.size.first().copied().unwrap_or(1.0),
             self.size.get(1).copied().unwrap_or(1.0),
             self.size.get(2).copied().unwrap_or(1.0),
+        ]
+    }
+
+    pub(crate) fn rotation(&self) -> [f32; 3] {
+        [
+            self.rotation.first().copied().unwrap_or(0.0),
+            self.rotation.get(1).copied().unwrap_or(0.0),
+            self.rotation.get(2).copied().unwrap_or(0.0),
         ]
     }
 }

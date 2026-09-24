@@ -2,7 +2,7 @@ use super::character_material::CharacterPass;
 use super::character_quality;
 #[cfg(feature = "studio-ui")]
 use glam::Vec4;
-use glam::{Mat4, Vec3};
+use glam::{EulerRot, Mat4, Quat, Vec3};
 #[cfg(test)]
 use std::collections::BTreeMap;
 use std::time::Instant;

@@ -7,7 +7,7 @@ use crate::types::{AgentPhase, BuildBlock, Input};
 use crate::world::{
     AuthoredActor, Checkpoint, HazardVolume, HealthSettings, HorizontalBounds, LadderAxis,
     LadderVolume, LaunchPad, PhysicsSettings, Portal, RespawnMode, RespawnSettings, RuntimeWorld,
-    SafeZone, WorldCamera, block_bounds, slot_offset,
+    SafeZone, WorldCamera, block_bounds, block_bounds_with_rotation, slot_offset,
 };
 use std::sync::Arc;
 
@@ -396,7 +396,9 @@ impl Engine {
                     .blocks
                     .iter()
                     .filter(|block| block.collidable)
-                    .map(|block| block_bounds(block.position(), block.size()))
+                    .map(|block| {
+                        block_bounds_with_rotation(block.position(), block.size(), block.rotation())
+                    })
                     .collect::<Vec<_>>();
                 let physics = PhysicsSettings {
                     gravity: definition.world.physics.gravity.max(0.0),

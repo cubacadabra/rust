@@ -17,6 +17,7 @@ mod block_shadow_tests {
         RenderBlock {
             position: [0.0, 1.0, 0.0],
             size: [2.0, 2.0, 2.0],
+            rotation: [0.0; 3],
             color: [0.4, 0.5, 0.6, 1.0],
             material: None,
             builtin_material: None,
@@ -63,39 +64,49 @@ fn append_block_geometry_pair(
     outline_color: [f32; 4],
     image_regions: &std::collections::BTreeMap<String, [f32; 4]>,
 ) {
+    let transform = Mat4::from_scale_rotation_translation(
+        Vec3::ONE,
+        Quat::from_euler(
+            EulerRot::XYZ,
+            block.rotation[0],
+            block.rotation[1],
+            block.rotation[2],
+        ),
+        Vec3::from_array(block.position),
+    );
     let append = |vertices: &mut Vec<Vertex>| {
         if let Some(material) = block
             .material
             .as_ref()
             .filter(|material| image_regions.contains_key(&material.image))
         {
-            add_textured_cuboid(
+            super::super::add_textured_cuboid_transformed(
                 vertices,
-                Vec3::from_array(block.position),
+                transform,
                 Vec3::from_array(block.size),
                 material,
                 image_regions[&material.image],
             );
         } else if let Some(material) = block.builtin_material {
-            super::super::add_builtin_cuboid(
+            super::super::add_transformed_cuboid_with_material(
                 vertices,
-                Vec3::from_array(block.position),
+                transform,
                 Vec3::from_array(block.size),
                 block.color,
-                material,
+                Some(material),
             );
         } else {
-            add_cuboid(
+            super::super::add_transformed_cuboid(
                 vertices,
-                Vec3::from_array(block.position),
+                transform,
                 Vec3::from_array(block.size),
                 block.color,
             );
         }
         if block.outline {
-            add_cuboid_outline(
+            super::super::add_cuboid_outline_transformed(
                 vertices,
-                Vec3::from_array(block.position),
+                transform,
                 Vec3::from_array(block.size),
                 0.025,
                 faded(outline_color, 0.22),

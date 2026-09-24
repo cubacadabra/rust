@@ -71,22 +71,6 @@ fn add_cuboid(vertices: &mut Vec<Vertex>, center: Vec3, size: Vec3, color: [f32;
     add_transformed_cuboid(vertices, Mat4::from_translation(center), size, color);
 }
 
-fn add_builtin_cuboid(
-    vertices: &mut Vec<Vertex>,
-    center: Vec3,
-    size: Vec3,
-    color: [f32; 4],
-    material: u8,
-) {
-    add_transformed_cuboid_with_material(
-        vertices,
-        Mat4::from_translation(center),
-        size,
-        color,
-        Some(material),
-    );
-}
-
 fn add_cuboid_outline(
     vertices: &mut Vec<Vertex>,
     center: Vec3,
@@ -94,34 +78,55 @@ fn add_cuboid_outline(
     thickness: f32,
     color: [f32; 4],
 ) {
+    add_cuboid_outline_transformed(
+        vertices,
+        Mat4::from_translation(center),
+        size,
+        thickness,
+        color,
+    );
+}
+
+fn add_cuboid_outline_transformed(
+    vertices: &mut Vec<Vertex>,
+    transform: Mat4,
+    size: Vec3,
+    thickness: f32,
+    color: [f32; 4],
+) {
     let half = size * 0.5;
+    let edge = |vertices: &mut Vec<Vertex>, center: Vec3, size: Vec3| {
+        add_transformed_cuboid(
+            vertices,
+            transform * Mat4::from_translation(center),
+            size,
+            color,
+        );
+    };
     for y in [-half.y, half.y] {
         for z in [-half.z, half.z] {
-            add_cuboid(
+            edge(
                 vertices,
-                center + Vec3::new(0.0, y, z),
+                Vec3::new(0.0, y, z),
                 Vec3::new(size.x + thickness, thickness, thickness),
-                color,
             );
         }
     }
     for x in [-half.x, half.x] {
         for z in [-half.z, half.z] {
-            add_cuboid(
+            edge(
                 vertices,
-                center + Vec3::new(x, 0.0, z),
+                Vec3::new(x, 0.0, z),
                 Vec3::new(thickness, size.y + thickness, thickness),
-                color,
             );
         }
     }
     for x in [-half.x, half.x] {
         for y in [-half.y, half.y] {
-            add_cuboid(
+            edge(
                 vertices,
-                center + Vec3::new(x, y, 0.0),
+                Vec3::new(x, y, 0.0),
                 Vec3::new(thickness, thickness, size.z + thickness),
-                color,
             );
         }
     }
@@ -225,7 +230,22 @@ fn add_textured_cuboid(
     material: &RenderMaterial,
     texture_bounds: [f32; 4],
 ) {
-    let transform = Mat4::from_translation(center);
+    add_textured_cuboid_transformed(
+        vertices,
+        Mat4::from_translation(center),
+        size,
+        material,
+        texture_bounds,
+    );
+}
+
+fn add_textured_cuboid_transformed(
+    vertices: &mut Vec<Vertex>,
+    transform: Mat4,
+    size: Vec3,
+    material: &RenderMaterial,
+    texture_bounds: [f32; 4],
+) {
     let half = size * 0.5;
     let corners = [
         Vec3::new(-half.x, -half.y, -half.z),

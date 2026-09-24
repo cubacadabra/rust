@@ -1,4 +1,5 @@
 use crate::types::LaunchPadPhase;
+use glam::{EulerRot, Quat, Vec3};
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct AuthoredActor {
@@ -206,13 +207,35 @@ impl Default for LaunchPad {
 }
 
 pub(crate) fn block_bounds(position: [f32; 3], size: [f32; 3]) -> Aabb {
+    block_bounds_with_rotation(position, size, [0.0; 3])
+}
+
+pub(crate) fn rotated_block_half_extents(size: [f32; 3], rotation: [f32; 3]) -> [f32; 3] {
+    let half = Vec3::from_array(size) * 0.5;
+    let orientation = Quat::from_euler(EulerRot::XYZ, rotation[0], rotation[1], rotation[2]);
+    let x = orientation * Vec3::X;
+    let y = orientation * Vec3::Y;
+    let z = orientation * Vec3::Z;
+    [
+        half.x * x.x.abs() + half.y * y.x.abs() + half.z * z.x.abs(),
+        half.x * x.y.abs() + half.y * y.y.abs() + half.z * z.y.abs(),
+        half.x * x.z.abs() + half.y * y.z.abs() + half.z * z.z.abs(),
+    ]
+}
+
+pub(crate) fn block_bounds_with_rotation(
+    position: [f32; 3],
+    size: [f32; 3],
+    rotation: [f32; 3],
+) -> Aabb {
+    let half = rotated_block_half_extents(size, rotation);
     Aabb {
-        min_x: position[0] - size[0] / 2.0,
-        max_x: position[0] + size[0] / 2.0,
-        min_z: position[2] - size[2] / 2.0,
-        max_z: position[2] + size[2] / 2.0,
-        bottom: position[1] - size[1] / 2.0,
-        top: position[1] + size[1] / 2.0,
+        min_x: position[0] - half[0],
+        max_x: position[0] + half[0],
+        min_z: position[2] - half[2],
+        max_z: position[2] + half[2],
+        bottom: position[1] - half[1],
+        top: position[1] + half[1],
     }
 }
 

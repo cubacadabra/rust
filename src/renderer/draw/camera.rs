@@ -186,7 +186,10 @@ impl super::super::Renderer {
             );
         }
         for block in &self.scene.world.blocks {
-            let half = Vec3::from_array(block.size) * 0.5;
+            let half = Vec3::from_array(crate::world::rotated_block_half_extents(
+                block.size,
+                block.rotation,
+            ));
             let position = Vec3::from_array(block.position);
             include(position - half, position + half);
         }

@@ -427,6 +427,7 @@ fn resolve_world(
             .map(|block| RenderBlock {
                 position: block.position(),
                 size: block.size(),
+                rotation: block.rotation(),
                 color: resolve_color(&definition.palette, &block.color, super::color(0xffffff)),
                 material: block
                     .material
