@@ -92,7 +92,7 @@ pub use engine::snapshot::{
 ))]
 pub mod native {
     use crate::Engine;
-    use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+    use raw_window_handle::{HasDisplayHandle, RawWindowHandle};
 
     /// The shared renderer presented by a native desktop host.
     pub struct Renderer {
@@ -103,7 +103,7 @@ pub mod native {
         /// Creates a renderer for a live native window. The host must keep the
         /// underlying window alive until this renderer is dropped.
         pub fn new(
-            display_handle: RawDisplayHandle,
+            display_handle: impl HasDisplayHandle + std::fmt::Debug + Send + Sync + 'static,
             window_handle: RawWindowHandle,
             width: f32,
             height: f32,

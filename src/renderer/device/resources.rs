@@ -538,6 +538,7 @@ pub fn clear_shadow_depth(
 pub fn shadow_pipeline(
     device: &wgpu::Device,
     shadow_globals_layout: &wgpu::BindGroupLayout,
+    bias_clamp: f32,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("cubacadabra world shadow shader"),
@@ -569,7 +570,7 @@ pub fn shadow_pipeline(
             bias: wgpu::DepthBiasState {
                 constant: 2,
                 slope_scale: 2.0,
-                clamp: 0.01,
+                clamp: bias_clamp,
             },
         }),
         multisample: wgpu::MultisampleState::default(),
@@ -582,6 +583,7 @@ pub fn shadow_pipeline(
 pub fn world_mesh_shadow_pipeline(
     device: &wgpu::Device,
     shadow_globals_layout: &wgpu::BindGroupLayout,
+    bias_clamp: f32,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("cubacadabra world mesh shadow shader"),
@@ -613,7 +615,7 @@ pub fn world_mesh_shadow_pipeline(
             bias: wgpu::DepthBiasState {
                 constant: 2,
                 slope_scale: 2.0,
-                clamp: 0.01,
+                clamp: bias_clamp,
             },
         }),
         multisample: wgpu::MultisampleState::default(),

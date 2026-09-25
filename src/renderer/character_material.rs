@@ -267,6 +267,7 @@ pub(super) fn textured_pipeline(
 pub(super) fn shadow_pipeline(
     device: &wgpu::Device,
     shadow_globals_layout: &wgpu::BindGroupLayout,
+    bias_clamp: f32,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("cubacadabra character shadow shader"),
@@ -298,7 +299,7 @@ pub(super) fn shadow_pipeline(
             bias: wgpu::DepthBiasState {
                 constant: 2,
                 slope_scale: 2.0,
-                clamp: 0.01,
+                clamp: bias_clamp,
             },
         }),
         multisample: wgpu::MultisampleState::default(),

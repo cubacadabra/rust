@@ -2,7 +2,7 @@
     not(target_arch = "wasm32"),
     not(any(target_os = "android", target_os = "ios"))
 ))]
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use raw_window_handle::{HasDisplayHandle, RawWindowHandle};
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use std::ffi::c_void;
 use std::io::Cursor;
@@ -281,7 +281,7 @@ impl Renderer {
         not(any(target_os = "android", target_os = "ios"))
     ))]
     pub fn new_from_window_handles(
-        display_handle: RawDisplayHandle,
+        display_handle: impl HasDisplayHandle + std::fmt::Debug + Send + Sync + 'static,
         window_handle: RawWindowHandle,
         width: f32,
         height: f32,
@@ -290,14 +290,15 @@ impl Renderer {
             return None;
         }
 
+        let raw_display_handle = display_handle.display_handle().ok()?.as_raw();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::all(),
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
+            backends: wgpu::Backends::all().with_env(),
+            ..wgpu::InstanceDescriptor::new_with_display_handle(Box::new(display_handle))
         });
         let surface = unsafe {
             instance
                 .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
-                    raw_display_handle: Some(display_handle),
+                    raw_display_handle: Some(raw_display_handle),
                     raw_window_handle: window_handle,
                 })
                 .ok()?
@@ -315,6 +316,15 @@ impl Renderer {
             }))
         })
         .ok()?;
+        let adapter_info = adapter.get_info();
+        log::info!(
+            "desktop renderer adapter: name={:?} backend={:?} device_type={:?} driver={:?} driver_info={:?}",
+            adapter_info.name,
+            adapter_info.backend,
+            adapter_info.device_type,
+            adapter_info.driver,
+            adapter_info.driver_info,
+        );
         let limits = required_limits(&adapter);
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("cubacadabra desktop game device"),
@@ -458,11 +468,12 @@ impl Renderer {
                 resource: globals_buffer.as_entire_binding(),
             }],
         });
-        // Mali GLES devices can advertise multisample/resolve support while
-        // producing a black resolve target for this offscreen scene path.
-        // Keep Android on the single-sample compatibility path; Metal and
-        // browser backends retain the validated MSAA path.
-        let sample_count = super::targets::select_samples(&adapter, !cfg!(target_os = "android"));
+        // Some GLES drivers advertise multisample renderbuffers but reject
+        // their allocation. Keep GLES on the single-sample compatibility path.
+        let allow_msaa =
+            !cfg!(target_os = "android") && adapter.get_info().backend != wgpu::Backend::Gl;
+        let sample_count = super::targets::select_samples(&adapter, allow_msaa);
+        log::info!("renderer sample_count={sample_count}");
         let world_texture_layout = world_texture_bind_group_layout(&device);
         let terrain_texture_layout = terrain_texture_bind_group_layout(&device);
         let terrain_texture_bind_group =
@@ -512,17 +523,29 @@ impl Renderer {
             shadow_bind_group,
             shadow_globals_bind_group,
         ) = create_shadow_resources(&device, &shadow_globals_layout, &shadow_bind_group_layout);
-        let shadow_pipeline = shadow_pipeline(&device, &shadow_globals_layout);
+        let shadow_bias_clamp = if adapter
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::DEPTH_BIAS_CLAMP)
+        {
+            0.01
+        } else {
+            0.0
+        };
+        let shadow_pipeline = shadow_pipeline(&device, &shadow_globals_layout, shadow_bias_clamp);
         let world_mesh_shadow_pipeline =
-            world_mesh_shadow_pipeline(&device, &shadow_globals_layout);
+            world_mesh_shadow_pipeline(&device, &shadow_globals_layout, shadow_bias_clamp);
         let characters = super::character_gpu::CharacterRenderer::new(
             &device,
             &globals_layout,
             &shadow_bind_group_layout,
             sample_count,
         );
-        let character_shadow_pipeline =
-            super::character_material::shadow_pipeline(&device, &shadow_globals_layout);
+        let character_shadow_pipeline = super::character_material::shadow_pipeline(
+            &device,
+            &shadow_globals_layout,
+            shadow_bias_clamp,
+        );
         let presenter = super::targets::Presenter::new(&device, format);
         let post_processor = super::targets::PostProcessor::new(&device);
         let targets = super::targets::SceneTargets::new(
