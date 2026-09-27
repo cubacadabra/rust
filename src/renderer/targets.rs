@@ -31,6 +31,8 @@ pub(super) struct SceneTargets {
     pub world_multisample: Option<wgpu::TextureView>,
     /// Composited scene plus UI. This remains the app-owned capture target.
     pub color: wgpu::TextureView,
+    #[cfg(feature = "studio-ui")]
+    pub color_texture: wgpu::Texture,
     pub depth: wgpu::TextureView,
     post_bind_group: wgpu::BindGroup,
     pub present_bind_group: wgpu::BindGroup,
@@ -65,7 +67,7 @@ impl SceneTargets {
         let color_usage =
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
         // Development captures read this app-owned target, never the desktop.
-        #[cfg(all(feature = "studio-ui", debug_assertions))]
+        #[cfg(feature = "studio-ui")]
         let color_usage = color_usage | wgpu::TextureUsages::COPY_SRC;
         let world_color = texture("resolved world scene", SCENE_FORMAT, 1, color_usage);
         let world_multisample = (samples > 1).then(|| {
@@ -76,7 +78,21 @@ impl SceneTargets {
                 wgpu::TextureUsages::RENDER_ATTACHMENT,
             )
         });
-        let color = texture("composited scene and UI", SCENE_FORMAT, 1, color_usage);
+        let color_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("composited scene and UI"),
+            size: wgpu::Extent3d {
+                width: width.max(1),
+                height: height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: SCENE_FORMAT,
+            usage: color_usage,
+            view_formats: &[],
+        });
+        let color = color_texture.create_view(&Default::default());
         let depth = texture(
             "scene depth",
             super::DEPTH_FORMAT,
@@ -96,6 +112,8 @@ impl SceneTargets {
             world_color,
             world_multisample,
             color,
+            #[cfg(feature = "studio-ui")]
+            color_texture,
             depth,
             post_bind_group,
             present_bind_group,

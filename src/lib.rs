@@ -142,6 +142,20 @@ pub mod native {
             self.inner.draw_with_overlay(overlay);
         }
 
+        #[cfg(feature = "studio-ui")]
+        pub fn draw_studio_tiles_with_overlay<F>(
+            &mut self,
+            engines: &[&Engine],
+            viewports: &[[f32; 4]],
+            offscreen: bool,
+            overlay: F,
+        ) where
+            F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
+        {
+            self.inner
+                .draw_studio_tiles_with_overlay(engines, viewports, offscreen, overlay);
+        }
+
         #[cfg(all(feature = "studio-ui", debug_assertions))]
         pub fn capture_studio_frame<F>(&mut self, overlay: F)
         where

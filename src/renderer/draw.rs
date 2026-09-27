@@ -30,6 +30,8 @@ mod frame {
 use terrain::TerrainMeshBuilder;
 mod camera;
 mod geometry;
+#[cfg(feature = "studio-ui")]
+pub(super) mod studio_tiles;
 
 fn shadow_light_direction(sun_direction: [f32; 3]) -> Vec3 {
     let light_direction = (-Vec3::from_array(sun_direction)).normalize_or_zero();

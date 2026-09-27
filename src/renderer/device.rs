@@ -638,6 +638,8 @@ impl Renderer {
             #[cfg(feature = "studio-ui")]
             studio_viewport: None,
             #[cfg(feature = "studio-ui")]
+            studio_tiles: None,
+            #[cfg(feature = "studio-ui")]
             studio_camera_preset: crate::StudioCameraPreset::Gameplay,
             #[cfg(feature = "studio-ui")]
             studio_camera: Default::default(),

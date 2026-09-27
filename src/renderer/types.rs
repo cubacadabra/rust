@@ -483,6 +483,8 @@ pub struct Renderer {
     #[cfg(feature = "studio-ui")]
     pub(super) studio_viewport: Option<[f32; 4]>,
     #[cfg(feature = "studio-ui")]
+    pub(super) studio_tiles: Option<crate::renderer::draw::studio_tiles::StudioTileCompositor>,
+    #[cfg(feature = "studio-ui")]
     pub(super) studio_camera_preset: crate::StudioCameraPreset,
     #[cfg(feature = "studio-ui")]
     studio_camera: studio_camera::StudioCamera,
