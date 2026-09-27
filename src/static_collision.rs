@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use glam::Vec3;
 use serde::Deserialize;
+use crate::world::Aabb;
 
 pub(crate) const STATIC_COLLISION_FORMAT_VERSION: u32 = 1;
 pub(crate) const MAX_STATIC_COLLISION_TRIANGLES: usize = 200_000;
@@ -92,6 +93,17 @@ pub(crate) struct StaticCollision {
 }
 
 impl StaticCollision {
+    pub(crate) fn box_clear(&self, bounds: &Aabb) -> bool {
+        // Keep resting contact with a floor clear while testing the solid
+        // interior of the box against walls and other authored triangles.
+        let minimum = Vec3::new(bounds.min_x + 0.01, bounds.bottom + 0.04, bounds.min_z + 0.01);
+        let maximum = Vec3::new(bounds.max_x - 0.01, bounds.top - 0.01, bounds.max_z - 0.01);
+        self.query_indices(minimum, maximum).into_iter().all(|index| {
+            let triangle = &self.triangles[index];
+            !aabb_overlaps(minimum, maximum, triangle.minimum, triangle.maximum)
+                || !triangle_intersects_box(triangle.vertices, minimum, maximum)
+        })
+    }
     pub(crate) fn build(definition: &StaticCollisionDefinition) -> Result<Option<Self>, String> {
         definition.validate()?;
         if definition.triangles.is_empty() {
@@ -283,6 +295,27 @@ impl StaticCollision {
     pub(crate) fn triangles_len(&self) -> usize {
         self.triangles.len()
     }
+}
+
+fn triangle_intersects_box(vertices: [Vec3; 3], minimum: Vec3, maximum: Vec3) -> bool {
+    let center = (minimum + maximum) * 0.5;
+    let half = (maximum - minimum) * 0.5;
+    let points = vertices.map(|point| point - center);
+    let edges = [points[1] - points[0], points[2] - points[1], points[0] - points[2]];
+    let axes = [Vec3::X, Vec3::Y, Vec3::Z, edges[0].cross(edges[1])];
+    for axis in axes.into_iter().chain(
+        edges.into_iter().flat_map(|edge| [edge.cross(Vec3::X), edge.cross(Vec3::Y), edge.cross(Vec3::Z)])
+    ) {
+        if axis.length_squared() < 1.0e-12 { continue; }
+        let radius = half.dot(axis.abs());
+        let projection = points.map(|point| point.dot(axis));
+        if projection.into_iter().all(|value| value > radius)
+            || projection.into_iter().all(|value| value < -radius)
+        {
+            return false;
+        }
+    }
+    true
 }
 
 fn valid_capsule(feet: [f32; 3], radius: f32, height: f32) -> bool {

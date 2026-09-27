@@ -24,6 +24,7 @@ pub struct EngineSnapshot {
     pub input: InputSnapshot,
     pub camera: CameraSnapshot,
     pub build_blocks: Vec<BuildBlockSnapshot>,
+    pub pushable_blocks: Vec<PushableBlockSnapshot>,
     pub launch_pads: Vec<LaunchPadSnapshot>,
     pub agents: Vec<AgentSnapshot>,
     pub interactions: InteractionSnapshot,
@@ -44,6 +45,14 @@ pub struct EngineSnapshot {
     pub checkpoint_id: String,
     pub checkpoint_index: u64,
     pub respawn_position: [f32; 3],
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PushableBlockSnapshot {
+    pub block_index: usize,
+    pub offset: [f32; 2],
+    pub pressure: f32,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

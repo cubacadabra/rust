@@ -154,6 +154,7 @@ impl Engine {
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.pushable_blocks = world.pushable_blocks;
+        self.pushable_outbox.clear();
         self.terrain = world.terrain;
         self.static_collision = world.static_collision;
         self.physics = world.physics;
@@ -207,6 +208,7 @@ impl Engine {
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.pushable_blocks = world.pushable_blocks;
+        self.pushable_outbox.clear();
         self.terrain = world.terrain;
         self.static_collision = world.static_collision;
         self.physics = world.physics;

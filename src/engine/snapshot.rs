@@ -7,7 +7,7 @@ use crate::types::{
 use serde_json::Value;
 
 pub const ENGINE_SNAPSHOT_FORMAT: &str = "cubacadabra.engine.snapshot";
-pub const ENGINE_SNAPSHOT_VERSION: u16 = 1;
+pub const ENGINE_SNAPSHOT_VERSION: u16 = 2;
 pub const MAX_ENGINE_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_GAME_STATE_BYTES: usize = 256 * 1024;
 #[path = "snapshot_conversions.rs"]
@@ -97,7 +97,8 @@ impl EngineSnapshot {
                 "pending network messages exceed the queue byte limit".to_owned(),
             ));
         }
-        if self.agents.len() > 128 || self.launch_pads.len() > 64 || self.build_blocks.len() > 256 {
+        if self.agents.len() > 128 || self.launch_pads.len() > 64 || self.build_blocks.len() > 256
+            || self.pushable_blocks.len() > 256 {
             return Err(SnapshotError::Invalid(
                 "snapshot contains too many runtime objects".to_owned(),
             ));
@@ -146,6 +147,7 @@ impl EngineSnapshot {
                     .iter()
                     .flat_map(|block| block.position.into_iter().chain(block.size)),
             )
+            .chain(self.pushable_blocks.iter().flat_map(|block| block.offset.into_iter().chain([block.pressure])))
             .chain(
                 self.launch_pads
                     .iter()
@@ -267,6 +269,11 @@ impl Engine {
                 .copied()
                 .map(BuildBlockSnapshot::from)
                 .collect(),
+            pushable_blocks: self.pushable_blocks.iter().map(|block| PushableBlockSnapshot {
+                block_index: block.block_index,
+                offset: block.offset,
+                pressure: block.pressure,
+            }).collect(),
             launch_pads: self
                 .launch_pads
                 .iter()
@@ -356,6 +363,10 @@ impl Engine {
         let mut validated_model = DataModel::new();
         validated_model.restore(&snapshot.data_model)?;
         validate_interactions(self, &snapshot.interactions)?;
+        if snapshot.pushable_blocks.len() != self.pushable_blocks.len()
+            || snapshot.pushable_blocks.iter().zip(&self.pushable_blocks).any(|(saved, loaded)| saved.block_index != loaded.block_index) {
+            return Err(SnapshotError::Invalid("snapshot pushable blocks do not match the loaded world".to_owned()));
+        }
         let random = crate::math::Random::from_state(snapshot.random_state)
             .ok_or_else(|| SnapshotError::Invalid("random state must be non-zero".to_owned()))?;
         let agents = snapshot
@@ -427,6 +438,12 @@ impl Engine {
             .map(Into::into)
             .collect();
         self.rebuild_build_obstacles();
+        for (index, saved) in snapshot.pushable_blocks.iter().enumerate() {
+            self.set_pushable_offset(index, saved.offset);
+            self.pushable_blocks[index].pressure = saved.pressure;
+            self.pushable_blocks[index].authoritative_offset = saved.offset;
+            self.pushable_blocks[index].pending.clear();
+        }
         self.launch_pads = launch_pads;
         self.agents = agents;
         self.interactions.event_id = snapshot.interactions.event_id;
@@ -539,7 +556,7 @@ fn validate_interactions(
     Ok(())
 }
 
-fn content_fingerprint(package: &[u8], script: &[u8]) -> u64 {
+pub(crate) fn content_fingerprint(package: &[u8], script: &[u8]) -> u64 {
     let mut hash = 0xcbf29ce484222325u64;
     for bytes in [package, script] {
         for byte in (bytes.len() as u64)

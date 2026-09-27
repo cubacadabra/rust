@@ -4,6 +4,7 @@ pub(crate) mod identity;
 mod initialization;
 mod interactions;
 mod remote;
+mod pushables;
 mod simulation;
 pub mod snapshot;
 mod state;
@@ -84,6 +85,11 @@ pub struct Engine {
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) base_obstacles: Vec<Aabb>,
     pub(crate) pushable_blocks: Vec<PushableBlock>,
+    pub(crate) pushable_outbox: VecDeque<String>,
+    pub(crate) next_push_request_id: u64,
+    pub(crate) pushable_online: bool,
+    pub(crate) network_player_id: Option<String>,
+    pub(crate) pushable_content_hash: String,
     pub(crate) terrain: Option<crate::terrain::TerrainGrid>,
     pub(crate) static_collision: Option<std::sync::Arc<crate::static_collision::StaticCollision>>,
     pub(crate) physics: PhysicsSettings,

@@ -98,6 +98,12 @@ impl Engine {
             hash.usize(pad.occupants);
             hash.bool(pad.enabled);
         }
+        for block in &self.pushable_blocks {
+            hash.usize(block.block_index);
+            hash.f32(block.offset[0]);
+            hash.f32(block.offset[1]);
+            hash.f32(block.pressure);
+        }
         for agent in &self.agents {
             hash.array3(agent.position);
             hash.f32(agent.target.x);

@@ -241,48 +241,60 @@ impl Engine {
             if travel.abs() < 0.00001 {
                 return;
             }
-            let mut moved = obstacle;
-            if axis == 0 {
-                moved.min_x += travel;
-                moved.max_x += travel;
-            } else {
-                moved.min_z += travel;
-                moved.max_z += travel;
-            }
+            let group = std::iter::once(obstacle_index)
+                .chain(block.attached_obstacles.iter().copied())
+                .collect::<Vec<_>>();
+            let moved = group.iter().map(|&obstacle_index| {
+                let original = self.obstacles[obstacle_index];
+                let mut moved = original;
+                if axis == 0 {
+                    moved.min_x += travel;
+                    moved.max_x += travel;
+                } else {
+                    moved.min_z += travel;
+                    moved.max_z += travel;
+                }
+                (obstacle_index, original, moved)
+            }).collect::<Vec<_>>();
             let bounds = self.physics.horizontal_bounds.map_or(
                 ([-WORLD_LIMIT, -WORLD_LIMIT], [WORLD_LIMIT, WORLD_LIMIT]),
                 |limits| (limits.minimum, limits.maximum),
             );
-            let within_bounds = moved.min_x >= bounds.0[0]
-                && moved.max_x <= bounds.1[0]
-                && moved.min_z >= bounds.0[1]
-                && moved.max_z <= bounds.1[1];
-            let clear = self
-                .obstacles
-                .iter()
-                .enumerate()
-                .all(|(other_index, other)| {
-                    other_index == obstacle_index
-                        || moved.max_x <= other.min_x
-                        || moved.min_x >= other.max_x
-                        || moved.max_z <= other.min_z
-                        || moved.min_z >= other.max_z
-                        || moved.top <= other.bottom
-                        || moved.bottom >= other.top
-                });
-            if !within_bounds || !clear {
+            let clear = moved.iter().all(|(_, _, moved)| {
+                moved.min_x >= bounds.0[0]
+                    && moved.max_x <= bounds.1[0]
+                    && moved.min_z >= bounds.0[1]
+                    && moved.max_z <= bounds.1[1]
+                    && self.terrain.as_ref().is_none_or(|terrain| terrain.box_clear(moved))
+                    && self.static_collision.as_ref().is_none_or(|collision| collision.box_clear(moved))
+                    && self.obstacles.iter().enumerate().all(|(other_index, other)| {
+                        group.contains(&other_index)
+                            || moved.max_x <= other.min_x
+                            || moved.min_x >= other.max_x
+                            || moved.max_z <= other.min_z
+                            || moved.min_z >= other.max_z
+                            || moved.top <= other.bottom
+                            || moved.bottom >= other.top
+                    })
+            });
+            if !clear {
                 return;
             }
-            self.obstacles[obstacle_index] = moved;
-            self.base_obstacles[obstacle_index] = moved;
+            for (obstacle_index, _, bounds) in &moved {
+                self.obstacles[*obstacle_index] = *bounds;
+                self.base_obstacles[*obstacle_index] = *bounds;
+            }
             let mut pushed_player = self.player.position;
             pushed_player[axis] += travel;
             if self.player_can_occupy(pushed_player) {
                 self.pushable_blocks[index].offset[axis / 2] += travel;
                 *candidate = pushed_player;
+                self.record_pushable_motion(index, axis, travel);
             } else {
-                self.obstacles[obstacle_index] = obstacle;
-                self.base_obstacles[obstacle_index] = obstacle;
+                for (obstacle_index, original, _) in &moved {
+                    self.obstacles[*obstacle_index] = *original;
+                    self.base_obstacles[*obstacle_index] = *original;
+                }
             }
             return;
         }

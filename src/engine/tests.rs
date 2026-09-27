@@ -23,3 +23,8 @@ mod worlds {
     use super::*;
     include!("tests/worlds.rs");
 }
+
+mod pushables {
+    use super::*;
+    include!("tests/pushables.rs");
+}

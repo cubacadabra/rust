@@ -149,6 +149,7 @@ impl Engine {
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
         self.pushable_blocks = world.pushable_blocks;
+        self.pushable_outbox.clear();
         self.terrain = world.terrain;
         self.static_collision = world.static_collision;
         self.physics = world.physics;
@@ -421,7 +422,21 @@ impl Engine {
                                         .then_some(index)
                                 })
                                 .collect(),
+                            attached_obstacles: definition
+                                .blocks
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, child)| child.collidable)
+                                .enumerate()
+                                .filter_map(|(index, (_, child))| {
+                                    (child.attached_to.as_deref() == Some(block.id.as_str()))
+                                        .then_some(index)
+                                })
+                                .collect(),
                             offset: [0.0; 2],
+                            authoritative_offset: [0.0; 2],
+                            sequence: 0,
+                            pending: Vec::new(),
                             pressure: 0.0,
                         })
                     })
@@ -595,6 +610,7 @@ impl Engine {
             .as_ref()
             .is_some_and(|package| package.launch.authoritative);
         self.package_generation = self.package_generation.wrapping_add(1).max(1);
+        self.refresh_pushable_content_hash();
         self.start_world(start_world)
     }
 }

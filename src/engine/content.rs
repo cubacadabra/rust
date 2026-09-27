@@ -91,6 +91,7 @@ impl Engine {
             self.world_ids.clone(),
         ) {
             Ok(script) => {
+                self.refresh_pushable_content_hash();
                 let direct_world_id = (script.lobby_enabled_override() == Some(false))
                     .then(|| {
                         self.package
@@ -194,6 +195,10 @@ impl Engine {
     }
 
     pub(crate) fn poll_network_message(&mut self) -> bool {
+        if let Some(message) = self.pushable_outbox.pop_front() {
+            self.network_message_buffer = message.into_bytes();
+            return true;
+        }
         let Some(message) = self
             .script
             .as_ref()

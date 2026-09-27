@@ -90,7 +90,6 @@ impl Renderer {
         }
 
         if !engine.pushable_blocks.is_empty() {
-            let mut changed = false;
             if let Some(source) = self.worlds.get(engine.active_world) {
                 for pushable in &engine.pushable_blocks {
                     let mut moved = false;
@@ -108,7 +107,6 @@ impl Renderer {
                             ];
                             if block.position != position {
                                 block.position = position;
-                                changed = true;
                                 moved |= index == pushable.block_index;
                             }
                         }
@@ -123,9 +121,6 @@ impl Renderer {
                         }
                     }
                 }
-            }
-            if changed {
-                self.rebuild_static_vertices();
             }
         }
 
@@ -454,6 +449,11 @@ fn resolve_world(
         )
     });
     RenderWorld {
+        dynamic_blocks: definition.blocks.iter().enumerate().filter_map(|(index, block)| {
+            (block.pushable || definition.blocks.iter().any(|parent| {
+                parent.pushable && block.attached_to.as_deref() == Some(parent.id.as_str())
+            })).then_some(index)
+        }).collect(),
         hide_default_ground: terrain.is_some() && definition.terrain.hide_default_ground,
         terrain_material_art: definition.terrain.material_art,
         terrain,

@@ -160,7 +160,8 @@ impl super::super::Renderer {
                 );
             });
         }
-        for block in &world.blocks {
+        for (index, block) in world.blocks.iter().enumerate() {
+            if world.dynamic_blocks.contains(&index) { continue; }
             append_block_geometry_pair(
                 &mut mesh,
                 &mut shadow_mesh,
@@ -386,6 +387,23 @@ impl super::super::Renderer {
             }
         }
         mesh
+    }
+
+    pub(super) fn build_dynamic_block_vertices(&self) -> (Vec<Vertex>, Vec<Vertex>) {
+        let mut mesh = Vec::new();
+        let mut shadow = Vec::new();
+        for &index in &self.scene.world.dynamic_blocks {
+            if let Some(block) = self.scene.world.blocks.get(index) {
+                append_block_geometry_pair(
+                    &mut mesh,
+                    &mut shadow,
+                    block,
+                    self.scene.world.palette.paper,
+                    &self.package_image_regions,
+                );
+            }
+        }
+        (mesh, shadow)
     }
 
     pub(super) fn build_support_shadows(&self, view: Mat4, aspect: f32) -> Vec<Vertex> {

@@ -128,10 +128,12 @@ impl ClientSession {
 
     pub fn transport_connected(&mut self) {
         self.reset_remote_session();
+        self.engine.reset_pushable_network(true);
     }
 
     pub fn transport_disconnected(&mut self) {
         self.reset_remote_session();
+        self.engine.reset_pushable_network(false);
     }
 
     /// Requests a fresh `SetWorld` action even when the engine world has not
@@ -168,6 +170,7 @@ impl ClientSession {
             "game_state" | "game_message" | "player_state" => {
                 self.engine.receive_network_message_json(source)
             }
+            "world_block_state" => self.engine.receive_world_block_state_json(source),
             _ => false,
         }
     }
@@ -204,6 +207,7 @@ impl ClientSession {
             return false;
         };
         self.player_id = Some(message.id);
+        self.engine.set_network_player_id(self.player_id.clone());
         true
     }
 
@@ -383,6 +387,10 @@ impl ClientSession {
 
     fn flush_engine_messages(&mut self, actions: &mut Vec<ClientAction>) {
         while let Some(source) = self.engine.poll_network_message_json() {
+            if serde_json::from_str::<MessageKind>(&source).is_ok_and(|message| message.kind == "world_block_move") {
+                actions.push(ClientAction::SendText(source));
+                continue;
+            }
             let Ok(message) = serde_json::from_str::<EngineNetworkMessage>(&source) else {
                 continue;
             };

@@ -94,6 +94,7 @@ impl super::super::Renderer {
             ],
         };
         let dynamic_vertices = self.build_dynamic_vertices();
+        let (block_vertices, mut block_shadow_vertices) = self.build_dynamic_block_vertices();
         let viewport_aspect = (world_viewport.2 / world_viewport.3.max(1.0)).max(0.1);
         let mut shadow_vertices = if self.character_render_mode == CharacterRenderMode::Magic {
             self.build_support_shadows(view, viewport_aspect)
@@ -108,6 +109,12 @@ impl super::super::Renderer {
             .extend_from_slice(&self.static_translucent_vertices);
         split_world_vertices(
             &dynamic_vertices,
+            &mut self.opaque_vertices,
+            &mut self.translucent_vertices,
+        );
+        let shadow_opaque_count = self.opaque_vertices.len();
+        split_world_vertices(
+            &block_vertices,
             &mut self.opaque_vertices,
             &mut self.translucent_vertices,
         );
@@ -126,8 +133,8 @@ impl super::super::Renderer {
         }
         #[cfg(not(feature = "studio-ui"))]
         sort_translucent(&mut self.translucent_vertices, camera_position, target);
-        let dynamic_count =
-            self.opaque_vertices.len() + shadow_vertices.len() + self.translucent_vertices.len();
+        let dynamic_count = self.opaque_vertices.len() + shadow_vertices.len()
+            + self.translucent_vertices.len() + block_shadow_vertices.len();
         let magic_mode = self.character_render_mode == CharacterRenderMode::Magic;
         #[cfg(feature = "studio-ui")]
         let shadows_enabled = self.studio_shadows_enabled;
@@ -250,6 +257,7 @@ impl super::super::Renderer {
             self.opaque_vertices.clear();
             self.translucent_vertices.clear();
             shadow_vertices.clear();
+            block_shadow_vertices.clear();
         }
         if !self.ensure_ui_vertex_capacity(ui_vertices.len()) {
             log::error!(
@@ -277,6 +285,15 @@ impl super::super::Renderer {
                 (size_of_val(self.opaque_vertices.as_slice())
                     + size_of_val(shadow_vertices.as_slice())) as u64,
                 bytemuck::cast_slice(&self.translucent_vertices),
+            );
+        }
+        if !block_shadow_vertices.is_empty() {
+            self.queue.write_buffer(
+                &self.dynamic_vertex_buffer,
+                (size_of_val(self.opaque_vertices.as_slice())
+                    + size_of_val(shadow_vertices.as_slice())
+                    + size_of_val(self.translucent_vertices.as_slice())) as u64,
+                bytemuck::cast_slice(&block_shadow_vertices),
             );
         }
         if !ui_vertices.is_empty() {
@@ -383,10 +400,19 @@ impl super::super::Renderer {
             }
             self.world_meshes
                 .draw_shadow(&mut pass, &self.world_mesh_shadow_pipeline);
-            if !self.opaque_vertices.is_empty() {
+            if shadow_opaque_count > 0 {
                 pass.set_pipeline(&self.shadow_pipeline);
                 pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(..));
-                pass.draw(0..self.opaque_vertices.len() as u32, 0..1);
+                pass.draw(0..shadow_opaque_count as u32, 0..1);
+            }
+            if !block_shadow_vertices.is_empty() {
+                let start = (size_of_val(self.opaque_vertices.as_slice())
+                    + size_of_val(shadow_vertices.as_slice())
+                    + size_of_val(self.translucent_vertices.as_slice())) as u64;
+                let end = start + size_of_val(block_shadow_vertices.as_slice()) as u64;
+                pass.set_pipeline(&self.shadow_pipeline);
+                pass.set_vertex_buffer(0, self.dynamic_vertex_buffer.slice(start..end));
+                pass.draw(0..block_shadow_vertices.len() as u32, 0..1);
             }
             if magic_mode {
                 self.characters

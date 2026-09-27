@@ -227,6 +227,7 @@ pub(super) struct RenderActor {
 #[derive(Clone)]
 pub(super) struct RenderWorld {
     pub(super) blocks: Vec<RenderBlock>,
+    pub(super) dynamic_blocks: Vec<usize>,
     pub(super) terrain: Option<crate::terrain::TerrainGrid>,
     pub(super) hide_default_ground: bool,
     pub(super) terrain_material_art: bool,
@@ -267,6 +268,7 @@ impl Default for RenderWorld {
     fn default() -> Self {
         Self {
             blocks: Vec::new(),
+            dynamic_blocks: Vec::new(),
             terrain: None,
             hide_default_ground: false,
             terrain_material_art: true,
