@@ -164,6 +164,7 @@ impl Engine {
         if old_offset == offset {
             return;
         }
+        let attached_build = self.attached_build_blocks(&block.id);
         let obstacle_indices = std::iter::once(block.obstacle_index)
             .chain(block.attached_obstacles.iter().copied())
             .collect::<Vec<_>>();
@@ -182,6 +183,14 @@ impl Engine {
             self.obstacles[obstacle_index] = moved;
         }
         self.pushable_blocks[index].offset = offset;
+        if !attached_build.is_empty() {
+            let delta = [offset[0] - old_offset[0], offset[1] - old_offset[1]];
+            for (block_index, _) in attached_build {
+                self.build_blocks[block_index].position[0] += delta[0];
+                self.build_blocks[block_index].position[2] += delta[1];
+            }
+            self.rebuild_build_obstacles();
+        }
         // A remote push can reach the player before its socket packet does.
         // Keep the local capsule outside the newly occupied face.
         let obstacle = self.obstacles[self.pushable_blocks[index].obstacle_index];

@@ -107,6 +107,10 @@ impl Engine {
                 hash.array3(block.script_shift);
             }
         }
+        for block in &self.build_blocks {
+            hash.bool(block.collidable);
+            hash.string(block.attached_to.as_deref().unwrap_or(""));
+        }
         for agent in &self.agents {
             hash.array3(agent.position);
             hash.f32(agent.target.x);

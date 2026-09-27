@@ -127,11 +127,20 @@ pub(super) fn install(
                 if rotation > 3 {
                     return Err(lua::Error::runtime("build block rotation must be 0-3"));
                 }
+                let attached_to = value.get::<Option<String>>("attachedTo")?;
+                if attached_to
+                    .as_ref()
+                    .is_some_and(|id| id.is_empty() || id.len() > 128)
+                {
+                    return Err(lua::Error::runtime("attachedTo must be 1-128 bytes"));
+                }
                 blocks.push(BuildBlock {
                     position,
                     size,
                     color,
                     rotation,
+                    collidable: value.get::<Option<bool>>("collidable")?.unwrap_or(true),
+                    attached_to: attached_to.map(Into::into),
                 });
             }
             blocks_state.borrow_mut().dynamic_blocks = Some(blocks);

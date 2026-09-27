@@ -172,12 +172,27 @@ impl Default for RemotePlayer {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(crate) struct BuildBlock {
     pub(crate) position: [f32; 3],
     pub(crate) size: [f32; 3],
     pub(crate) color: u32,
     pub(crate) rotation: u8,
+    pub(crate) collidable: bool,
+    pub(crate) attached_to: Option<std::sync::Arc<str>>,
+}
+
+impl Default for BuildBlock {
+    fn default() -> Self {
+        Self {
+            position: [0.0; 3],
+            size: [0.0; 3],
+            color: 0,
+            rotation: 0,
+            collidable: true,
+            attached_to: None,
+        }
+    }
 }
 
 impl Default for Player {

@@ -116,6 +116,14 @@ pub struct BuildBlockSnapshot {
     pub size: [f32; 3],
     pub color: u32,
     pub rotation: u8,
+    #[serde(default = "build_block_collidable_default")]
+    pub collidable: bool,
+    #[serde(default)]
+    pub attached_to: Option<String>,
+}
+
+fn build_block_collidable_default() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

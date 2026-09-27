@@ -241,8 +241,12 @@ impl Engine {
             if travel.abs() < 0.00001 {
                 return;
             }
+            let attached_id = block.id.clone();
+            let attached_obstacles = block.attached_obstacles.clone();
+            let attached_build = self.attached_build_blocks(&attached_id);
             let group = std::iter::once(obstacle_index)
-                .chain(block.attached_obstacles.iter().copied())
+                .chain(attached_obstacles)
+                .chain(attached_build.iter().filter_map(|(_, obstacle)| *obstacle))
                 .collect::<Vec<_>>();
             let moved = group
                 .iter()
@@ -295,18 +299,25 @@ impl Engine {
             }
             for (obstacle_index, _, bounds) in &moved {
                 self.obstacles[*obstacle_index] = *bounds;
-                self.base_obstacles[*obstacle_index] = *bounds;
+                if *obstacle_index < self.base_obstacles.len() {
+                    self.base_obstacles[*obstacle_index] = *bounds;
+                }
             }
             let mut pushed_player = self.player.position;
             pushed_player[axis] += travel;
             if self.player_can_occupy(pushed_player) {
                 self.pushable_blocks[index].offset[axis / 2] += travel;
+                for (build_index, _) in attached_build {
+                    self.build_blocks[build_index].position[axis] += travel;
+                }
                 *candidate = pushed_player;
                 self.record_pushable_motion(index, axis, travel);
             } else {
                 for (obstacle_index, original, _) in &moved {
                     self.obstacles[*obstacle_index] = *original;
-                    self.base_obstacles[*obstacle_index] = *original;
+                    if *obstacle_index < self.base_obstacles.len() {
+                        self.base_obstacles[*obstacle_index] = *original;
+                    }
                 }
             }
             return;

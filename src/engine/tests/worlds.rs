@@ -461,6 +461,7 @@ fn luau_build_blocks_reach_render_and_collision_state() {
         function game.on_start(api)
             api.world:set_build_blocks({
                 { position = { 3, 2, -4 }, size = { 2, 2, 2 }, color = 0xF7F5E9 },
+                { position = { 3, 2, -2.97 }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false },
             })
         end
         return game
@@ -468,10 +469,17 @@ fn luau_build_blocks_reach_render_and_collision_state() {
     let mut engine = Engine::new();
     assert!(engine.load_script_source(script));
     engine.step(1.0 / 60.0);
-    assert_eq!(engine.build_blocks().len(), 1);
+    assert_eq!(engine.build_blocks().len(), 2);
     assert_eq!(engine.build_blocks()[0].position, [3.0, 2.0, -4.0]);
     assert_eq!(engine.obstacles.len(), engine.base_obstacles.len() + 1);
-    assert_eq!(engine.capture_snapshot().unwrap().build_blocks.len(), 1);
+    let snapshot = engine.capture_snapshot().unwrap();
+    assert_eq!(snapshot.build_blocks.len(), 2);
+    assert!(!snapshot.build_blocks[1].collidable);
+    let legacy: crate::BuildBlockSnapshot = serde_json::from_str(
+        r#"{"position":[0,1,0],"size":[2,2,2],"color":0,"rotation":0}"#,
+    ).unwrap();
+    assert!(legacy.collidable);
+    assert!(legacy.attached_to.is_none());
 }
 
 #[test]

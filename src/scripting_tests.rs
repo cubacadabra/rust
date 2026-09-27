@@ -533,7 +533,7 @@ mod tests {
                 function game.on_start(api)
                     api.world:set_build_blocks({
                         { position = { 2, 3, -4 }, size = { 2, 2, 2 }, color = 0xF7F5E9 },
-                        { position = { 2, 4, -2.97 }, size = { 1, 0.08, 0.06 }, color = 0x0B102B },
+                        { position = { 2, 4, -2.97 }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" },
                     })
                 end
                 function game.on_tick(api)
@@ -548,6 +548,9 @@ mod tests {
         assert_eq!(blocks.len(), 2);
         assert_eq!(blocks[0].position, [2.0, 3.0, -4.0]);
         assert_eq!(blocks[0].color, 0xF7F5E9);
+        assert!(blocks[0].collidable);
+        assert!(!blocks[1].collidable);
+        assert_eq!(blocks[1].attached_to.as_deref(), Some("cube"));
         script.tick(0.0).expect("clear blocks");
         assert!(script.take_dynamic_blocks().unwrap().is_empty());
 

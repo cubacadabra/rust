@@ -260,6 +260,8 @@ impl Engine {
                 size,
                 color,
                 rotation: rotation % 4,
+                collidable: true,
+                attached_to: None,
             };
             self.rebuild_build_obstacles();
         }
@@ -269,16 +271,39 @@ impl Engine {
         &self.build_blocks
     }
 
+    pub(crate) fn attached_build_blocks(&self, id: &str) -> Vec<(usize, Option<usize>)> {
+        let mut obstacle_index = self.base_obstacles.len();
+        let mut attached = Vec::new();
+        for (block_index, block) in self.build_blocks.iter().enumerate() {
+            let obstacle = if block.collidable {
+                let current = obstacle_index;
+                obstacle_index += 1;
+                Some(current)
+            } else {
+                None
+            };
+            if block.attached_to.as_deref() == Some(id) {
+                attached.push((block_index, obstacle));
+            }
+        }
+        attached
+    }
+
     pub(crate) fn rebuild_build_obstacles(&mut self) {
         self.obstacles = self.base_obstacles.clone();
-        self.obstacles.extend(self.build_blocks.iter().map(|block| {
-            let size = if block.rotation % 2 == 0 {
-                block.size
-            } else {
-                [block.size[2], block.size[1], block.size[0]]
-            };
-            block_bounds(block.position, size)
-        }));
+        self.obstacles.extend(
+            self.build_blocks
+                .iter()
+                .filter(|block| block.collidable)
+                .map(|block| {
+                    let size = if block.rotation % 2 == 0 {
+                        block.size
+                    } else {
+                        [block.size[2], block.size[1], block.size[0]]
+                    };
+                    block_bounds(block.position, size)
+                }),
+        );
     }
 
     pub(crate) fn enter_session(&mut self, launch_pad_index: usize, spawn: [f32; 3]) -> usize {

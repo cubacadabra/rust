@@ -275,7 +275,7 @@ impl Engine {
             build_blocks: self
                 .build_blocks
                 .iter()
-                .copied()
+                .cloned()
                 .map(BuildBlockSnapshot::from)
                 .collect(),
             pushable_blocks: self
@@ -452,12 +452,9 @@ impl Engine {
         self.target_pitch = snapshot.camera.target_pitch;
         self.camera_distance = snapshot.camera.distance;
         self.target_camera_distance = snapshot.camera.target_distance;
-        self.build_blocks = snapshot
-            .build_blocks
-            .iter()
-            .cloned()
-            .map(Into::into)
-            .collect();
+        // Restore authored pushable offsets first. Snapshot block positions
+        // already include those offsets and must not be displaced twice.
+        self.build_blocks.clear();
         self.rebuild_build_obstacles();
         for (index, saved) in snapshot.pushable_blocks.iter().enumerate() {
             self.set_scripted_shift(index, saved.script_shift);
@@ -466,6 +463,13 @@ impl Engine {
             self.pushable_blocks[index].authoritative_offset = saved.offset;
             self.pushable_blocks[index].pending.clear();
         }
+        self.build_blocks = snapshot
+            .build_blocks
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect();
+        self.rebuild_build_obstacles();
         self.launch_pads = launch_pads;
         self.agents = agents;
         self.interactions.event_id = snapshot.interactions.event_id;

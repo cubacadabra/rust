@@ -45,6 +45,46 @@ fn attached_collidable_child_moves_with_cube_and_snapshot_restores_both() {
 }
 
 #[test]
+fn a_decorated_tall_stack_pushes_as_far_as_one_cube() {
+    let manifest = pushable_manifest(None, None);
+    let mut single = Engine::new();
+    assert!(single.load_package_source(&manifest));
+    push_for(&mut single, 180);
+    let single_travel = single.pushable_blocks[0].offset[1];
+
+    let mut stacked = Engine::new();
+    assert!(stacked.load_package_source(&manifest));
+    assert!(stacked.load_script_source(r#"
+        local game = {}
+        function game.on_start(api)
+            api.world:watch_blocks({ "cube" })
+        end
+        function game.on_tick(api)
+            local observed = api.world:get_positions()
+            if not observed or not observed.blocks.cube then return end
+            local offset = observed.blocks.cube.position[3]
+            local blocks = {
+                { position = { 0, 1, 1.03 + offset }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" },
+            }
+            for row = 2, 12 do
+                local y = 1 + 2 * (row - 1)
+                blocks[#blocks + 1] = { position = { 0, y, offset }, size = { 2, 2, 2 }, color = 0xFFFFFF, attachedTo = "cube" }
+                blocks[#blocks + 1] = { position = { 0, y, 1.03 + offset }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" }
+            end
+            api.world:set_build_blocks(blocks)
+        end
+        return game
+    "#));
+    push_for(&mut stacked, 180);
+
+    let stack_travel = stacked.pushable_blocks[0].offset[1];
+    assert!(stack_travel < -0.1, "stack did not move: {stack_travel}");
+    assert!((stack_travel - single_travel).abs() < 0.02,
+        "stack moved {stack_travel}, single cube moved {single_travel}");
+    assert!((stacked.build_blocks()[1].position[2] - stack_travel).abs() < 0.001);
+}
+
+#[test]
 fn backend_state_moves_the_other_clients_collision_boxes() {
     let manifest = pushable_manifest(None, None);
     let mut viewer = Engine::new();
@@ -60,6 +100,41 @@ fn backend_state_moves_the_other_clients_collision_boxes() {
     assert!((viewer.obstacles[1].min_z + 1.5).abs() < 0.001);
     assert!(viewer.receive_world_block_state_json(&state.to_string()));
     assert_eq!(viewer.pushable_blocks[0].offset, [0.0, -1.0]);
+}
+
+#[test]
+fn remote_push_moves_attached_runtime_blocks_and_snapshot_restores_them() {
+    let manifest = pushable_manifest(None, None);
+    let script = r#"
+        local game = {}
+        function game.on_tick(api)
+            api.world:set_build_blocks({
+                { position = { 0, 3, 0 }, size = { 2, 2, 2 }, color = 0xFFFFFF, attachedTo = "cube" },
+                { position = { 0, 1, 1.03 }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" },
+            })
+        end
+        return game
+    "#;
+    let mut viewer = Engine::new();
+    assert!(viewer.load_package_source(&manifest));
+    assert!(viewer.load_script_source(script));
+    viewer.step(1.0 / 60.0);
+    assert_eq!(viewer.obstacles.len(), viewer.base_obstacles.len() + 1);
+    let state = json!({
+        "type": "world_block_state", "contentHash": viewer.pushable_content_hash,
+        "blockIndex": 0, "x": 0.0, "z": -1.0, "sequence": 1,
+    });
+    assert!(viewer.receive_world_block_state_json(&state.to_string()));
+    assert_eq!(viewer.build_blocks()[0].position[2], -1.0);
+    assert!((viewer.obstacles[viewer.base_obstacles.len()].min_z + 2.0).abs() < 0.001);
+
+    let saved = viewer.capture_snapshot_json().expect("snapshot");
+    let mut restored = Engine::new();
+    assert!(restored.load_package_source(&manifest));
+    assert!(restored.load_script_source(script));
+    restored.restore_snapshot_json(&saved).expect("restore");
+    assert_eq!(restored.build_blocks()[0].position[2], -1.0);
+    assert_eq!(restored.state_hash(), viewer.state_hash());
 }
 
 #[test]

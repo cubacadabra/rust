@@ -63,6 +63,8 @@ impl From<BuildBlock> for BuildBlockSnapshot {
             size: value.size,
             color: value.color,
             rotation: value.rotation,
+            collidable: value.collidable,
+            attached_to: value.attached_to.as_deref().map(str::to_owned),
         }
     }
 }
@@ -73,6 +75,8 @@ impl From<BuildBlockSnapshot> for BuildBlock {
             size: value.size,
             color: value.color,
             rotation: value.rotation % 4,
+            collidable: value.collidable,
+            attached_to: value.attached_to.map(Into::into),
         }
     }
 }
