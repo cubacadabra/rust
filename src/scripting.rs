@@ -40,9 +40,6 @@ pub(crate) struct ScriptState {
     /// A transition requested by game code. Requests are consumed by the
     /// engine after the current callback/tick returns.
     pub(crate) world_transition: Option<String>,
-    /// Opt-in spatial observation; games which do not subscribe do no spatial copying.
-    pub(crate) watched_blocks: std::collections::BTreeMap<String, Option<[f32; 3]>>,
-    pub(crate) watched_player: Option<[f32; 3]>,
     #[cfg(debug_assertions)]
     pub(crate) debug_teleport: Option<DebugTeleportRequest>,
     pub(crate) last_error: Option<String>,
@@ -320,12 +317,7 @@ impl GameScript {
     }
 
     pub(crate) fn set_world_id(&self, world_id: &str) {
-        let mut state = self.state.borrow_mut();
-        state.world_id = world_id.to_owned();
-        state.watched_player = None;
-        for position in state.watched_blocks.values_mut() {
-            *position = None;
-        }
+        self.state.borrow_mut().world_id = world_id.to_owned();
     }
 
     pub(crate) fn take_world_transition(&self) -> Option<String> {

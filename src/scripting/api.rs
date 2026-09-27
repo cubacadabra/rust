@@ -126,7 +126,6 @@ pub(super) fn create_api(
         })?,
     )?;
     api.set("world", world)?;
-    install_spatial_api(lua, &api, Rc::clone(&state))?;
 
     let ui = create_table(lua)?;
     let document_runtime = Rc::clone(&ui_runtime);
@@ -221,47 +220,6 @@ pub(super) fn create_api(
     audio::install(lua, &api, Rc::clone(&state))?;
     effects::install(lua, &api, Rc::clone(&state))?;
     Ok(api)
-}
-
-fn install_spatial_api(
-    lua: &lua::Lua,
-    api: &lua::Table,
-    state: Rc<RefCell<ScriptState>>,
-) -> lua::Result<()> {
-    let world: lua::Table = api.get("world")?;
-    let watch_state = Rc::clone(&state);
-    world.set("watch_positions", lua.create_function(
-        move |_, (_world, ids): (lua::Table, lua::Table)| {
-            let mut watched = std::collections::BTreeMap::new();
-            for (index, id) in ids.sequence_values::<String>().enumerate() {
-                let id = id?;
-                if id.trim().is_empty() || id.len() > 128 || index >= 64 {
-                    return Err(lua::Error::runtime("watch_positions requires at most 64 non-empty block IDs (up to 128 bytes each)"));
-                }
-                watched.insert(id, None);
-            }
-            let mut state = watch_state.borrow_mut();
-            state.watched_blocks = watched;
-            state.watched_player = None;
-            Ok(())
-        }
-    )?)?;
-    world.set("get_positions", lua.create_function(move |lua, _world: lua::Table| {
-        let state = state.borrow();
-        let Some(player) = state.watched_player else { return Ok(lua::Value::Nil); };
-        let result = create_table(lua)?;
-        result.set("worldId", state.world_id.as_str())?;
-        result.set("player", lua.create_sequence_from(player)?)?;
-        let blocks = create_table(lua)?;
-        for (id, position) in &state.watched_blocks {
-            if let Some(position) = position {
-                blocks.set(id.as_str(), lua.create_sequence_from(*position)?)?;
-            }
-        }
-        result.set("blocks", blocks)?;
-        Ok(lua::Value::Table(result))
-    })?)?;
-    Ok(())
 }
 
 fn interaction_class_to_lua(lua: &lua::Lua, class: &ClassSchema) -> lua::Result<lua::Table> {
