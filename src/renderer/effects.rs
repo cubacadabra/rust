@@ -114,6 +114,8 @@ fn resolve_node(
 
     RenderEffectNode {
         shape: node.shape.clone(),
+        attached_to: node.attached_to.clone(),
+        attachment_offset: [0.0; 2],
         position,
         size,
         rotation,
@@ -241,6 +243,13 @@ pub(super) fn add_template(
                     rotation = rotation.lerp(Vec3::from_array(destination), progress);
                 }
             }
+            let attachment_progress = if node.animation.travel_to.is_some() {
+                progress.unwrap_or(1.0)
+            } else {
+                1.0
+            };
+            position.x += node.attachment_offset[0] * attachment_progress;
+            position.z += node.attachment_offset[1] * attachment_progress;
             position.x += orbit_angle.cos() * orbit_radius;
             position.z += orbit_angle.sin() * orbit_radius;
             position.y += (elapsed * node.animation.bob_speed * animation_scale + phase).sin()
@@ -330,6 +339,8 @@ mod tests {
             duration: 1.0,
             nodes: vec![RenderEffectNode {
                 shape: "sphere".to_owned(),
+                attached_to: None,
+                attachment_offset: [0.0; 2],
                 position: [0.0; 3],
                 size: [1.0; 3],
                 rotation: [0.0; 3],
@@ -374,6 +385,45 @@ mod tests {
     }
 
     #[test]
+    fn attached_effect_travel_reaches_moved_block_and_persistent_node_follows_it() {
+        let mut template = stateful_template();
+        let node = &mut template.nodes[0];
+        node.shape = "box".to_owned();
+        node.visible_states.clear();
+        node.attached_to = Some("cube".to_owned());
+        node.attachment_offset = [2.0, 3.0];
+        node.animation.travel_to = Some([4.0, 0.0, 0.0]);
+
+        let render = |progress| {
+            let mut vertices = Vec::new();
+            add_template(
+                &mut vertices,
+                &template,
+                Vec3::ZERO,
+                [1.0; 4],
+                "default",
+                0.0,
+                progress,
+                false,
+            );
+            vertices
+        };
+        let start = render(Some(0.0));
+        let midpoint = render(Some(0.5));
+        let end = render(Some(1.0));
+        let attached = render(None);
+        assert!(!start.is_empty());
+        for index in 0..start.len() {
+            assert!((midpoint[index].position[0] - start[index].position[0] - 3.0).abs() < 0.0001);
+            assert!((midpoint[index].position[2] - start[index].position[2] - 1.5).abs() < 0.0001);
+            assert!((end[index].position[0] - start[index].position[0] - 6.0).abs() < 0.0001);
+            assert!((end[index].position[2] - start[index].position[2] - 3.0).abs() < 0.0001);
+            assert!((attached[index].position[0] - start[index].position[0] - 2.0).abs() < 0.0001);
+            assert!((attached[index].position[2] - start[index].position[2] - 3.0).abs() < 0.0001);
+        }
+    }
+
+    #[test]
     fn compact_state_variants_inherit_and_override_node_properties() {
         let library: EffectLibraryDefinition = serde_json::from_str(
             r##"{
@@ -382,6 +432,7 @@ mod tests {
                     "gate": {
                         "nodes": [{
                             "shape": "ring",
+                            "attachedTo": "cube",
                             "size": [3, 0.1, 1],
                             "color": "$interaction",
                             "variants": [
@@ -413,6 +464,11 @@ mod tests {
         assert_eq!(nodes[1].animation.pulse_amount, 0.1);
         assert_eq!(nodes[1].size, [3.0, 0.1, 1.0]);
         assert!(nodes.iter().all(|node| node.interaction_color));
+        assert!(
+            nodes
+                .iter()
+                .all(|node| node.attached_to.as_deref() == Some("cube"))
+        );
     }
 
     #[test]

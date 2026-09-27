@@ -409,6 +409,7 @@ impl Engine {
                     .enumerate()
                     .filter_map(|(obstacle_index, (block_index, block))| {
                         block.pushable.then(|| PushableBlock {
+                            id: block.id.clone(),
                             block_index,
                             obstacle_index,
                             attached_blocks: definition

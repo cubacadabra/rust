@@ -93,6 +93,7 @@ impl Renderer {
             let mut changed = false;
             if let Some(source) = self.worlds.get(engine.active_world) {
                 for pushable in &engine.pushable_blocks {
+                    let mut moved = false;
                     for index in std::iter::once(pushable.block_index)
                         .chain(pushable.attached_blocks.iter().copied())
                     {
@@ -108,6 +109,16 @@ impl Renderer {
                             if block.position != position {
                                 block.position = position;
                                 changed = true;
+                                moved |= index == pushable.block_index;
+                            }
+                        }
+                    }
+                    if moved {
+                        for template in self.scene.world.effect_templates.values_mut() {
+                            for node in &mut template.nodes {
+                                if node.attached_to.as_deref() == Some(pushable.id.as_str()) {
+                                    node.attachment_offset = pushable.offset;
+                                }
                             }
                         }
                     }

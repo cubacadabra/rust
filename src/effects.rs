@@ -59,6 +59,10 @@ pub(crate) struct EffectTemplateDefinition {
 pub(crate) struct EffectNodeDefinition {
     #[serde(default)]
     pub(crate) shape: String,
+    /// Move this node with the named pushable block. For a one-shot travel
+    /// animation, the offset is blended in as the node reaches its endpoint.
+    #[serde(default)]
+    pub(crate) attached_to: Option<String>,
     #[serde(default)]
     pub(crate) position: Vec<f32>,
     #[serde(default)]

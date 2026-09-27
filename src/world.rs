@@ -72,6 +72,7 @@ pub(crate) struct RuntimeWorld {
 
 #[derive(Clone, Debug)]
 pub(crate) struct PushableBlock {
+    pub(crate) id: String,
     pub(crate) block_index: usize,
     pub(crate) obstacle_index: usize,
     pub(crate) attached_blocks: Vec<usize>,
