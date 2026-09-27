@@ -561,3 +561,50 @@
             .any(|node| node.id == "player-joystick"));
         assert!(runtime.pointer(8, UiPointerPhase::Down, 30.0, 200.0));
     }
+
+    #[test]
+    #[cfg(feature = "studio-ui")]
+    fn studio_play_hides_shared_header_and_jump_only_until_stopped() {
+        let mut runtime = runtime(
+            r##"{"nodes":[
+                {"id":"game-header","kind":"button","text":"Build","action":"build.menu","layout":{"region":"header","width":56,"height":56}},
+                {"id":"player-jump","kind":"button","text":"JUMP","action":"player.jump","layout":{"anchor":"bottomRight","width":86,"height":44,"offset":[-22,-84]}},
+                {"id":"player-run","kind":"button","text":"RUN","action":"player.run","layout":{"anchor":"bottomRight","width":86,"height":44,"offset":[-22,-30]}}
+            ]}"##,
+            390.0,
+            844.0,
+        );
+        let jump = runtime
+            .frame()
+            .nodes
+            .iter()
+            .find(|node| node.id == "player-jump")
+            .expect("Jump is visible before Play")
+            .rect;
+        runtime.set_studio_play_controls_hidden(true);
+        let frame = runtime.frame().clone();
+        assert!(frame
+            .nodes
+            .iter()
+            .all(|node| !node.id.starts_with("__shared_header_") && node.id != "player-jump"));
+        assert!(frame.nodes.iter().any(|node| node.id == "player-run"));
+        assert!(frame.nodes.iter().any(|node| node.id == "game-header"));
+        assert!(!runtime.pointer(
+            1,
+            UiPointerPhase::Down,
+            jump.x + jump.width * 0.5,
+            jump.y + jump.height * 0.5,
+        ));
+        assert!(runtime
+            .hit_regions
+            .iter()
+            .all(|region| !region.id.starts_with("__shared_header_")));
+
+        runtime.set_studio_play_controls_hidden(false);
+        let frame = runtime.frame();
+        assert!(frame.nodes.iter().any(|node| node.id == "player-jump"));
+        assert!(frame
+            .nodes
+            .iter()
+            .any(|node| node.id == "__shared_header_logo"));
+    }

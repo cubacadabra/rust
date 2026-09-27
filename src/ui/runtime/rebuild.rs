@@ -97,7 +97,18 @@ impl UiRuntime {
         // Draw the platform-owned controls last so game UI cannot cover them.
         // Their surfaces consume taps without emitting events until platform
         // actions are connected.
-        let shared_header = shared_header_nodes(self.viewport, safe);
+        let shared_header = if self.hide_studio_shared_header() {
+            let compact = safe.width < 600.0 || safe.height > safe.width * 1.15;
+            let margin = if compact { 12.0 } else { SHARED_HEADER_MARGIN };
+            SharedHeaderGeometry {
+                nodes: Vec::new(),
+                custom_x: safe.x + margin,
+                y: safe.y + margin,
+                size: if compact { 44.0 } else { SHARED_HEADER_SIZE },
+            }
+        } else {
+            shared_header_nodes(self.viewport, safe)
+        };
         for node in shared_header
             .nodes
             .iter()
@@ -169,7 +180,10 @@ impl UiRuntime {
         // styling and actions, but deliberately ignore document visibility
         // and world scope for this engine-owned layer.
         for node in &self.document.nodes {
-            if !is_persistent_gameplay_control(node) || self.hide_studio_movement_joystick(node) {
+            if !is_persistent_gameplay_control(node)
+                || self.hide_studio_movement_joystick(node)
+                || self.hide_studio_play_control(node)
+            {
                 continue;
             }
             let mut persistent_node = node.clone();

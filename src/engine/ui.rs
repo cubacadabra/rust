@@ -107,6 +107,12 @@ impl Engine {
             .set_studio_movement_joystick_visible(visible);
     }
 
+    /// Hides the shared header and touch Jump control during Studio Play.
+    #[cfg(feature = "studio-ui")]
+    pub fn set_studio_play_controls_hidden(&mut self, hidden: bool) {
+        self.ui.borrow_mut().set_studio_play_controls_hidden(hidden);
+    }
+
     #[cfg(feature = "studio-ui")]
     pub fn studio_ui_nodes(&self) -> Vec<crate::StudioUiNode> {
         self.ui.borrow().studio_nodes()

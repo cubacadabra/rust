@@ -368,6 +368,8 @@ pub(crate) struct UiRuntime {
     document_revision: u64,
     #[cfg(feature = "studio-ui")]
     studio_movement_joystick_visible: bool,
+    #[cfg(feature = "studio-ui")]
+    studio_play_controls_hidden: bool,
     shared_authenticated: bool,
     shared_modal_progress: f32,
     shared_modal_target: f32,
