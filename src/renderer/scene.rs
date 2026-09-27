@@ -59,6 +59,18 @@ fn log_ui_frame(frame: &UiFrame) {
 }
 
 impl Renderer {
+    pub(crate) fn invalidate_package_cache(&mut self) {
+        // Package generations belong to an Engine, not to the renderer. A
+        // replacement Engine may have the same generation as the old one.
+        log::debug!(
+            "renderer package cache invalidated: previous_generation={} previous_world_index={}",
+            self.package_generation,
+            self.active_world,
+        );
+        self.package_generation = u32::MAX;
+        self.active_world = usize::MAX;
+    }
+
     pub fn sync_engine(&mut self, engine: &Engine) {
         if self.package_generation != engine.package_generation {
             self.worlds = engine
@@ -75,6 +87,11 @@ impl Renderer {
                         .collect()
                 })
                 .unwrap_or_default();
+            log::debug!(
+                "renderer package scene rebuilt: generation={} worlds={}",
+                engine.package_generation,
+                self.worlds.len(),
+            );
             self.package_generation = engine.package_generation;
             self.active_world = usize::MAX;
         }
@@ -87,6 +104,11 @@ impl Renderer {
             self.active_world = engine.active_world;
             self.scene.world = world;
             self.rebuild_static_vertices();
+            log::debug!(
+                "renderer active world rebuilt: index={} id={:?}",
+                self.active_world,
+                engine.active_world_id(),
+            );
         }
 
         if !engine.pushable_blocks.is_empty() {

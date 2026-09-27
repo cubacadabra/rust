@@ -125,6 +125,12 @@ pub mod native {
             self.inner.sync_engine(engine);
         }
 
+        /// Forces the next sync to resolve the package and world from a new
+        /// Engine instance, even if its generation matches the previous one.
+        pub fn invalidate_package_cache(&mut self) {
+            self.inner.invalidate_package_cache();
+        }
+
         pub fn draw(&mut self) {
             self.inner.draw();
         }
