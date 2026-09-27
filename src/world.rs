@@ -60,6 +60,7 @@ pub(crate) struct RuntimeWorld {
     pub(crate) launch_pads: Vec<LaunchPad>,
     pub(crate) launch_destinations: Vec<Option<usize>>,
     pub(crate) obstacles: Vec<Aabb>,
+    pub(crate) pushable_blocks: Vec<PushableBlock>,
     pub(crate) ladders: Vec<LadderVolume>,
     pub(crate) checkpoints: Vec<Checkpoint>,
     pub(crate) portals: Vec<Portal>,
@@ -67,6 +68,15 @@ pub(crate) struct RuntimeWorld {
     pub(crate) actors: Vec<AuthoredActor>,
     pub(crate) hazards: Vec<HazardVolume>,
     pub(crate) safe_zones: Vec<SafeZone>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PushableBlock {
+    pub(crate) block_index: usize,
+    pub(crate) obstacle_index: usize,
+    pub(crate) attached_blocks: Vec<usize>,
+    pub(crate) offset: [f32; 2],
+    pub(crate) pressure: f32,
 }
 
 #[derive(Clone, Copy, Debug)]

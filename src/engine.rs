@@ -29,7 +29,7 @@ use crate::types::{
 use crate::ui::UiRuntime;
 use crate::world::{
     Aabb, AuthoredActor, Checkpoint, HazardVolume, HealthSettings, LadderVolume, LaunchPad,
-    PhysicsSettings, RespawnSettings, RuntimeWorld, SafeZone,
+    PhysicsSettings, PushableBlock, RespawnSettings, RuntimeWorld, SafeZone,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, VecDeque};
@@ -83,6 +83,7 @@ pub struct Engine {
     pub(crate) remote_players: Vec<RemotePlayer>,
     pub(crate) obstacles: Vec<Aabb>,
     pub(crate) base_obstacles: Vec<Aabb>,
+    pub(crate) pushable_blocks: Vec<PushableBlock>,
     pub(crate) terrain: Option<crate::terrain::TerrainGrid>,
     pub(crate) static_collision: Option<std::sync::Arc<crate::static_collision::StaticCollision>>,
     pub(crate) physics: PhysicsSettings,

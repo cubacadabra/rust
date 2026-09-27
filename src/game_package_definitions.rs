@@ -691,6 +691,8 @@ impl LaunchPadDefinition {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockDefinition {
     #[serde(default)]
+    pub(crate) id: String,
+    #[serde(default)]
     pub(crate) position: Vec<f32>,
     #[serde(default)]
     pub(crate) size: Vec<f32>,
@@ -703,6 +705,10 @@ pub(crate) struct BlockDefinition {
     pub(crate) material: Option<String>,
     #[serde(default = "default_true")]
     pub(crate) collidable: bool,
+    #[serde(default)]
+    pub(crate) pushable: bool,
+    #[serde(default)]
+    pub(crate) attached_to: Option<String>,
     #[serde(default = "default_true")]
     pub(crate) cast_shadow: bool,
     #[serde(default = "default_true")]

@@ -49,6 +49,9 @@ impl Engine {
         }
 
         self.apply_pending_reconciliation(delta);
+        for block in &mut self.pushable_blocks {
+            block.pressure = (block.pressure - delta * 0.4).max(0.0);
+        }
 
         let was_grounded = self.player.grounded;
         let mut forward = self.input.forward.clamp(-1.0, 1.0);
@@ -178,6 +181,7 @@ impl Engine {
         let mut candidate = self.player.position;
         let (minimum_x, maximum_x) = self.horizontal_limits(0);
         candidate[0] = (candidate[0] + self.player.velocity[0] * delta).clamp(minimum_x, maximum_x);
+        self.try_push_block(&mut candidate, 0, delta);
         if let Some(resolved) = self.resolve_horizontal_candidate(candidate) {
             self.player.position = resolved;
         } else {
@@ -187,10 +191,100 @@ impl Engine {
         candidate = self.player.position;
         let (minimum_z, maximum_z) = self.horizontal_limits(1);
         candidate[2] = (candidate[2] + self.player.velocity[2] * delta).clamp(minimum_z, maximum_z);
+        self.try_push_block(&mut candidate, 2, delta);
         if let Some(resolved) = self.resolve_horizontal_candidate(candidate) {
             self.player.position = resolved;
         } else {
             self.player.velocity[2] = 0.0;
+        }
+    }
+
+    fn try_push_block(&mut self, candidate: &mut [f32; 3], axis: usize, delta: f32) {
+        if !self.player.grounded || self.player_can_occupy(*candidate) {
+            return;
+        }
+        let direction = (candidate[axis] - self.player.position[axis]).signum();
+        if direction == 0.0 {
+            return;
+        }
+        for index in 0..self.pushable_blocks.len() {
+            let obstacle_index = self.pushable_blocks[index].obstacle_index;
+            let obstacle = self.obstacles[obstacle_index];
+            if self.player.position[1] >= obstacle.top - 0.05
+                || self.player.position[1] + BODY_HEIGHT <= obstacle.bottom + 0.05
+                || !overlaps_obstacle(*candidate, &obstacle, PLAYER_RADIUS)
+            {
+                continue;
+            }
+            // Contact from a side is required; brushing along a face cannot
+            // move the block sideways or pull it toward the player.
+            let face = if axis == 0 {
+                if direction > 0.0 {
+                    obstacle.min_x
+                } else {
+                    obstacle.max_x
+                }
+            } else if direction > 0.0 {
+                obstacle.min_z
+            } else {
+                obstacle.max_z
+            };
+            if (self.player.position[axis] - face) * direction > 0.01 {
+                continue;
+            }
+            let block = &mut self.pushable_blocks[index];
+            block.pressure =
+                (block.pressure + delta * if self.input.sprint { 2.4 } else { 1.0 }).min(1.0);
+            let effort = ((block.pressure - 0.12) / 0.88).clamp(0.0, 1.0);
+            let speed = if self.input.sprint { 2.2 } else { 0.65 };
+            let travel = direction * speed * effort * delta;
+            if travel.abs() < 0.00001 {
+                return;
+            }
+            let mut moved = obstacle;
+            if axis == 0 {
+                moved.min_x += travel;
+                moved.max_x += travel;
+            } else {
+                moved.min_z += travel;
+                moved.max_z += travel;
+            }
+            let bounds = self.physics.horizontal_bounds.map_or(
+                ([-WORLD_LIMIT, -WORLD_LIMIT], [WORLD_LIMIT, WORLD_LIMIT]),
+                |limits| (limits.minimum, limits.maximum),
+            );
+            let within_bounds = moved.min_x >= bounds.0[0]
+                && moved.max_x <= bounds.1[0]
+                && moved.min_z >= bounds.0[1]
+                && moved.max_z <= bounds.1[1];
+            let clear = self
+                .obstacles
+                .iter()
+                .enumerate()
+                .all(|(other_index, other)| {
+                    other_index == obstacle_index
+                        || moved.max_x <= other.min_x
+                        || moved.min_x >= other.max_x
+                        || moved.max_z <= other.min_z
+                        || moved.min_z >= other.max_z
+                        || moved.top <= other.bottom
+                        || moved.bottom >= other.top
+                });
+            if !within_bounds || !clear {
+                return;
+            }
+            self.obstacles[obstacle_index] = moved;
+            self.base_obstacles[obstacle_index] = moved;
+            let mut pushed_player = self.player.position;
+            pushed_player[axis] += travel;
+            if self.player_can_occupy(pushed_player) {
+                self.pushable_blocks[index].offset[axis / 2] += travel;
+                *candidate = pushed_player;
+            } else {
+                self.obstacles[obstacle_index] = obstacle;
+                self.base_obstacles[obstacle_index] = obstacle;
+            }
+            return;
         }
     }
 

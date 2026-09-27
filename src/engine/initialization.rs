@@ -24,6 +24,7 @@ impl Engine {
             remote_players: Vec::with_capacity(MAX_AGENTS),
             obstacles: obstacles.clone(),
             base_obstacles: obstacles.clone(),
+            pushable_blocks: Vec::new(),
             terrain: None,
             static_collision: None,
             physics: crate::world::PhysicsSettings::default(),

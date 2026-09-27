@@ -89,6 +89,35 @@ impl Renderer {
             self.rebuild_static_vertices();
         }
 
+        if !engine.pushable_blocks.is_empty() {
+            let mut changed = false;
+            if let Some(source) = self.worlds.get(engine.active_world) {
+                for pushable in &engine.pushable_blocks {
+                    for index in std::iter::once(pushable.block_index)
+                        .chain(pushable.attached_blocks.iter().copied())
+                    {
+                        if let (Some(block), Some(original)) = (
+                            self.scene.world.blocks.get_mut(index),
+                            source.blocks.get(index),
+                        ) {
+                            let position = [
+                                original.position[0] + pushable.offset[0],
+                                original.position[1],
+                                original.position[2] + pushable.offset[1],
+                            ];
+                            if block.position != position {
+                                block.position = position;
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if changed {
+                self.rebuild_static_vertices();
+            }
+        }
+
         self.scene.player = RenderEntity::default();
         self.scene.agents.clear();
         self.scene.authored_actors.clear();

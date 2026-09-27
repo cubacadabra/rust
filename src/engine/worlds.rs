@@ -6,8 +6,8 @@ use crate::terrain::TerrainGrid;
 use crate::types::{AgentPhase, BuildBlock, Input};
 use crate::world::{
     AuthoredActor, Checkpoint, HazardVolume, HealthSettings, HorizontalBounds, LadderAxis,
-    LadderVolume, LaunchPad, PhysicsSettings, Portal, RespawnMode, RespawnSettings, RuntimeWorld,
-    SafeZone, WorldCamera, block_bounds, block_bounds_with_rotation, slot_offset,
+    LadderVolume, LaunchPad, PhysicsSettings, Portal, PushableBlock, RespawnMode, RespawnSettings,
+    RuntimeWorld, SafeZone, WorldCamera, block_bounds, block_bounds_with_rotation, slot_offset,
 };
 use std::sync::Arc;
 
@@ -148,6 +148,7 @@ impl Engine {
         self.launch_pads = world.launch_pads;
         self.obstacles = world.obstacles;
         self.base_obstacles = self.obstacles.clone();
+        self.pushable_blocks = world.pushable_blocks;
         self.terrain = world.terrain;
         self.static_collision = world.static_collision;
         self.physics = world.physics;
@@ -400,6 +401,30 @@ impl Engine {
                         block_bounds_with_rotation(block.position(), block.size(), block.rotation())
                     })
                     .collect::<Vec<_>>();
+                let pushable_blocks = definition
+                    .blocks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, block)| block.collidable)
+                    .enumerate()
+                    .filter_map(|(obstacle_index, (block_index, block))| {
+                        block.pushable.then(|| PushableBlock {
+                            block_index,
+                            obstacle_index,
+                            attached_blocks: definition
+                                .blocks
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(index, child)| {
+                                    (child.attached_to.as_deref() == Some(block.id.as_str()))
+                                        .then_some(index)
+                                })
+                                .collect(),
+                            offset: [0.0; 2],
+                            pressure: 0.0,
+                        })
+                    })
+                    .collect::<Vec<_>>();
                 let physics = PhysicsSettings {
                     gravity: definition.world.physics.gravity.max(0.0),
                     jump_velocity: definition.world.physics.jump_velocity.max(0.0),
@@ -541,6 +566,7 @@ impl Engine {
                     launch_pads,
                     launch_destinations,
                     obstacles,
+                    pushable_blocks,
                     ladders,
                     checkpoints,
                     portals,
