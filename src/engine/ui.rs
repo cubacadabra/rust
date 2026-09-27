@@ -99,6 +99,14 @@ impl Engine {
         self.ui.borrow().document_revision()
     }
 
+    /// Hides the engine-owned touch movement joystick in a Studio preview.
+    #[cfg(feature = "studio-ui")]
+    pub fn set_studio_movement_joystick_visible(&mut self, visible: bool) {
+        self.ui
+            .borrow_mut()
+            .set_studio_movement_joystick_visible(visible);
+    }
+
     #[cfg(feature = "studio-ui")]
     pub fn studio_ui_nodes(&self) -> Vec<crate::StudioUiNode> {
         self.ui.borrow().studio_nodes()

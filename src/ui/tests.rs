@@ -529,3 +529,35 @@
         assert_eq!((stick.value_x, stick.value_y), (1.0, 0.0));
         assert!(runtime.pointer(8, UiPointerPhase::Up, 90.0, 200.0));
     }
+
+    #[cfg(feature = "studio-ui")]
+    #[test]
+    fn studio_preview_hides_movement_joystick_and_its_gesture_area() {
+        let mut runtime = runtime(
+            r##"{"nodes":[
+                {"id":"player-joystick","kind":"joystick","action":"player.move","layout":{"anchor":"bottomLeft","width":120,"height":120,"offset":[20,-24]}},
+                {"id":"player-jump","kind":"button","text":"JUMP","action":"player.jump","layout":{"anchor":"bottomRight","width":86,"height":44,"offset":[-22,-84]}}
+            ]}"##,
+            390.0,
+            844.0,
+        );
+        assert!(runtime
+            .frame()
+            .nodes
+            .iter()
+            .any(|node| node.id == "player-joystick"));
+
+        runtime.set_studio_movement_joystick_visible(false);
+        let frame = runtime.frame().clone();
+        assert!(frame.nodes.iter().all(|node| node.id != "player-joystick"));
+        assert!(!runtime.pointer(8, UiPointerPhase::Down, 30.0, 200.0));
+        assert!(frame.nodes.iter().any(|node| node.id == "player-jump"));
+
+        runtime.set_studio_movement_joystick_visible(true);
+        assert!(runtime
+            .frame()
+            .nodes
+            .iter()
+            .any(|node| node.id == "player-joystick"));
+        assert!(runtime.pointer(8, UiPointerPhase::Down, 30.0, 200.0));
+    }

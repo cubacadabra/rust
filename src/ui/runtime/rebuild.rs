@@ -169,7 +169,7 @@ impl UiRuntime {
         // styling and actions, but deliberately ignore document visibility
         // and world scope for this engine-owned layer.
         for node in &self.document.nodes {
-            if !is_persistent_gameplay_control(node) {
+            if !is_persistent_gameplay_control(node) || self.hide_studio_movement_joystick(node) {
                 continue;
             }
             let mut persistent_node = node.clone();

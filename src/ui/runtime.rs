@@ -13,6 +13,8 @@ impl Default for UiRuntime {
             dirty: false,
             #[cfg(feature = "studio-ui")]
             document_revision: 0,
+            #[cfg(feature = "studio-ui")]
+            studio_movement_joystick_visible: true,
             shared_authenticated: false,
             shared_modal_progress: 0.0,
             shared_modal_target: 0.0,
@@ -35,6 +37,25 @@ impl UiRuntime {
     #[cfg(feature = "studio-ui")]
     pub(crate) fn document_revision(&self) -> u64 {
         self.document_revision
+    }
+
+    #[cfg(feature = "studio-ui")]
+    pub(crate) fn set_studio_movement_joystick_visible(&mut self, visible: bool) {
+        if self.studio_movement_joystick_visible != visible {
+            self.studio_movement_joystick_visible = visible;
+            self.captures.clear();
+            self.dirty = true;
+        }
+    }
+
+    #[cfg(feature = "studio-ui")]
+    fn hide_studio_movement_joystick(&self, node: &UiNode) -> bool {
+        !self.studio_movement_joystick_visible && node.id == "player-joystick"
+    }
+
+    #[cfg(not(feature = "studio-ui"))]
+    fn hide_studio_movement_joystick(&self, _node: &UiNode) -> bool {
+        false
     }
 
     #[cfg(feature = "studio-ui")]
