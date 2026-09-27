@@ -5,6 +5,7 @@ use glam::Vec4;
 use glam::{EulerRot, Mat4, Quat, Vec3};
 #[cfg(test)]
 use std::collections::BTreeMap;
+#[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
 use std::time::Instant;
 
 use super::CharacterRenderMode;
@@ -95,53 +96,65 @@ fn vertex_capacity_for(required: usize, max_buffer_size: u64) -> Option<usize> {
 
 impl Renderer {
     pub fn draw(&mut self) {
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let encode_started = Instant::now();
         let Some((frame, mut encoder, view)) = self.encode_frame(false) else {
             return;
         };
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let encode_ms = encode_started.elapsed().as_secs_f32() * 1_000.0;
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let presenter_started = Instant::now();
         self.presenter.draw(&mut encoder, &self.targets, &view);
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let presenter_ms = presenter_started.elapsed().as_secs_f32() * 1_000.0;
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let submit_started = Instant::now();
         self.queue.submit(Some(encoder.finish()));
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let submit_ms = submit_started.elapsed().as_secs_f32() * 1_000.0;
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let present_started = Instant::now();
         frame.expect("presented frame").present();
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let present_ms = present_started.elapsed().as_secs_f32() * 1_000.0;
-        #[cfg(feature = "studio-ui")]
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         {
             self.studio_draw_timings_ms = [encode_ms, presenter_ms, submit_ms, present_ms];
         }
-        #[cfg(not(feature = "studio-ui"))]
-        let _ = (encode_ms, presenter_ms, submit_ms, present_ms);
     }
 
     pub(crate) fn draw_with_overlay<F>(&mut self, overlay: F)
     where
         F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
     {
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let encode_started = Instant::now();
         let Some((frame, mut encoder, view)) = self.encode_frame(false) else {
             return;
         };
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let encode_ms = encode_started.elapsed().as_secs_f32() * 1_000.0;
         overlay(&self.device, &self.queue, &mut encoder, &self.targets.color);
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let presenter_started = Instant::now();
         self.presenter.draw(&mut encoder, &self.targets, &view);
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let presenter_ms = presenter_started.elapsed().as_secs_f32() * 1_000.0;
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let submit_started = Instant::now();
         self.queue.submit(Some(encoder.finish()));
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let submit_ms = submit_started.elapsed().as_secs_f32() * 1_000.0;
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let present_started = Instant::now();
         frame.expect("presented frame").present();
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         let present_ms = present_started.elapsed().as_secs_f32() * 1_000.0;
-        #[cfg(feature = "studio-ui")]
+        #[cfg(all(feature = "studio-ui", not(target_arch = "wasm32")))]
         {
             self.studio_draw_timings_ms = [encode_ms, presenter_ms, submit_ms, present_ms];
         }
-        #[cfg(not(feature = "studio-ui"))]
-        let _ = (encode_ms, presenter_ms, submit_ms, present_ms);
     }
 
     /// Runs the production scene and overlay passes into the app-owned target

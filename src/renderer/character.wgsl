@@ -53,7 +53,7 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
     var visibility = 0.0;
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
-            visibility += textureSampleCompare(
+            visibility += textureSampleCompareLevel(
                 shadow_map,
                 shadow_sampler,
                 uv + vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy

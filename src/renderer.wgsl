@@ -158,7 +158,7 @@ fn shadow_factor(world_position: vec3<f32>, normal: vec3<f32>) -> f32 {
         for (var x = -1; x <= 1; x++) {
             let offset = vec2<f32>(f32(x), f32(y)) * shadow_globals.texel_size.xy
                 * shadow_globals.texel_size.z;
-            visibility += textureSampleCompare(shadow_map, shadow_sampler, uv + offset, depth);
+            visibility += textureSampleCompareLevel(shadow_map, shadow_sampler, uv + offset, depth);
         }
     }
     return visibility / 9.0;
