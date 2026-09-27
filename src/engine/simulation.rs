@@ -7,6 +7,26 @@ impl Engine {
     pub(super) fn tick_script(&mut self, delta: f32) {
         let events = self.take_interaction_events();
         if let Some(script) = &self.script {
+            {
+                let state = script.state();
+                let mut state = state.borrow_mut();
+                if !state.watched_blocks.is_empty() {
+                    state.watched_player = Some(self.player.position);
+                    for position in state.watched_blocks.values_mut() {
+                        *position = None;
+                    }
+                    for block in &self.pushable_blocks {
+                        if let Some(position) = state.watched_blocks.get_mut(&block.id) {
+                            let bounds = &self.base_obstacles[block.obstacle_index];
+                            *position = Some([
+                                (bounds.min_x + bounds.max_x) * 0.5,
+                                (bounds.bottom + bounds.top) * 0.5,
+                                (bounds.min_z + bounds.max_z) * 0.5,
+                            ]);
+                        }
+                    }
+                }
+            }
             for event in events {
                 if let Err(error) = script.interaction(&event) {
                     script.state().borrow_mut().last_error = Some(error);
