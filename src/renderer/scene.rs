@@ -449,11 +449,18 @@ fn resolve_world(
         )
     });
     RenderWorld {
-        dynamic_blocks: definition.blocks.iter().enumerate().filter_map(|(index, block)| {
-            (block.pushable || definition.blocks.iter().any(|parent| {
-                parent.pushable && block.attached_to.as_deref() == Some(parent.id.as_str())
-            })).then_some(index)
-        }).collect(),
+        dynamic_blocks: definition
+            .blocks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, block)| {
+                (block.pushable
+                    || definition.blocks.iter().any(|parent| {
+                        parent.pushable && block.attached_to.as_deref() == Some(parent.id.as_str())
+                    }))
+                .then_some(index)
+            })
+            .collect(),
         hide_default_ground: terrain.is_some() && definition.terrain.hide_default_ground,
         terrain_material_art: definition.terrain.material_art,
         terrain,

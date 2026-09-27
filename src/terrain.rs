@@ -6,8 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Deserialize;
 use crate::world::Aabb;
+use serde::Deserialize;
 
 mod math;
 mod mesh;
@@ -335,23 +335,41 @@ pub(crate) struct TerrainGrid {
 
 impl TerrainGrid {
     pub(crate) fn box_clear(&self, bounds: &Aabb) -> bool {
-        let minimum = [bounds.min_x + 0.01, bounds.bottom + 0.04, bounds.min_z + 0.01];
+        let minimum = [
+            bounds.min_x + 0.01,
+            bounds.bottom + 0.04,
+            bounds.min_z + 0.01,
+        ];
         let maximum = [bounds.max_x - 0.01, bounds.top - 0.01, bounds.max_z - 0.01];
         let center = [
             (minimum[0] + maximum[0]) * 0.5,
             (minimum[1] + maximum[1]) * 0.5,
             (minimum[2] + maximum[2]) * 0.5,
         ];
-        let radius = (0..3).map(|axis| (maximum[axis] - minimum[axis]) * 0.5)
-            .map(|value| value * value).sum::<f32>().sqrt();
-        if self.signed_distance(center) > radius { return true; }
-        let steps = (0..3).map(|axis| (((maximum[axis] - minimum[axis]) / (self.cell_size * 0.5)).ceil() as usize).max(1)).collect::<Vec<_>>();
+        let radius = (0..3)
+            .map(|axis| (maximum[axis] - minimum[axis]) * 0.5)
+            .map(|value| value * value)
+            .sum::<f32>()
+            .sqrt();
+        if self.signed_distance(center) > radius {
+            return true;
+        }
+        let steps = (0..3)
+            .map(|axis| {
+                (((maximum[axis] - minimum[axis]) / (self.cell_size * 0.5)).ceil() as usize).max(1)
+            })
+            .collect::<Vec<_>>();
         for y in 0..=steps[1] {
             for z in 0..=steps[2] {
                 for x in 0..=steps[0] {
                     let point = [x, y, z].map(|value| value as f32);
-                    let sample = [0, 1, 2].map(|axis| minimum[axis] + (maximum[axis] - minimum[axis]) * point[axis] / steps[axis] as f32);
-                    if self.signed_distance(sample) < -0.01 { return false; }
+                    let sample = [0, 1, 2].map(|axis| {
+                        minimum[axis]
+                            + (maximum[axis] - minimum[axis]) * point[axis] / steps[axis] as f32
+                    });
+                    if self.signed_distance(sample) < -0.01 {
+                        return false;
+                    }
                 }
             }
         }

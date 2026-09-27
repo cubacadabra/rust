@@ -161,7 +161,9 @@ impl super::super::Renderer {
             });
         }
         for (index, block) in world.blocks.iter().enumerate() {
-            if world.dynamic_blocks.contains(&index) { continue; }
+            if world.dynamic_blocks.contains(&index) {
+                continue;
+            }
             append_block_geometry_pair(
                 &mut mesh,
                 &mut shadow_mesh,

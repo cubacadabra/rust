@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
 use super::Engine;
-use crate::world::{PendingPush, overlaps_obstacle};
 use crate::engine::{BODY_HEIGHT, PLAYER_RADIUS};
+use crate::world::{PendingPush, overlaps_obstacle};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +29,10 @@ struct WorldBlockRejection {
 
 impl Engine {
     pub(crate) fn refresh_pushable_content_hash(&mut self) {
-        self.pushable_content_hash = format!("{:016x}", super::snapshot::content_fingerprint(&self.package_buffer, &self.script_buffer));
+        self.pushable_content_hash = format!(
+            "{:016x}",
+            super::snapshot::content_fingerprint(&self.package_buffer, &self.script_buffer)
+        );
     }
 
     pub fn set_network_player_id(&mut self, id: Option<String>) {
@@ -49,19 +52,31 @@ impl Engine {
             return false;
         };
         if rejection.content_hash != self.pushable_content_hash
-            || !rejection.x.is_finite() || !rejection.z.is_finite()
-            || rejection.x.abs() > 1000.0 || rejection.z.abs() > 1000.0
+            || !rejection.x.is_finite()
+            || !rejection.z.is_finite()
+            || rejection.x.abs() > 1000.0
+            || rejection.z.abs() > 1000.0
         {
             return false;
         }
-        let Some(index) = self.pushable_blocks.iter().position(|block| block.block_index == rejection.block_index) else {
+        let Some(index) = self
+            .pushable_blocks
+            .iter()
+            .position(|block| block.block_index == rejection.block_index)
+        else {
             return false;
         };
         let block = &mut self.pushable_blocks[index];
-        if !block.pending.iter().any(|pending| pending.request_id == rejection.request_id) {
+        if !block
+            .pending
+            .iter()
+            .any(|pending| pending.request_id == rejection.request_id)
+        {
             return true;
         }
-        block.pending.retain(|pending| pending.request_id != rejection.request_id);
+        block
+            .pending
+            .retain(|pending| pending.request_id != rejection.request_id);
         if rejection.sequence > block.sequence {
             block.sequence = rejection.sequence;
             block.authoritative_offset = [rejection.x, rejection.z];
@@ -102,13 +117,20 @@ impl Engine {
         let Ok(state) = serde_json::from_str::<WorldBlockState>(source) else {
             return false;
         };
-        if !state.x.is_finite() || !state.z.is_finite()
-            || state.x.abs() > 1000.0 || state.z.abs() > 1000.0
-            || state.sequence == 0 || state.content_hash != self.pushable_content_hash
+        if !state.x.is_finite()
+            || !state.z.is_finite()
+            || state.x.abs() > 1000.0
+            || state.z.abs() > 1000.0
+            || state.sequence == 0
+            || state.content_hash != self.pushable_content_hash
         {
             return false;
         }
-        let Some(index) = self.pushable_blocks.iter().position(|block| block.block_index == state.block_index) else {
+        let Some(index) = self
+            .pushable_blocks
+            .iter()
+            .position(|block| block.block_index == state.block_index)
+        else {
             return false;
         };
         let block = &mut self.pushable_blocks[index];
@@ -120,7 +142,9 @@ impl Engine {
         if state.sender_id.as_deref() == self.network_player_id.as_deref()
             && let Some(request_id) = state.request_id
         {
-            block.pending.retain(|pending| pending.request_id > request_id);
+            block
+                .pending
+                .retain(|pending| pending.request_id > request_id);
         }
         let mut offset = block.authoritative_offset;
         for pending in &block.pending {
@@ -164,7 +188,11 @@ impl Engine {
             && overlaps_obstacle(self.player.position, &obstacle, PLAYER_RADIUS)
         {
             let displacement = [offset[0] - old_offset[0], offset[1] - old_offset[1]];
-            let axis = if displacement[0].abs() >= displacement[1].abs() { 0 } else { 2 };
+            let axis = if displacement[0].abs() >= displacement[1].abs() {
+                0
+            } else {
+                2
+            };
             let mut candidate = self.player.position;
             candidate[axis] += displacement[axis / 2];
             if self.player_can_occupy(candidate) {

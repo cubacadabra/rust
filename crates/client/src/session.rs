@@ -396,7 +396,9 @@ impl ClientSession {
 
     fn flush_engine_messages(&mut self, actions: &mut Vec<ClientAction>) {
         while let Some(source) = self.engine.poll_network_message_json() {
-            if serde_json::from_str::<MessageKind>(&source).is_ok_and(|message| message.kind == "world_block_move") {
+            if serde_json::from_str::<MessageKind>(&source)
+                .is_ok_and(|message| message.kind == "world_block_move")
+            {
                 actions.push(ClientAction::SendText(source));
                 continue;
             }
@@ -482,11 +484,14 @@ mod tests {
                 "blocks": [{ "id": "cube", "position": [0, 1, 0],
                     "size": [2, 2, 2], "pushable": true }]
             } }
-        }).to_string();
+        })
+        .to_string();
         let mut mover = ClientSession::load(&manifest, SCRIPT).expect("mover");
         let mut viewer = ClientSession::load(&manifest, SCRIPT).expect("viewer");
         mover.transport_connected();
-        mover.engine_mut().set_input_values(1.0, 0.0, true, false, false, 0.0, 0.0, 0.0);
+        mover
+            .engine_mut()
+            .set_input_values(1.0, 0.0, true, false, false, 0.0, 0.0, 0.0);
         for _ in 0..60 {
             mover.engine_mut().step(1.0 / 60.0);
             assert!(mover.poll_actions().iter().all(|action| !matches!(action,
@@ -497,12 +502,18 @@ mod tests {
         let mut proposal = None;
         for _ in 0..120 {
             mover.engine_mut().step(1.0 / 60.0);
-            proposal = mover.poll_actions().into_iter().find_map(|action| match action {
-                ClientAction::SendText(source) if source.contains("world_block_move") =>
-                    serde_json::from_str::<Value>(&source).ok(),
-                _ => None,
-            });
-            if proposal.is_some() { break; }
+            proposal = mover
+                .poll_actions()
+                .into_iter()
+                .find_map(|action| match action {
+                    ClientAction::SendText(source) if source.contains("world_block_move") => {
+                        serde_json::from_str::<Value>(&source).ok()
+                    }
+                    _ => None,
+                });
+            if proposal.is_some() {
+                break;
+            }
         }
         let proposal = proposal.expect("cube move after identity");
         viewer.transport_connected();
@@ -514,8 +525,9 @@ mod tests {
             "senderId": "web-player", "requestId": proposal["requestId"]
         });
         assert!(viewer.receive_text(&state.to_string()));
-        let snapshot: Value = serde_json::from_str(&viewer.capture_snapshot_json().expect("snapshot"))
-            .expect("snapshot json");
+        let snapshot: Value =
+            serde_json::from_str(&viewer.capture_snapshot_json().expect("snapshot"))
+                .expect("snapshot json");
         let observed = snapshot["pushableBlocks"][0]["offset"][1].as_f64().unwrap();
         let expected = proposal["dz"].as_f64().unwrap();
         assert!((observed - expected).abs() < 0.000001);
@@ -537,8 +549,12 @@ mod tests {
         let mut client = ClientSession::load(MANIFEST, script).expect("client");
         client.transport_connected();
         client.engine_mut().step(1.0 / 60.0);
-        assert!(client.poll_actions().iter().all(|action| !matches!(action,
-            ClientAction::SendText(_))));
+        assert!(
+            client
+                .poll_actions()
+                .iter()
+                .all(|action| !matches!(action, ClientAction::SendText(_)))
+        );
         assert!(client.receive_text(r#"{"type":"session_identity","id":"me"}"#));
         client.engine_mut().step(1.0 / 60.0);
         assert!(client.poll_actions().iter().any(|action| matches!(action,

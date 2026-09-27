@@ -97,8 +97,11 @@ impl EngineSnapshot {
                 "pending network messages exceed the queue byte limit".to_owned(),
             ));
         }
-        if self.agents.len() > 128 || self.launch_pads.len() > 64 || self.build_blocks.len() > 256
-            || self.pushable_blocks.len() > 256 {
+        if self.agents.len() > 128
+            || self.launch_pads.len() > 64
+            || self.build_blocks.len() > 256
+            || self.pushable_blocks.len() > 256
+        {
             return Err(SnapshotError::Invalid(
                 "snapshot contains too many runtime objects".to_owned(),
             ));
@@ -147,7 +150,11 @@ impl EngineSnapshot {
                     .iter()
                     .flat_map(|block| block.position.into_iter().chain(block.size)),
             )
-            .chain(self.pushable_blocks.iter().flat_map(|block| block.offset.into_iter().chain([block.pressure])))
+            .chain(
+                self.pushable_blocks
+                    .iter()
+                    .flat_map(|block| block.offset.into_iter().chain([block.pressure])),
+            )
             .chain(
                 self.launch_pads
                     .iter()
@@ -269,11 +276,15 @@ impl Engine {
                 .copied()
                 .map(BuildBlockSnapshot::from)
                 .collect(),
-            pushable_blocks: self.pushable_blocks.iter().map(|block| PushableBlockSnapshot {
-                block_index: block.block_index,
-                offset: block.offset,
-                pressure: block.pressure,
-            }).collect(),
+            pushable_blocks: self
+                .pushable_blocks
+                .iter()
+                .map(|block| PushableBlockSnapshot {
+                    block_index: block.block_index,
+                    offset: block.offset,
+                    pressure: block.pressure,
+                })
+                .collect(),
             launch_pads: self
                 .launch_pads
                 .iter()
@@ -364,8 +375,15 @@ impl Engine {
         validated_model.restore(&snapshot.data_model)?;
         validate_interactions(self, &snapshot.interactions)?;
         if snapshot.pushable_blocks.len() != self.pushable_blocks.len()
-            || snapshot.pushable_blocks.iter().zip(&self.pushable_blocks).any(|(saved, loaded)| saved.block_index != loaded.block_index) {
-            return Err(SnapshotError::Invalid("snapshot pushable blocks do not match the loaded world".to_owned()));
+            || snapshot
+                .pushable_blocks
+                .iter()
+                .zip(&self.pushable_blocks)
+                .any(|(saved, loaded)| saved.block_index != loaded.block_index)
+        {
+            return Err(SnapshotError::Invalid(
+                "snapshot pushable blocks do not match the loaded world".to_owned(),
+            ));
         }
         let random = crate::math::Random::from_state(snapshot.random_state)
             .ok_or_else(|| SnapshotError::Invalid("random state must be non-zero".to_owned()))?;
