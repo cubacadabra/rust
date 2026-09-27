@@ -455,6 +455,26 @@ fn luau_effect_commands_enter_the_bounded_engine_runtime() {
 }
 
 #[test]
+fn luau_build_blocks_reach_render_and_collision_state() {
+    let script = r#"
+        local game = {}
+        function game.on_start(api)
+            api.world:set_build_blocks({
+                { position = { 3, 2, -4 }, size = { 2, 2, 2 }, color = 0xF7F5E9 },
+            })
+        end
+        return game
+    "#;
+    let mut engine = Engine::new();
+    assert!(engine.load_script_source(script));
+    engine.step(1.0 / 60.0);
+    assert_eq!(engine.build_blocks().len(), 1);
+    assert_eq!(engine.build_blocks()[0].position, [3.0, 2.0, -4.0]);
+    assert_eq!(engine.obstacles.len(), engine.base_obstacles.len() + 1);
+    assert_eq!(engine.capture_snapshot().unwrap().build_blocks.len(), 1);
+}
+
+#[test]
 fn portals_enter_and_exit_the_immersive_settings_world() {
     let manifest = r#"{
         "startWorld":"lobby",

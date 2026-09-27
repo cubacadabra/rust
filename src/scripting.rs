@@ -51,6 +51,7 @@ pub(crate) struct ScriptState {
     pub(crate) network_inbox: VecDeque<String>,
     pub(crate) audio_outbox: VecDeque<String>,
     pub(crate) effect_outbox: VecDeque<crate::effects::EffectCommand>,
+    pub(crate) dynamic_blocks: Option<Vec<crate::types::BuildBlock>>,
 }
 
 #[cfg(debug_assertions)]
@@ -313,6 +314,10 @@ impl GameScript {
         self.state.borrow_mut().effect_outbox.drain(..).collect()
     }
 
+    pub(crate) fn take_dynamic_blocks(&self) -> Option<Vec<crate::types::BuildBlock>> {
+        self.state.borrow_mut().dynamic_blocks.take()
+    }
+
     #[cfg(debug_assertions)]
     pub(crate) fn take_debug_teleport(&self) -> Option<DebugTeleportRequest> {
         self.state.borrow_mut().debug_teleport.take()
@@ -324,6 +329,7 @@ impl GameScript {
         state.spatial.player = None;
         state.spatial.shifts.clear();
         state.spatial.impulse = [0.0; 3];
+        state.dynamic_blocks = None;
         for value in state.spatial.watched.values_mut() {
             *value = None;
         }

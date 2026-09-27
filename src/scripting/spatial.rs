@@ -1,5 +1,6 @@
 //! Opt-in observations and game-authored kinematic displacement of pushable bodies.
 use super::{ScriptState, create_table, lua};
+use crate::types::BuildBlock;
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 #[derive(Clone, Debug)]
@@ -96,6 +97,46 @@ pub(super) fn install(
                 Ok(true)
             },
         )?,
+    )?;
+    let blocks_state = Rc::clone(&state);
+    world.set(
+        "set_build_blocks",
+        lua.create_function(move |_, (_world, values): (lua::Table, lua::Table)| {
+            let mut blocks = Vec::new();
+            for value in values.sequence_values::<lua::Table>() {
+                if blocks.len() >= 2048 {
+                    return Err(lua::Error::runtime(
+                        "set_build_blocks accepts at most 2048 blocks",
+                    ));
+                }
+                let value = value?;
+                let position = vector(value.get("position")?, 10_000.0)?;
+                let size = vector(value.get("size")?, 512.0)?;
+                if size.iter().any(|dimension| *dimension < 0.01) {
+                    return Err(lua::Error::runtime(
+                        "build block sizes must be at least 0.01",
+                    ));
+                }
+                let color = value.get::<u32>("color")?;
+                if color > 0xFF_FFFF {
+                    return Err(lua::Error::runtime(
+                        "build block color must be an RGB integer",
+                    ));
+                }
+                let rotation = value.get::<Option<u8>>("rotation")?.unwrap_or(0);
+                if rotation > 3 {
+                    return Err(lua::Error::runtime("build block rotation must be 0-3"));
+                }
+                blocks.push(BuildBlock {
+                    position,
+                    size,
+                    color,
+                    rotation,
+                });
+            }
+            blocks_state.borrow_mut().dynamic_blocks = Some(blocks);
+            Ok(())
+        })?,
     )?;
     let player = create_table(lua)?;
     player.set(

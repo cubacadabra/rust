@@ -99,7 +99,7 @@ impl EngineSnapshot {
         }
         if self.agents.len() > 128
             || self.launch_pads.len() > 64
-            || self.build_blocks.len() > 256
+            || self.build_blocks.len() > 2048
             || self.pushable_blocks.len() > 256
         {
             return Err(SnapshotError::Invalid(

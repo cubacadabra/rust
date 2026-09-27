@@ -44,6 +44,15 @@ impl Engine {
         // spawn notification for a later tick, preventing callback recursion.
         self.apply_script_world_transition();
 
+        if let Some(blocks) = self
+            .script
+            .as_ref()
+            .and_then(|script| script.take_dynamic_blocks())
+        {
+            self.build_blocks = blocks;
+            self.rebuild_build_obstacles();
+        }
+
         let commands = self
             .script
             .as_ref()

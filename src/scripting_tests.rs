@@ -526,6 +526,47 @@ mod tests {
     }
 
     #[test]
+    fn luau_build_blocks_replace_the_runtime_list_and_validate_geometry() {
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_start(api)
+                    api.world:set_build_blocks({
+                        { position = { 2, 3, -4 }, size = { 2, 2, 2 }, color = 0xF7F5E9 },
+                        { position = { 2, 4, -2.97 }, size = { 1, 0.08, 0.06 }, color = 0x0B102B },
+                    })
+                end
+                function game.on_tick(api)
+                    api.world:set_build_blocks({})
+                end
+                return game
+            "#,
+        );
+        let blocks = script
+            .take_dynamic_blocks()
+            .expect("blocks queued on start");
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].position, [2.0, 3.0, -4.0]);
+        assert_eq!(blocks[0].color, 0xF7F5E9);
+        script.tick(0.0).expect("clear blocks");
+        assert!(script.take_dynamic_blocks().unwrap().is_empty());
+
+        let (script, _) = load(
+            r#"
+                local game = {}
+                function game.on_tick(api)
+                    api.world:set_build_blocks({
+                        { position = { 0, 0, 0 }, size = { 0, 1, 1 }, color = 0xFFFFFF },
+                    })
+                end
+                return game
+            "#,
+        );
+        assert!(script.tick(0.0).is_err());
+        assert!(script.take_dynamic_blocks().is_none());
+    }
+
+    #[test]
     fn script_queues_are_bounded() {
         let (script, _) = load("return {}");
         let message = format!(r#"{{"payload":"{}"}}"#, "x".repeat(4096));
