@@ -115,7 +115,7 @@ fn resolve_node(
     RenderEffectNode {
         shape: node.shape.clone(),
         attached_to: node.attached_to.clone(),
-        attachment_offset: [0.0; 2],
+        attachment_offset: [0.0; 3],
         position,
         size,
         rotation,
@@ -249,7 +249,8 @@ pub(super) fn add_template(
                 1.0
             };
             position.x += node.attachment_offset[0] * attachment_progress;
-            position.z += node.attachment_offset[1] * attachment_progress;
+            position.y += node.attachment_offset[1] * attachment_progress;
+            position.z += node.attachment_offset[2] * attachment_progress;
             position.x += orbit_angle.cos() * orbit_radius;
             position.z += orbit_angle.sin() * orbit_radius;
             position.y += (elapsed * node.animation.bob_speed * animation_scale + phase).sin()
@@ -340,7 +341,7 @@ mod tests {
             nodes: vec![RenderEffectNode {
                 shape: "sphere".to_owned(),
                 attached_to: None,
-                attachment_offset: [0.0; 2],
+                attachment_offset: [0.0; 3],
                 position: [0.0; 3],
                 size: [1.0; 3],
                 rotation: [0.0; 3],
@@ -391,7 +392,7 @@ mod tests {
         node.shape = "box".to_owned();
         node.visible_states.clear();
         node.attached_to = Some("cube".to_owned());
-        node.attachment_offset = [2.0, 3.0];
+        node.attachment_offset = [2.0, 0.0, 3.0];
         node.animation.travel_to = Some([4.0, 0.0, 0.0]);
 
         let render = |progress| {

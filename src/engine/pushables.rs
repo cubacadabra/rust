@@ -172,10 +172,12 @@ impl Engine {
                 continue;
             };
             let mut moved = original;
-            moved.min_x += offset[0];
-            moved.max_x += offset[0];
-            moved.min_z += offset[1];
-            moved.max_z += offset[1];
+            moved.min_x += offset[0] + block.script_shift[0];
+            moved.max_x += offset[0] + block.script_shift[0];
+            moved.min_z += offset[1] + block.script_shift[2];
+            moved.max_z += offset[1] + block.script_shift[2];
+            moved.bottom += block.script_shift[1];
+            moved.top += block.script_shift[1];
             self.base_obstacles[obstacle_index] = moved;
             self.obstacles[obstacle_index] = moved;
         }

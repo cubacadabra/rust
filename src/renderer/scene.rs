@@ -123,9 +123,13 @@ impl Renderer {
                             source.blocks.get(index),
                         ) {
                             let position = [
-                                original.position[0] + pushable.offset[0],
-                                original.position[1],
-                                original.position[2] + pushable.offset[1],
+                                original.position[0]
+                                    + pushable.offset[0]
+                                    + pushable.script_shift[0],
+                                original.position[1] + pushable.script_shift[1],
+                                original.position[2]
+                                    + pushable.offset[1]
+                                    + pushable.script_shift[2],
                             ];
                             if block.position != position {
                                 block.position = position;
@@ -137,7 +141,11 @@ impl Renderer {
                         for template in self.scene.world.effect_templates.values_mut() {
                             for node in &mut template.nodes {
                                 if node.attached_to.as_deref() == Some(pushable.id.as_str()) {
-                                    node.attachment_offset = pushable.offset;
+                                    node.attachment_offset = [
+                                        pushable.offset[0] + pushable.script_shift[0],
+                                        pushable.script_shift[1],
+                                        pushable.offset[1] + pushable.script_shift[2],
+                                    ];
                                 }
                             }
                         }

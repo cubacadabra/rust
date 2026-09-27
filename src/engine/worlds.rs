@@ -435,6 +435,7 @@ impl Engine {
                                 .collect(),
                             offset: [0.0; 2],
                             authoritative_offset: [0.0; 2],
+                            script_shift: [0.0; 3],
                             sequence: 0,
                             pending: Vec::new(),
                             pressure: 0.0,

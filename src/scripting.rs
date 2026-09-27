@@ -14,6 +14,7 @@ mod effects;
 mod lua_values;
 mod network;
 mod scheduler;
+pub(crate) mod spatial;
 
 use api::create_api;
 pub(crate) use lua_values::{
@@ -40,6 +41,7 @@ pub(crate) struct ScriptState {
     /// A transition requested by game code. Requests are consumed by the
     /// engine after the current callback/tick returns.
     pub(crate) world_transition: Option<String>,
+    pub(crate) spatial: spatial::SpatialState,
     #[cfg(debug_assertions)]
     pub(crate) debug_teleport: Option<DebugTeleportRequest>,
     pub(crate) last_error: Option<String>,
@@ -317,7 +319,14 @@ impl GameScript {
     }
 
     pub(crate) fn set_world_id(&self, world_id: &str) {
-        self.state.borrow_mut().world_id = world_id.to_owned();
+        let mut state = self.state.borrow_mut();
+        state.world_id = world_id.to_owned();
+        state.spatial.player = None;
+        state.spatial.shifts.clear();
+        state.spatial.impulse = [0.0; 3];
+        for value in state.spatial.watched.values_mut() {
+            *value = None;
+        }
     }
 
     pub(crate) fn take_world_transition(&self) -> Option<String> {

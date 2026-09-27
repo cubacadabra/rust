@@ -215,6 +215,7 @@ pub(super) fn create_api(
     )?;
     api.set("interactions", interactions)?;
 
+    super::spatial::install(lua, &api, Rc::clone(&state))?;
     scheduler::install(lua, &api, scheduler)?;
     network::install(lua, &api, Rc::clone(&state))?;
     audio::install(lua, &api, Rc::clone(&state))?;

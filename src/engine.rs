@@ -5,6 +5,7 @@ mod initialization;
 mod interactions;
 mod pushables;
 mod remote;
+mod scripted_motion;
 mod simulation;
 pub mod snapshot;
 mod state;

@@ -79,6 +79,7 @@ pub(crate) struct PushableBlock {
     pub(crate) attached_obstacles: Vec<usize>,
     pub(crate) offset: [f32; 2],
     pub(crate) authoritative_offset: [f32; 2],
+    pub(crate) script_shift: [f32; 3],
     pub(crate) sequence: u64,
     pub(crate) pending: Vec<PendingPush>,
     pub(crate) pressure: f32,

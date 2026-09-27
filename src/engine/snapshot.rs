@@ -150,11 +150,13 @@ impl EngineSnapshot {
                     .iter()
                     .flat_map(|block| block.position.into_iter().chain(block.size)),
             )
-            .chain(
-                self.pushable_blocks
-                    .iter()
-                    .flat_map(|block| block.offset.into_iter().chain([block.pressure])),
-            )
+            .chain(self.pushable_blocks.iter().flat_map(|block| {
+                block
+                    .offset
+                    .into_iter()
+                    .chain(block.script_shift)
+                    .chain([block.pressure])
+            }))
             .chain(
                 self.launch_pads
                     .iter()
@@ -282,6 +284,7 @@ impl Engine {
                 .map(|block| PushableBlockSnapshot {
                     block_index: block.block_index,
                     offset: block.offset,
+                    script_shift: block.script_shift,
                     pressure: block.pressure,
                 })
                 .collect(),
@@ -457,6 +460,7 @@ impl Engine {
             .collect();
         self.rebuild_build_obstacles();
         for (index, saved) in snapshot.pushable_blocks.iter().enumerate() {
+            self.set_scripted_shift(index, saved.script_shift);
             self.set_pushable_offset(index, saved.offset);
             self.pushable_blocks[index].pressure = saved.pressure;
             self.pushable_blocks[index].authoritative_offset = saved.offset;

@@ -103,6 +103,9 @@ impl Engine {
             hash.f32(block.offset[0]);
             hash.f32(block.offset[1]);
             hash.f32(block.pressure);
+            if block.script_shift != [0.0; 3] {
+                hash.array3(block.script_shift);
+            }
         }
         for agent in &self.agents {
             hash.array3(agent.position);

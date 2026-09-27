@@ -52,6 +52,8 @@ pub struct EngineSnapshot {
 pub struct PushableBlockSnapshot {
     pub block_index: usize,
     pub offset: [f32; 2],
+    #[serde(default)]
+    pub script_shift: [f32; 3],
     pub pressure: f32,
 }
 

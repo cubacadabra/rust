@@ -5,6 +5,7 @@ use crate::world::{LaunchPad, Portal};
 
 impl Engine {
     pub(super) fn tick_script(&mut self, delta: f32) {
+        self.sync_spatial_observations();
         let events = self.take_interaction_events();
         if let Some(script) = &self.script {
             for event in events {
@@ -35,6 +36,8 @@ impl Engine {
         {
             self.debug_teleport(request);
         }
+
+        self.apply_spatial_commands();
 
         // World requests are deliberately applied only after all script
         // callbacks for this tick have returned. A world entry queues its

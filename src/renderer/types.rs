@@ -78,7 +78,7 @@ pub(super) struct RenderEffectTemplate {
 pub(super) struct RenderEffectNode {
     pub(super) shape: String,
     pub(super) attached_to: Option<String>,
-    pub(super) attachment_offset: [f32; 2],
+    pub(super) attachment_offset: [f32; 3],
     pub(super) position: [f32; 3],
     pub(super) size: [f32; 3],
     pub(super) rotation: [f32; 3],
