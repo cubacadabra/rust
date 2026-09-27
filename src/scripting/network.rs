@@ -9,6 +9,13 @@ pub(super) fn install(
     state: Rc<RefCell<ScriptState>>,
 ) -> lua::Result<()> {
     let network = create_table(lua)?;
+    let connection_state = Rc::clone(&state);
+    network.set(
+        "is_connected",
+        lua.create_function(move |_, _network: lua::Table| {
+            Ok(connection_state.borrow().network_connected)
+        })?,
+    )?;
     for (method, retained) in [("publish", false), ("set_state", true)] {
         let network_state = Rc::clone(&state);
         network.set(

@@ -128,7 +128,9 @@ impl ClientSession {
 
     pub fn transport_connected(&mut self) {
         self.reset_remote_session();
-        self.engine.reset_pushable_network(true);
+        // The socket can open before the World has assigned this connection an
+        // identity. Keep push proposals local until that handshake completes.
+        self.engine.reset_pushable_network(false);
     }
 
     pub fn transport_disconnected(&mut self) {
@@ -171,6 +173,7 @@ impl ClientSession {
                 self.engine.receive_network_message_json(source)
             }
             "world_block_state" => self.engine.receive_world_block_state_json(source),
+            "world_block_rejected" => self.engine.receive_world_block_rejection_json(source),
             _ => false,
         }
     }
@@ -206,7 +209,12 @@ impl ClientSession {
         let Ok(message) = serde_json::from_str::<SessionIdentity>(source) else {
             return false;
         };
+        if self.player_id.as_deref() == Some(message.id.as_str()) {
+            return true;
+        }
         self.player_id = Some(message.id);
+        self.engine.set_network_connected(true);
+        self.engine.reset_pushable_network(true);
         self.engine.set_network_player_id(self.player_id.clone());
         true
     }
@@ -316,6 +324,7 @@ impl ClientSession {
         self.remote_roster_dirty = true;
         self.remote_sequence = 0;
         self.player_id = None;
+        self.engine.set_network_connected(false);
         self.engine.reset_remote_session();
     }
 
@@ -445,6 +454,8 @@ impl DerefMut for ClientSession {
 #[cfg(test)]
 mod tests {
     use super::ClientSession;
+    use crate::ClientAction;
+    use serde_json::{Value, json};
 
     const MANIFEST: &str = r#"{
         "id":"test-game",
@@ -460,6 +471,78 @@ mod tests {
         let mut client = ClientSession::load(MANIFEST, SCRIPT).expect("client");
         assert!(!client.receive_text("not json"));
         assert!(!client.receive_text(r#"{"type":"move","id":"p","x":null}"#));
+    }
+
+    #[test]
+    fn cube_moves_wait_for_identity_and_reach_another_client() {
+        let manifest = json!({
+            "id": "test-game", "startWorld": "arena",
+            "worlds": { "arena": {
+                "world": { "spawn": [0, 0, 1.55] },
+                "blocks": [{ "id": "cube", "position": [0, 1, 0],
+                    "size": [2, 2, 2], "pushable": true }]
+            } }
+        }).to_string();
+        let mut mover = ClientSession::load(&manifest, SCRIPT).expect("mover");
+        let mut viewer = ClientSession::load(&manifest, SCRIPT).expect("viewer");
+        mover.transport_connected();
+        mover.engine_mut().set_input_values(1.0, 0.0, true, false, false, 0.0, 0.0, 0.0);
+        for _ in 0..60 {
+            mover.engine_mut().step(1.0 / 60.0);
+            assert!(mover.poll_actions().iter().all(|action| !matches!(action,
+                ClientAction::SendText(source) if source.contains("world_block_move"))));
+        }
+
+        assert!(mover.receive_text(r#"{"type":"session_identity","id":"web-player"}"#));
+        let mut proposal = None;
+        for _ in 0..120 {
+            mover.engine_mut().step(1.0 / 60.0);
+            proposal = mover.poll_actions().into_iter().find_map(|action| match action {
+                ClientAction::SendText(source) if source.contains("world_block_move") =>
+                    serde_json::from_str::<Value>(&source).ok(),
+                _ => None,
+            });
+            if proposal.is_some() { break; }
+        }
+        let proposal = proposal.expect("cube move after identity");
+        viewer.transport_connected();
+        assert!(viewer.receive_text(r#"{"type":"session_identity","id":"ios-player"}"#));
+        let state = json!({
+            "type": "world_block_state", "contentHash": proposal["contentHash"],
+            "blockIndex": proposal["blockIndex"], "x": proposal["dx"],
+            "z": proposal["dz"], "sequence": 1,
+            "senderId": "web-player", "requestId": proposal["requestId"]
+        });
+        assert!(viewer.receive_text(&state.to_string()));
+        let snapshot: Value = serde_json::from_str(&viewer.capture_snapshot_json().expect("snapshot"))
+            .expect("snapshot json");
+        let observed = snapshot["pushableBlocks"][0]["offset"][1].as_f64().unwrap();
+        let expected = proposal["dz"].as_f64().unwrap();
+        assert!((observed - expected).abs() < 0.000001);
+    }
+
+    #[test]
+    fn luau_network_retries_begin_only_after_identity() {
+        let script = r#"
+            local game = {}
+            local sent = false
+            function game.on_tick(api)
+                if api.network:is_connected() and not sent then
+                    api.network:publish("connection-ready", { ready = true })
+                    sent = true
+                end
+            end
+            return game
+        "#;
+        let mut client = ClientSession::load(MANIFEST, script).expect("client");
+        client.transport_connected();
+        client.engine_mut().step(1.0 / 60.0);
+        assert!(client.poll_actions().iter().all(|action| !matches!(action,
+            ClientAction::SendText(_))));
+        assert!(client.receive_text(r#"{"type":"session_identity","id":"me"}"#));
+        client.engine_mut().step(1.0 / 60.0);
+        assert!(client.poll_actions().iter().any(|action| matches!(action,
+            ClientAction::SendText(source) if source.contains("connection-ready"))));
     }
 
     #[test]

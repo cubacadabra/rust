@@ -16,6 +16,17 @@ struct WorldBlockState {
     sender_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorldBlockRejection {
+    content_hash: String,
+    block_index: usize,
+    request_id: u64,
+    x: f32,
+    z: f32,
+    sequence: u64,
+}
+
 impl Engine {
     pub(crate) fn refresh_pushable_content_hash(&mut self) {
         self.pushable_content_hash = format!("{:016x}", super::snapshot::content_fingerprint(&self.package_buffer, &self.script_buffer));
@@ -31,6 +42,37 @@ impl Engine {
 
     pub fn receive_world_block_state_json(&mut self, source: &str) -> bool {
         self.receive_world_block_state(source)
+    }
+
+    pub fn receive_world_block_rejection_json(&mut self, source: &str) -> bool {
+        let Ok(rejection) = serde_json::from_str::<WorldBlockRejection>(source) else {
+            return false;
+        };
+        if rejection.content_hash != self.pushable_content_hash
+            || !rejection.x.is_finite() || !rejection.z.is_finite()
+            || rejection.x.abs() > 1000.0 || rejection.z.abs() > 1000.0
+        {
+            return false;
+        }
+        let Some(index) = self.pushable_blocks.iter().position(|block| block.block_index == rejection.block_index) else {
+            return false;
+        };
+        let block = &mut self.pushable_blocks[index];
+        if !block.pending.iter().any(|pending| pending.request_id == rejection.request_id) {
+            return true;
+        }
+        block.pending.retain(|pending| pending.request_id != rejection.request_id);
+        if rejection.sequence > block.sequence {
+            block.sequence = rejection.sequence;
+            block.authoritative_offset = [rejection.x, rejection.z];
+        }
+        let mut offset = block.authoritative_offset;
+        for pending in &block.pending {
+            offset[0] += pending.delta[0];
+            offset[1] += pending.delta[1];
+        }
+        self.set_pushable_offset(index, offset);
+        true
     }
 
     pub(crate) fn record_pushable_motion(&mut self, index: usize, axis: usize, travel: f32) {

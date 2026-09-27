@@ -45,6 +45,7 @@ pub(crate) struct ScriptState {
     pub(crate) last_error: Option<String>,
     pub(crate) interactions: InteractionScriptState,
     pub(crate) network_outbox: VecDeque<String>,
+    pub(crate) network_connected: bool,
     pub(crate) network_inbox: VecDeque<String>,
     pub(crate) audio_outbox: VecDeque<String>,
     pub(crate) effect_outbox: VecDeque<crate::effects::EffectCommand>,
@@ -407,6 +408,10 @@ impl GameScript {
 
     pub(crate) fn set_interaction_state(&self, interactions: InteractionScriptState) {
         self.state.borrow_mut().interactions = interactions;
+    }
+
+    pub(crate) fn set_network_connected(&self, connected: bool) {
+        self.state.borrow_mut().network_connected = connected;
     }
 
     pub(crate) fn interaction(&self, event: &crate::types::InteractionEvent) -> Result<(), String> {

@@ -455,6 +455,22 @@ mod tests {
     }
 
     #[test]
+    fn luau_network_connection_reflects_the_session_handshake() {
+        let (script, _) = load(r#"
+            local game = {}
+            function game.on_tick(api)
+                api.lobby:set_status(api.network:is_connected() and "online" or "offline")
+            end
+            return game
+        "#);
+        script.tick(0.0).expect("offline tick");
+        assert_eq!(script.state().borrow().lobby_status, "offline");
+        script.set_network_connected(true);
+        script.tick(0.0).expect("online tick");
+        assert_eq!(script.state().borrow().lobby_status, "online");
+    }
+
+    #[test]
     fn luau_can_compare_and_set_authoritative_state() {
         let (script, _) = load(
             r#"

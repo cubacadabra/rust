@@ -6,6 +6,14 @@ use crate::game_package::{AvatarDefinition, GamePackageDefinition};
 use crate::scripting::GameScript;
 
 impl Engine {
+    /// Reports whether this client has a backend-assigned socket identity.
+    /// Direct engine previews remain offline unless a session host sets it.
+    pub fn set_network_connected(&mut self, connected: bool) {
+        if let Some(script) = &self.script {
+            script.set_network_connected(connected);
+        }
+    }
+
     pub fn load_package_source(&mut self, source: &str) -> bool {
         self.package_buffer.clear();
         self.package_buffer.extend_from_slice(source.as_bytes());

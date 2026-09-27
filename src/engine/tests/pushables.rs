@@ -63,6 +63,30 @@ fn backend_state_moves_the_other_clients_collision_boxes() {
 }
 
 #[test]
+fn rejected_push_restores_local_collision_and_keeps_newer_pending_motion() {
+    let mut engine = Engine::new();
+    assert!(engine.load_package_source(&pushable_manifest(None, None)));
+    engine.reset_pushable_network(true);
+    let original = engine.obstacles[0];
+    engine.set_pushable_offset(0, [0.0, -0.1]);
+    engine.record_pushable_motion(0, 2, -0.1);
+    engine.set_pushable_offset(0, [0.0, -0.2]);
+    engine.record_pushable_motion(0, 2, -0.1);
+    assert!(engine.receive_world_block_rejection_json(&json!({
+        "type": "world_block_rejected", "contentHash": engine.pushable_content_hash,
+        "blockIndex": 0, "requestId": 1, "x": 0, "z": 0, "sequence": 0
+    }).to_string()));
+    assert_eq!(engine.pushable_blocks[0].offset, [0.0, -0.1]);
+    assert!((engine.obstacles[0].min_z - original.min_z + 0.1).abs() < 0.001);
+    assert!(engine.receive_world_block_rejection_json(&json!({
+        "type": "world_block_rejected", "contentHash": engine.pushable_content_hash,
+        "blockIndex": 0, "requestId": 2, "x": 0, "z": 0, "sequence": 0
+    }).to_string()));
+    assert_eq!(engine.pushable_blocks[0].offset, [0.0, 0.0]);
+    assert!((engine.obstacles[0].min_z - original.min_z).abs() < 0.001);
+}
+
+#[test]
 fn cubes_stop_at_triangle_and_terrain_walls() {
     let triangle_wall = json!({
         "formatVersion": 1,
