@@ -174,7 +174,15 @@ impl StudioTileCompositor {
             multiview_mask: None,
         });
         pass.set_pipeline(&self.pipeline);
-        for (tile, rect) in self.tiles.iter().zip(rects) {
+        // Draw the full player view first, then place the smaller live views
+        // over it. Equal-sized previews retain their player order.
+        let mut order: Vec<_> = (0..rects.len()).collect();
+        order.sort_by_key(|&index| {
+            std::cmp::Reverse(rects[index].width as u64 * rects[index].height as u64)
+        });
+        for index in order {
+            let tile = &self.tiles[index];
+            let rect = &rects[index];
             pass.set_viewport(
                 rect.x as f32,
                 rect.y as f32,
