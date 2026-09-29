@@ -564,7 +564,7 @@
 
     #[test]
     #[cfg(feature = "studio-ui")]
-    fn studio_play_hides_shared_header_and_jump_only_until_stopped() {
+    fn studio_play_hides_shared_header_and_jump_and_can_hide_preview_run() {
         let mut runtime = runtime(
             r##"{"nodes":[
                 {"id":"game-header","kind":"button","text":"Build","action":"build.menu","layout":{"region":"header","width":56,"height":56}},
@@ -589,6 +589,10 @@
             .all(|node| !node.id.starts_with("__shared_header_") && node.id != "player-jump"));
         assert!(frame.nodes.iter().any(|node| node.id == "player-run"));
         assert!(frame.nodes.iter().any(|node| node.id == "game-header"));
+        runtime.set_studio_run_control_hidden(true);
+        assert!(runtime.frame().nodes.iter().all(|node| node.id != "player-run"));
+        runtime.set_studio_run_control_hidden(false);
+        assert!(runtime.frame().nodes.iter().any(|node| node.id == "player-run"));
         assert!(!runtime.pointer(
             1,
             UiPointerPhase::Down,

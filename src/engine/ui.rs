@@ -113,6 +113,12 @@ impl Engine {
         self.ui.borrow_mut().set_studio_play_controls_hidden(hidden);
     }
 
+    /// Hides the touch Run control in an uncontrolled Studio preview tile.
+    #[cfg(feature = "studio-ui")]
+    pub fn set_studio_run_control_hidden(&mut self, hidden: bool) {
+        self.ui.borrow_mut().set_studio_run_control_hidden(hidden);
+    }
+
     #[cfg(feature = "studio-ui")]
     pub fn studio_ui_nodes(&self) -> Vec<crate::StudioUiNode> {
         self.ui.borrow().studio_nodes()

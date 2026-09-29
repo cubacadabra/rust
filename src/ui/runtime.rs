@@ -17,6 +17,8 @@ impl Default for UiRuntime {
             studio_movement_joystick_visible: true,
             #[cfg(feature = "studio-ui")]
             studio_play_controls_hidden: false,
+            #[cfg(feature = "studio-ui")]
+            studio_run_control_hidden: false,
             shared_authenticated: false,
             shared_modal_progress: 0.0,
             shared_modal_target: 0.0,
@@ -64,6 +66,15 @@ impl UiRuntime {
     }
 
     #[cfg(feature = "studio-ui")]
+    pub(crate) fn set_studio_run_control_hidden(&mut self, hidden: bool) {
+        if self.studio_run_control_hidden != hidden {
+            self.studio_run_control_hidden = hidden;
+            self.captures.clear();
+            self.dirty = true;
+        }
+    }
+
+    #[cfg(feature = "studio-ui")]
     fn hide_studio_shared_header(&self) -> bool {
         self.studio_play_controls_hidden
     }
@@ -75,7 +86,8 @@ impl UiRuntime {
 
     #[cfg(feature = "studio-ui")]
     fn hide_studio_play_control(&self, node: &UiNode) -> bool {
-        self.studio_play_controls_hidden && node.id == "player-jump"
+        (self.studio_play_controls_hidden && node.id == "player-jump")
+            || (self.studio_run_control_hidden && node.id == "player-run")
     }
 
     #[cfg(not(feature = "studio-ui"))]
