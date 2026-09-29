@@ -67,11 +67,23 @@ impl Renderer {
             self.package_generation,
             self.active_world,
         );
+        #[cfg(feature = "studio-ui")]
+        {
+            self.studio_tiles = None;
+        }
         self.package_generation = u32::MAX;
         self.active_world = usize::MAX;
     }
 
     pub fn sync_engine(&mut self, engine: &Engine) {
+        self.sync_engine_with_character_history(engine, false);
+    }
+
+    pub(super) fn sync_engine_with_character_history(
+        &mut self,
+        engine: &Engine,
+        history_is_scoped_to_engine: bool,
+    ) {
         if self.package_generation != engine.package_generation {
             self.worlds = engine
                 .package
@@ -99,8 +111,12 @@ impl Renderer {
         if self.active_world != engine.active_world
             && let Some(world) = self.worlds.get(engine.active_world).cloned()
         {
-            self.scene.presentation.clear();
-            self.scene.lods.clear();
+            // Studio tiles invalidate their own history when that client's
+            // world changes; another client's world must not reset it.
+            if !history_is_scoped_to_engine {
+                self.scene.presentation.clear();
+                self.scene.lods.clear();
+            }
             self.active_world = engine.active_world;
             self.scene.world = world;
             self.cached_build_blocks.clear();

@@ -47,10 +47,44 @@ struct TileTexture {
     render_targets: Option<SceneTargets>,
 }
 
+// Motion identities and sequence numbers are local to each Engine. Keep
+// animation history with its client, independently of resized tile textures.
+#[derive(Default)]
+struct TilePresentation {
+    characters: std::collections::HashMap<
+        crate::types::CharacterEntityKey,
+        crate::character::CharacterPresentationState,
+    >,
+    lods: std::collections::HashMap<
+        crate::types::CharacterEntityKey,
+        crate::renderer::character_quality::CharacterLod,
+    >,
+    reduced_effects: bool,
+    world: Option<(u32, usize)>,
+}
+
+impl TilePresentation {
+    fn prepare(&mut self, engine: &Engine) {
+        let world = (engine.package_generation, engine.active_world);
+        if self.world != Some(world) {
+            self.characters.clear();
+            self.lods.clear();
+            self.world = Some(world);
+        }
+    }
+
+    fn swap_with_scene(&mut self, scene: &mut crate::renderer::Scene) {
+        std::mem::swap(&mut self.characters, &mut scene.presentation);
+        std::mem::swap(&mut self.lods, &mut scene.lods);
+        std::mem::swap(&mut self.reduced_effects, &mut scene.reduced_effects);
+    }
+}
+
 pub(crate) struct StudioTileCompositor {
     layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
     tiles: Vec<TileTexture>,
+    presentations: Vec<TilePresentation>,
     next_preview: usize,
 }
 
@@ -107,6 +141,7 @@ impl StudioTileCompositor {
             layout,
             pipeline,
             tiles: Vec::new(),
+            presentations: Vec::new(),
             next_preview: 0,
         }
     }
@@ -120,6 +155,8 @@ impl StudioTileCompositor {
         present_layout: &wgpu::BindGroupLayout,
         full_index: usize,
     ) -> bool {
+        self.presentations
+            .resize_with(rects.len(), TilePresentation::default);
         if self.tiles.len() == rects.len()
             && self
                 .tiles
@@ -305,7 +342,14 @@ impl Renderer {
         for index in refresh_indices {
             let engine = engines[index];
             let rect = &rects[index];
-            self.sync_engine(engine);
+            let presentation = &mut self
+                .studio_tiles
+                .as_mut()
+                .expect("tile compositor")
+                .presentations[index];
+            presentation.prepare(engine);
+            presentation.swap_with_scene(&mut self.scene);
+            self.sync_engine_with_character_history(engine, true);
             let is_full = index == full_index;
             if !is_full {
                 let tile = &mut self.studio_tiles.as_mut().expect("tile compositor").tiles[index];
@@ -358,6 +402,11 @@ impl Renderer {
                 );
                 (self.width, self.height) = previous_size;
             }
+            self.studio_tiles
+                .as_mut()
+                .expect("tile compositor")
+                .presentations[index]
+                .swap_with_scene(&mut self.scene);
         }
         self.studio_viewport = previous_viewport;
 
@@ -398,6 +447,65 @@ impl Renderer {
 #[cfg(test)]
 mod tests {
     use super::{TileRect, preview_refresh_indices};
+
+    #[test]
+    fn player_takeover_keeps_animation_history_separate_from_roaming_peers() {
+        use super::TilePresentation;
+        use crate::Engine;
+        use crate::character::{BodyId, CharacterPresentationState};
+        use crate::renderer::Scene;
+
+        let mut engines = [Engine::new(), Engine::new()];
+        let key = engines[0].character_motion_samples().next().unwrap().key;
+        let mut expected = [CharacterPresentationState::new(key, BodyId::Person); 2];
+        let mut tiles = [TilePresentation::default(), TilePresentation::default()];
+        let mut scene = Scene::default();
+        for frame in 0..240 {
+            for (index, engine) in engines.iter_mut().enumerate() {
+                // Player two is taken over halfway through; player one keeps roaming.
+                engine.set_input_values(
+                    if index == 0 || frame < 120 { 1.0 } else { 0.0 },
+                    0.0,
+                    false,
+                    false,
+                    false,
+                    0.0,
+                    0.0,
+                    0.0,
+                );
+                engine.step(1.0 / 60.0);
+            }
+            // All clients have the same local identity and tick. The normal
+            // renderer sync also runs before the tile pass, using player one.
+            let primary = engines[0].character_motion_samples().next().unwrap();
+            scene
+                .presentation
+                .entry(key)
+                .or_insert_with(|| CharacterPresentationState::new(key, BodyId::Person))
+                .evaluate(primary, BodyId::Person, false);
+            let order = if frame < 120 { [0, 1] } else { [1, 0] };
+            for index in order {
+                let sample = engines[index].character_motion_samples().next().unwrap();
+                let isolated = expected[index].evaluate(sample, BodyId::Person, false);
+                tiles[index].prepare(&engines[index]);
+                tiles[index].swap_with_scene(&mut scene);
+                let actual = scene
+                    .presentation
+                    .entry(sample.key)
+                    .or_insert_with(|| CharacterPresentationState::new(sample.key, BodyId::Person))
+                    .evaluate(sample, BodyId::Person, false);
+                tiles[index].swap_with_scene(&mut scene);
+                assert_eq!(actual, isolated, "client {index}, frame {frame}");
+                if index == 1 && frame == 239 {
+                    assert!(!sample.moving);
+                    assert!(
+                        actual.secondary.stride_blend < 0.01,
+                        "controlled player must settle to idle"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn tile_rects_stay_inside_the_target_after_scale_rounding() {
