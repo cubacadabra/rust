@@ -45,7 +45,7 @@ fn attached_collidable_child_moves_with_cube_and_snapshot_restores_both() {
 }
 
 #[test]
-fn a_decorated_tall_stack_pushes_as_far_as_one_cube() {
+fn a_decorated_tall_stack_follows_pushes_without_script_rebuilding() {
     let manifest = pushable_manifest(None, None);
     let mut single = Engine::new();
     assert!(single.load_package_source(&manifest));
@@ -56,20 +56,17 @@ fn a_decorated_tall_stack_pushes_as_far_as_one_cube() {
     assert!(stacked.load_package_source(&manifest));
     assert!(stacked.load_script_source(r#"
         local game = {}
-        function game.on_start(api)
-            api.world:watch_blocks({ "cube" })
-        end
+        local built = false
         function game.on_tick(api)
-            local observed = api.world:get_positions()
-            if not observed or not observed.blocks.cube then return end
-            local offset = observed.blocks.cube.position[3]
+            if built then return end
+            built = true
             local blocks = {
-                { position = { 0, 1, 1.03 + offset }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" },
+                { position = { 0, 1, 1.03 }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" },
             }
             for row = 2, 12 do
                 local y = 1 + 2 * (row - 1)
-                blocks[#blocks + 1] = { position = { 0, y, offset }, size = { 2, 2, 2 }, color = 0xFFFFFF, attachedTo = "cube" }
-                blocks[#blocks + 1] = { position = { 0, y, 1.03 + offset }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" }
+                blocks[#blocks + 1] = { position = { 0, y, 0 }, size = { 2, 2, 2 }, color = 0xFFFFFF, attachedTo = "cube" }
+                blocks[#blocks + 1] = { position = { 0, y, 1.03 }, size = { 1, 0.08, 0.06 }, color = 0x0B102B, collidable = false, attachedTo = "cube" }
             end
             api.world:set_build_blocks(blocks)
         end
@@ -82,6 +79,7 @@ fn a_decorated_tall_stack_pushes_as_far_as_one_cube() {
     assert!((stack_travel - single_travel).abs() < 0.02,
         "stack moved {stack_travel}, single cube moved {single_travel}");
     assert!((stacked.build_blocks()[1].position[2] - stack_travel).abs() < 0.001);
+    assert!((stacked.build_blocks()[2].position[2] - 1.03 - stack_travel).abs() < 0.001);
 }
 
 #[test]
