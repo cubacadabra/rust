@@ -89,6 +89,62 @@ pub(super) fn create_api(
     )?;
     api.set("session", session)?;
 
+    let test_player = create_table(lua)?;
+    let test_state = Rc::clone(&state);
+    test_player.set(
+        "is_active",
+        lua.create_function(move |_, _test_player: lua::Table| {
+            Ok(test_state.borrow().test_player.enabled)
+        })?,
+    )?;
+    let test_state = Rc::clone(&state);
+    test_player.set(
+        "get_position",
+        lua.create_function(move |lua, _test_player: lua::Table| {
+            let state = test_state.borrow();
+            if !state.test_player.enabled {
+                return Ok(lua::Value::Nil);
+            }
+            match state.test_player.position {
+                Some(position) => Ok(lua::Value::Table(lua.create_sequence_from(position)?)),
+                None => Ok(lua::Value::Nil),
+            }
+        })?,
+    )?;
+    let test_state = Rc::clone(&state);
+    test_player.set(
+        "get_yaw",
+        lua.create_function(move |_, _test_player: lua::Table| {
+            let state = test_state.borrow();
+            if state.test_player.enabled { Ok(Some(state.test_player.yaw)) } else { Ok(None) }
+        })?,
+    )?;
+    let test_state = Rc::clone(&state);
+    test_player.set(
+        "set_input",
+        lua.create_function(move |_, (_test_player, forward, strafe, sprint, jump, look_x): (lua::Table, f32, f32, bool, bool, f32)| {
+            if !forward.is_finite() || !strafe.is_finite() || !look_x.is_finite()
+                || forward.abs() > 1.0 || strafe.abs() > 1.0 || look_x.abs() > 100.0
+            {
+                return Err(lua::Error::runtime("test_player:set_input received an invalid value"));
+            }
+            let mut state = test_state.borrow_mut();
+            if !state.test_player.enabled {
+                return Ok(false);
+            }
+            state.test_player.input = Some(crate::types::Input {
+                forward,
+                strafe,
+                sprint,
+                jump,
+                look_x,
+                ..crate::types::Input::default()
+            });
+            Ok(true)
+        })?,
+    )?;
+    api.set("test_player", test_player)?;
+
     let world = create_table(lua)?;
     let world_state = Rc::clone(&state);
     world.set(

@@ -5,6 +5,26 @@ use crate::types::Input;
 use crate::ui::{UiInsets, UiPointerPhase, UiViewport};
 
 impl Engine {
+    pub fn set_test_player_enabled(&mut self, enabled: bool) {
+        if let Some(script) = &self.script {
+            script.set_test_player_enabled(enabled);
+        }
+    }
+
+    pub fn has_test_player_callback(&self) -> bool {
+        self.script
+            .as_ref()
+            .is_some_and(|script| script.has_test_player_callback())
+    }
+
+    pub fn test_player_moving(&self) -> bool {
+        self.input.forward.abs() + self.input.strafe.abs() > 0.01
+    }
+
+    pub fn test_player_sprinting(&self) -> bool {
+        self.test_player_moving() && self.input.sprint
+    }
+
     pub fn set_input_values(
         &mut self,
         forward: f32,

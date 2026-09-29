@@ -52,6 +52,15 @@ pub(crate) struct ScriptState {
     pub(crate) audio_outbox: VecDeque<String>,
     pub(crate) effect_outbox: VecDeque<crate::effects::EffectCommand>,
     pub(crate) dynamic_blocks: Option<Vec<crate::types::BuildBlock>>,
+    pub(crate) test_player: TestPlayerState,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TestPlayerState {
+    pub(crate) enabled: bool,
+    pub(crate) position: Option<[f32; 3]>,
+    pub(crate) yaw: f32,
+    pub(crate) input: Option<crate::types::Input>,
 }
 
 #[cfg(debug_assertions)]
@@ -82,6 +91,7 @@ pub(crate) struct GameScript {
     lua: lua::Lua,
     api: lua::Table,
     on_tick: Option<lua::Function>,
+    on_test_player: Option<lua::Function>,
     on_launch: Option<lua::Function>,
     on_ui_event: Option<lua::Function>,
     on_interaction: Option<lua::Function>,
@@ -185,6 +195,7 @@ impl GameScript {
         })?;
         let on_start: Option<lua::Function> = module.get("on_start")?;
         let on_tick: Option<lua::Function> = module.get("on_tick")?;
+        let on_test_player: Option<lua::Function> = module.get("on_test_player")?;
         let on_launch: Option<lua::Function> = module.get("on_launch")?;
         let on_ui_event: Option<lua::Function> = module.get("on_ui_event")?;
         let on_interaction: Option<lua::Function> = module.get("on_interaction")?;
@@ -201,6 +212,7 @@ impl GameScript {
             lua,
             api,
             on_tick,
+            on_test_player,
             on_launch,
             on_ui_event,
             on_interaction,
@@ -233,8 +245,25 @@ impl GameScript {
         if let Some(on_tick) = &self.on_tick {
             self.execute_budgeted(|| on_tick.call::<()>((self.api.clone(), delta)))?;
         }
+        if self.state.borrow().test_player.enabled {
+            if let Some(on_test_player) = &self.on_test_player {
+                self.execute_budgeted(|| on_test_player.call::<()>((self.api.clone(), delta)))?;
+            }
+        }
         self.run_tasks();
         Ok(())
+    }
+
+    pub(crate) fn set_test_player_enabled(&self, enabled: bool) {
+        self.state.borrow_mut().test_player.enabled = enabled;
+    }
+
+    pub(crate) fn has_test_player_callback(&self) -> bool {
+        self.on_test_player.is_some()
+    }
+
+    pub(crate) fn take_test_player_input(&self) -> Option<crate::types::Input> {
+        self.state.borrow_mut().test_player.input.take()
     }
 
     fn execute_budgeted<T>(&self, operation: impl FnOnce() -> lua::Result<T>) -> Result<T, String> {

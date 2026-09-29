@@ -24,6 +24,9 @@ impl Engine {
             if let Err(error) = script.tick(delta) {
                 script.state().borrow_mut().last_error = Some(error);
             }
+            if let Some(input) = script.take_test_player_input() {
+                self.input = input;
+            }
         } else {
             self.player_events.clear();
         }

@@ -8,6 +8,8 @@ impl Engine {
         };
         let state = script.state();
         let mut state = state.borrow_mut();
+        state.test_player.position = Some(self.player.position);
+        state.test_player.yaw = self.view_yaw;
         if state.spatial.watched.is_empty() {
             return;
         }
