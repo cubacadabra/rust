@@ -488,6 +488,10 @@ pub struct Renderer {
     #[cfg(feature = "studio-ui")]
     pub(super) studio_tiles: Option<crate::renderer::draw::studio_tiles::StudioTileCompositor>,
     #[cfg(feature = "studio-ui")]
+    pub(super) studio_preview_shirt_slots: Option<std::collections::BTreeMap<String, usize>>,
+    #[cfg(feature = "studio-ui")]
+    pub(super) studio_preview_local_slot: Option<usize>,
+    #[cfg(feature = "studio-ui")]
     pub(super) studio_camera_preset: crate::StudioCameraPreset,
     #[cfg(feature = "studio-ui")]
     studio_camera: studio_camera::StudioCamera,

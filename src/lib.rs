@@ -147,13 +147,19 @@ pub mod native {
             &mut self,
             engines: &[&Engine],
             viewports: &[[f32; 4]],
+            player_slots: &std::collections::BTreeMap<String, usize>,
             offscreen: bool,
             overlay: F,
         ) where
             F: FnOnce(&wgpu::Device, &wgpu::Queue, &mut wgpu::CommandEncoder, &wgpu::TextureView),
         {
-            self.inner
-                .draw_studio_tiles_with_overlay(engines, viewports, offscreen, overlay);
+            self.inner.draw_studio_tiles_with_overlay(
+                engines,
+                viewports,
+                player_slots,
+                offscreen,
+                overlay,
+            );
         }
 
         #[cfg(all(feature = "studio-ui", debug_assertions))]

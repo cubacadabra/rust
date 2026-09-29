@@ -300,6 +300,7 @@ impl Renderer {
         &mut self,
         engines: &[&Engine],
         viewports: &[[f32; 4]],
+        player_slots: &std::collections::BTreeMap<String, usize>,
         offscreen: bool,
         overlay: F,
     ) where
@@ -339,7 +340,9 @@ impl Renderer {
             .refresh_indices(full_index, refreshed_all);
         let previous_viewport = self.studio_viewport;
         let previous_size = (self.width, self.height);
+        self.studio_preview_shirt_slots = Some(player_slots.clone());
         for index in refresh_indices {
+            self.studio_preview_local_slot = Some(index);
             let engine = engines[index];
             let rect = &rects[index];
             let presentation = &mut self
@@ -408,6 +411,8 @@ impl Renderer {
                 .presentations[index]
                 .swap_with_scene(&mut self.scene);
         }
+        self.studio_preview_local_slot = None;
+        self.studio_preview_shirt_slots = None;
         self.studio_viewport = previous_viewport;
 
         let frame = if offscreen {

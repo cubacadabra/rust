@@ -196,7 +196,7 @@ impl Renderer {
         let mut remote_index = 0;
         for sample in samples {
             active_keys.insert(sample.key);
-            let style = match sample.key.kind {
+            let mut style = match sample.key.kind {
                 CharacterEntityKind::LocalNpc => self
                     .scene
                     .npc_styles
@@ -216,6 +216,20 @@ impl Renderer {
                     .map(|appearance| style_from_appearance(appearance, self.scene.player_style))
                     .unwrap_or(self.scene.player_style),
             };
+            #[cfg(feature = "studio-ui")]
+            if let Some(slots) = &self.studio_preview_shirt_slots {
+                let slot = match sample.key.kind {
+                    CharacterEntityKind::LocalPlayer => self.studio_preview_local_slot,
+                    CharacterEntityKind::RemotePlayer => engine
+                        .remote_players
+                        .get(sample.key.slot)
+                        .and_then(|player| slots.get(&player.stable_id).copied()),
+                    _ => None,
+                };
+                if let Some(slot) = slot {
+                    style.shirt = crate::character::definition::vibrant_hoodie_color(slot);
+                }
+            }
             let body = style.body;
             let morph_assets = match sample.key.kind {
                 CharacterEntityKind::LocalPlayer => {
