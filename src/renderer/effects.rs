@@ -434,6 +434,52 @@ mod tests {
     }
 
     #[test]
+    fn travel_override_only_moves_nodes_with_an_authored_destination() {
+        let mut template = stateful_template();
+        let node = &mut template.nodes[0];
+        node.shape = "box".to_owned();
+        node.visible_states.clear();
+        node.attached_to = Some("cube".to_owned());
+        node.attachment_offset = [2.0, 0.0, 3.0];
+        node.animation.travel_to = Some([4.0, 0.0, 0.0]);
+
+        let mut stationary = node.clone();
+        stationary.position = [10.0, 0.0, 0.0];
+        stationary.animation.travel_to = None;
+        template.nodes.push(stationary);
+
+        let render = |travel_to| {
+            let mut vertices = Vec::new();
+            add_template(
+                &mut vertices,
+                &template,
+                Vec3::ZERO,
+                [1.0; 4],
+                "default",
+                0.0,
+                Some(1.0),
+                travel_to,
+                false,
+            );
+            vertices
+        };
+        let original = render(None);
+        let overridden = render(Some([0.0, 8.0, 0.0]));
+        let moving_vertices = original.len() / 2;
+        for index in 0..moving_vertices {
+            assert!(
+                (overridden[index].position[0] - original[index].position[0] + 4.0).abs() < 0.0001
+            );
+            assert!(
+                (overridden[index].position[1] - original[index].position[1] - 8.0).abs() < 0.0001
+            );
+        }
+        for index in moving_vertices..original.len() {
+            assert_eq!(overridden[index].position, original[index].position);
+        }
+    }
+
+    #[test]
     fn compact_state_variants_inherit_and_override_node_properties() {
         let library: EffectLibraryDefinition = serde_json::from_str(
             r##"{
