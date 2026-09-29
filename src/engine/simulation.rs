@@ -49,6 +49,9 @@ impl Engine {
             .as_ref()
             .and_then(|script| script.take_dynamic_blocks())
         {
+            if std::env::var_os("CUBA_STUDIO_PROBE_DIR").is_some() {
+                eprintln!("dynamic blocks refreshed: {}", blocks.len());
+            }
             self.build_blocks = blocks;
             self.rebuild_build_obstacles();
         }

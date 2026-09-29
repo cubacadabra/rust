@@ -261,6 +261,7 @@ impl Engine {
                 color,
                 rotation: rotation % 4,
                 collidable: true,
+                outline: true,
                 attached_to: None,
             };
             self.rebuild_build_obstacles();

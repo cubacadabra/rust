@@ -118,6 +118,8 @@ pub struct BuildBlockSnapshot {
     pub rotation: u8,
     #[serde(default = "build_block_collidable_default")]
     pub collidable: bool,
+    #[serde(default = "build_block_collidable_default")]
+    pub outline: bool,
     #[serde(default)]
     pub attached_to: Option<String>,
 }

@@ -103,6 +103,9 @@ impl Renderer {
             self.scene.lods.clear();
             self.active_world = engine.active_world;
             self.scene.world = world;
+            self.cached_build_blocks.clear();
+            self.cached_build_opaque_vertices.clear();
+            self.cached_build_translucent_vertices.clear();
             self.rebuild_static_vertices();
             log::debug!(
                 "renderer active world rebuilt: index={} id={:?}",

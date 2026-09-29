@@ -120,6 +120,41 @@ fn append_block_geometry_pair(
 }
 
 impl super::super::Renderer {
+    fn sync_build_block_geometry(&mut self) {
+        if self.cached_build_blocks == self.scene.build_blocks {
+            return;
+        }
+        self.cached_build_blocks
+            .clone_from(&self.scene.build_blocks);
+        self.cached_build_opaque_vertices.clear();
+        self.cached_build_translucent_vertices.clear();
+        let outline = faded(self.scene.world.palette.paper, 0.3);
+        for block in &self.scene.build_blocks {
+            let size = if block.rotation % 2 == 0 {
+                block.size
+            } else {
+                [block.size[2], block.size[1], block.size[0]]
+            };
+            let center = Vec3::from_array(block.position);
+            let size = Vec3::from_array(size);
+            add_cuboid(
+                &mut self.cached_build_opaque_vertices,
+                center,
+                size,
+                super::super::color(block.color),
+            );
+            if block.outline {
+                add_cuboid_outline(
+                    &mut self.cached_build_translucent_vertices,
+                    center,
+                    size,
+                    0.025,
+                    outline,
+                );
+            }
+        }
+    }
+
     fn build_static_vertices(&self) -> (Vec<Vertex>, Vec<Vertex>) {
         let mut mesh = Vec::with_capacity(16_384);
         let mut shadow_mesh = Vec::with_capacity(16_384);
@@ -219,6 +254,7 @@ impl super::super::Renderer {
     }
 
     pub(super) fn build_dynamic_vertices(&mut self) -> Vec<Vertex> {
+        self.sync_build_block_geometry();
         let mut mesh = Vec::with_capacity(16_384);
         let world = &self.scene.world;
         if world.show_spawn_pad {
@@ -322,27 +358,6 @@ impl super::super::Renderer {
                 sign.yaw,
                 sign.max_width,
                 sign.color,
-            );
-        }
-        for block in &self.scene.build_blocks {
-            let size = if block.rotation % 2 == 0 {
-                block.size
-            } else {
-                [block.size[2], block.size[1], block.size[0]]
-            };
-            let color = super::super::color(block.color);
-            add_cuboid(
-                &mut mesh,
-                Vec3::from_array(block.position),
-                Vec3::from_array(size),
-                color,
-            );
-            add_cuboid_outline(
-                &mut mesh,
-                Vec3::from_array(block.position),
-                Vec3::from_array(size),
-                0.025,
-                faded(world.palette.paper, 0.3),
             );
         }
         if self.character_render_mode == CharacterRenderMode::Legacy {

@@ -64,6 +64,7 @@ impl From<BuildBlock> for BuildBlockSnapshot {
             color: value.color,
             rotation: value.rotation,
             collidable: value.collidable,
+            outline: value.outline,
             attached_to: value.attached_to.as_deref().map(str::to_owned),
         }
     }
@@ -76,6 +77,7 @@ impl From<BuildBlockSnapshot> for BuildBlock {
             color: value.color,
             rotation: value.rotation % 4,
             collidable: value.collidable,
+            outline: value.outline,
             attached_to: value.attached_to.map(Into::into),
         }
     }

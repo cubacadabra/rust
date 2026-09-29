@@ -140,6 +140,7 @@ pub(super) fn install(
                     color,
                     rotation,
                     collidable: value.get::<Option<bool>>("collidable")?.unwrap_or(true),
+                    outline: value.get::<Option<bool>>("outline")?.unwrap_or(true),
                     attached_to: attached_to.map(Into::into),
                 });
             }

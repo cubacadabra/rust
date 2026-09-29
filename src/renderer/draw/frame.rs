@@ -103,10 +103,14 @@ impl super::super::Renderer {
         };
         self.opaque_vertices.clear();
         self.translucent_vertices.clear();
-        #[cfg(feature = "studio-ui")]
-        let static_translucent_vertex_count = self.static_translucent_vertices.len();
+        self.opaque_vertices
+            .extend_from_slice(&self.cached_build_opaque_vertices);
         self.translucent_vertices
             .extend_from_slice(&self.static_translucent_vertices);
+        #[cfg(feature = "studio-ui")]
+        let static_translucent_vertex_count = self.translucent_vertices.len();
+        self.translucent_vertices
+            .extend_from_slice(&self.cached_build_translucent_vertices);
         split_world_vertices(
             &dynamic_vertices,
             &mut self.opaque_vertices,

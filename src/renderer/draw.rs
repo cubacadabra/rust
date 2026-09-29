@@ -315,16 +315,22 @@ pub(super) fn split_world_vertices(
 
 pub(super) fn sort_translucent(vertices: &mut [Vertex], camera: Vec3, target: Vec3) {
     let forward = (target - camera).normalize_or_zero();
-    let depth = |triangle: &[Vertex; 3]| {
-        triangle
-            .iter()
-            .map(|v| (Vec3::from_array(v.position) - camera).dot(forward))
-            .sum::<f32>()
-    };
     vertices
         .as_chunks_mut::<3>()
         .0
-        .sort_unstable_by(|a, b| depth(b).total_cmp(&depth(a)));
+        .sort_by_cached_key(|triangle| {
+            let depth = triangle
+                .iter()
+                .map(|v| (Vec3::from_array(v.position) - camera).dot(forward))
+                .sum::<f32>();
+            let bits = depth.to_bits();
+            let ordered = if bits & 0x8000_0000 != 0 {
+                !bits
+            } else {
+                bits ^ 0x8000_0000
+            };
+            std::cmp::Reverse(ordered)
+        });
 }
 
 #[cfg(test)]
