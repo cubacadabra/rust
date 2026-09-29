@@ -1,6 +1,6 @@
 use super::super::Renderer;
 use crate::Engine;
-use crate::renderer::targets::SCENE_FORMAT;
+use crate::renderer::targets::{PostProcessor, SCENE_FORMAT, SceneTargets};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct TileRect {
@@ -42,12 +42,16 @@ struct TileTexture {
     texture: wgpu::Texture,
     bind_group: wgpu::BindGroup,
     size: (u32, u32),
+    // The full player uses Renderer::targets. The smaller views render at
+    // their own resolution instead of clearing and grading the whole window.
+    render_targets: Option<SceneTargets>,
 }
 
 pub(crate) struct StudioTileCompositor {
     layout: wgpu::BindGroupLayout,
     pipeline: wgpu::RenderPipeline,
     tiles: Vec<TileTexture>,
+    next_preview: usize,
 }
 
 impl StudioTileCompositor {
@@ -103,22 +107,37 @@ impl StudioTileCompositor {
             layout,
             pipeline,
             tiles: Vec::new(),
+            next_preview: 0,
         }
     }
 
-    fn ensure_tiles(&mut self, device: &wgpu::Device, rects: &[TileRect]) {
+    fn ensure_tiles(
+        &mut self,
+        device: &wgpu::Device,
+        rects: &[TileRect],
+        samples: u32,
+        post: &PostProcessor,
+        present_layout: &wgpu::BindGroupLayout,
+        full_index: usize,
+    ) -> bool {
         if self.tiles.len() == rects.len()
             && self
                 .tiles
                 .iter()
                 .zip(rects)
-                .all(|(tile, rect)| tile.size == (rect.width, rect.height))
+                .enumerate()
+                .all(|(index, (tile, rect))| {
+                    tile.size == (rect.width, rect.height)
+                        && tile.render_targets.is_none() == (index == full_index)
+                })
         {
-            return;
+            return false;
         }
+        self.next_preview = 0;
         self.tiles = rects
             .iter()
-            .map(|rect| {
+            .enumerate()
+            .map(|(index, rect)| {
                 let texture = device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("Studio play tile"),
                     size: wgpu::Extent3d {
@@ -146,9 +165,29 @@ impl StudioTileCompositor {
                     texture,
                     bind_group,
                     size: (rect.width, rect.height),
+                    render_targets: (index != full_index).then(|| {
+                        SceneTargets::new(
+                            device,
+                            rect.width,
+                            rect.height,
+                            samples,
+                            post,
+                            present_layout,
+                        )
+                    }),
                 }
             })
             .collect();
+        true
+    }
+
+    fn refresh_indices(&mut self, full_index: usize, refreshed_all: bool) -> Vec<usize> {
+        preview_refresh_indices(
+            self.tiles.len(),
+            full_index,
+            &mut self.next_preview,
+            refreshed_all,
+        )
     }
 
     fn compose(
@@ -198,6 +237,27 @@ impl StudioTileCompositor {
     }
 }
 
+fn preview_refresh_indices(
+    count: usize,
+    full_index: usize,
+    cursor: &mut usize,
+    refreshed_all: bool,
+) -> Vec<usize> {
+    let mut indices = vec![full_index];
+    let previews: Vec<_> = (0..count).filter(|&index| index != full_index).collect();
+    if refreshed_all || previews.len() <= 2 {
+        indices.extend(previews);
+    } else {
+        // Simulation still advances every client on every frame. Rotate two
+        // rendered previews per frame so the full view remains responsive.
+        for _ in 0..2 {
+            indices.push(previews[*cursor % previews.len()]);
+            *cursor += 1;
+        }
+    }
+    indices
+}
+
 impl Renderer {
     pub(crate) fn draw_studio_tiles_with_overlay<F>(
         &mut self,
@@ -220,42 +280,84 @@ impl Renderer {
         if self.studio_tiles.is_none() {
             self.studio_tiles = Some(StudioTileCompositor::new(&self.device));
         }
-        self.studio_tiles
+        let full_index = (0..rects.len())
+            .max_by_key(|&index| rects[index].width as u64 * rects[index].height as u64)
+            .expect("at least one play view");
+        let refreshed_all = self
+            .studio_tiles
             .as_mut()
             .expect("tile compositor")
-            .ensure_tiles(&self.device, &rects);
-        let previous_viewport = self.studio_viewport;
-        for (index, (engine, rect)) in engines.iter().zip(&rects).enumerate() {
-            self.sync_engine(engine);
-            self.set_studio_viewport(Some(rect.viewport()));
-            let Some((_, mut encoder, _)) = self.encode_frame(true) else {
-                continue;
-            };
-            encoder.copy_texture_to_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.targets.color_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: rect.x,
-                        y: rect.y,
-                        z: 0,
-                    },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.studio_tiles.as_ref().expect("tile compositor").tiles[index]
-                        .texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::Extent3d {
-                    width: rect.width,
-                    height: rect.height,
-                    depth_or_array_layers: 1,
-                },
+            .ensure_tiles(
+                &self.device,
+                &rects,
+                self.sample_count,
+                &self.post_processor,
+                &self.presenter.layout,
+                full_index,
             );
-            self.queue.submit(Some(encoder.finish()));
+        let refresh_indices = self
+            .studio_tiles
+            .as_mut()
+            .expect("tile compositor")
+            .refresh_indices(full_index, refreshed_all);
+        let previous_viewport = self.studio_viewport;
+        let previous_size = (self.width, self.height);
+        for index in refresh_indices {
+            let engine = engines[index];
+            let rect = &rects[index];
+            self.sync_engine(engine);
+            let is_full = index == full_index;
+            if !is_full {
+                let tile = &mut self.studio_tiles.as_mut().expect("tile compositor").tiles[index];
+                std::mem::swap(
+                    &mut self.targets,
+                    tile.render_targets.as_mut().expect("preview targets"),
+                );
+                self.width = rect.width as f32;
+                self.height = rect.height as f32;
+            }
+            let origin = if is_full {
+                self.set_studio_viewport(Some(rect.viewport()));
+                wgpu::Origin3d {
+                    x: rect.x,
+                    y: rect.y,
+                    z: 0,
+                }
+            } else {
+                self.set_studio_viewport(Some([0.0, 0.0, rect.width as f32, rect.height as f32]));
+                wgpu::Origin3d::ZERO
+            };
+            if let Some((_, mut encoder, _)) = self.encode_frame(true) {
+                encoder.copy_texture_to_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &self.targets.color_texture,
+                        mip_level: 0,
+                        origin,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &self.studio_tiles.as_ref().expect("tile compositor").tiles[index]
+                            .texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: rect.width,
+                        height: rect.height,
+                        depth_or_array_layers: 1,
+                    },
+                );
+                self.queue.submit(Some(encoder.finish()));
+            }
+            if !is_full {
+                let tile = &mut self.studio_tiles.as_mut().expect("tile compositor").tiles[index];
+                std::mem::swap(
+                    &mut self.targets,
+                    tile.render_targets.as_mut().expect("preview targets"),
+                );
+                (self.width, self.height) = previous_size;
+            }
         }
         self.studio_viewport = previous_viewport;
 
@@ -295,7 +397,7 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
-    use super::TileRect;
+    use super::{TileRect, preview_refresh_indices};
 
     #[test]
     fn tile_rects_stay_inside_the_target_after_scale_rounding() {
@@ -310,5 +412,20 @@ mod tests {
             }
         );
         assert!(TileRect::from_viewport([600.0, 0.0, 10.0, 10.0], (500, 250)).is_none());
+    }
+
+    #[test]
+    fn every_preview_refreshes_while_the_controlled_view_updates_each_frame() {
+        let mut cursor = 0;
+        let mut refreshed = Vec::new();
+        for _ in 0..4 {
+            let indices = preview_refresh_indices(9, 4, &mut cursor, false);
+            assert_eq!(indices[0], 4);
+            assert_eq!(indices.len(), 3);
+            refreshed.extend_from_slice(&indices[1..]);
+        }
+        refreshed.sort_unstable();
+        assert_eq!(refreshed, vec![0, 1, 2, 3, 5, 6, 7, 8]);
+        assert_eq!(preview_refresh_indices(9, 4, &mut cursor, true).len(), 9);
     }
 }
