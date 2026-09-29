@@ -504,7 +504,7 @@ mod tests {
                 local game = {}
                 function game.on_start(api)
                     api.effects:set_state("gate-a", "open")
-                    api.effects:play("finish-flash", { position = { 1, 2, 3 } })
+                    api.effects:play("finish-flash", { position = { 1, 2, 3 }, travelTo = { 4, 5, 6 } })
                 end
                 return game
             "#,
@@ -520,6 +520,7 @@ mod tests {
                 crate::effects::EffectCommand::Play {
                     template: "finish-flash".to_owned(),
                     position: [1.0, 2.0, 3.0],
+                    travel_to: Some([4.0, 5.0, 6.0]),
                 },
             ]
         );

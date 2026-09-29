@@ -186,6 +186,7 @@ pub(super) fn add_interaction(
             visual_state,
             elapsed,
             None,
+            None,
             reduced_effects,
         );
     } else {
@@ -211,6 +212,7 @@ pub(super) fn add_template(
     visual_state: &str,
     elapsed: f32,
     progress: Option<f32>,
+    travel_to_override: Option<[f32; 3]>,
     reduced_effects: bool,
 ) {
     let animation_scale = if reduced_effects { 0.2 } else { 1.0 };
@@ -233,7 +235,11 @@ pub(super) fn add_template(
             let mut size = Vec3::from_array(node.size);
             let mut rotation = Vec3::from_array(node.rotation);
             if let Some(progress) = progress {
-                if let Some(destination) = node.animation.travel_to {
+                if let Some(destination) = node
+                    .animation
+                    .travel_to
+                    .map(|destination| travel_to_override.unwrap_or(destination))
+                {
                     position = position.lerp(Vec3::from_array(destination), progress);
                 }
                 if let Some(destination) = node.animation.travel_size {
@@ -367,6 +373,7 @@ mod tests {
             "closed",
             0.0,
             None,
+            None,
             false,
         );
         assert!(hidden.is_empty());
@@ -379,6 +386,7 @@ mod tests {
             [1.0; 4],
             "open",
             0.0,
+            None,
             None,
             false,
         );
@@ -405,6 +413,7 @@ mod tests {
                 "default",
                 0.0,
                 progress,
+                None,
                 false,
             );
             vertices

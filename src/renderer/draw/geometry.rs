@@ -342,6 +342,7 @@ impl super::super::Renderer {
                 "default",
                 age,
                 Some(age / template.duration),
+                instance.travel_to,
                 self.scene.reduced_effects,
             );
         }

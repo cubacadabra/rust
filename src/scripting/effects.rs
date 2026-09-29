@@ -36,6 +36,7 @@ pub(super) fn install(
             move |_, (_effects, template, options): (lua::Table, String, Option<lua::Table>)| {
                 validate_name("effect template", &template)?;
                 let position = options
+                    .as_ref()
                     .map(|options| options.get::<Option<lua::Table>>("position"))
                     .transpose()?
                     .flatten()
@@ -48,6 +49,19 @@ pub(super) fn install(
                     })
                     .transpose()?
                     .unwrap_or([0.0; 3]);
+                let travel_to = options
+                    .as_ref()
+                    .map(|options| options.get::<Option<lua::Table>>("travelTo"))
+                    .transpose()?
+                    .flatten()
+                    .map(|value| {
+                        Ok::<_, lua::Error>([
+                            value.get::<Option<f32>>(1)?.unwrap_or(0.0),
+                            value.get::<Option<f32>>(2)?.unwrap_or(0.0),
+                            value.get::<Option<f32>>(3)?.unwrap_or(0.0),
+                        ])
+                    })
+                    .transpose()?;
                 if !position
                     .iter()
                     .all(|value| value.is_finite() && value.abs() <= 10_000.0)
@@ -56,7 +70,23 @@ pub(super) fn install(
                         "effect position must contain finite world coordinates",
                     ));
                 }
-                enqueue(&state, EffectCommand::Play { template, position })
+                if travel_to.is_some_and(|destination| {
+                    !destination
+                        .iter()
+                        .all(|value| value.is_finite() && value.abs() <= 10_000.0)
+                }) {
+                    return Err(lua::Error::runtime(
+                        "effect travelTo must contain finite relative coordinates",
+                    ));
+                }
+                enqueue(
+                    &state,
+                    EffectCommand::Play {
+                        template,
+                        position,
+                        travel_to,
+                    },
+                )
             },
         )?,
     )?;

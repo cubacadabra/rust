@@ -194,6 +194,7 @@ pub(crate) enum EffectCommand {
     Play {
         template: String,
         position: [f32; 3],
+        travel_to: Option<[f32; 3]>,
     },
 }
 
@@ -201,6 +202,7 @@ pub(crate) enum EffectCommand {
 pub(crate) struct EffectInstance {
     pub(crate) template: String,
     pub(crate) position: [f32; 3],
+    pub(crate) travel_to: Option<[f32; 3]>,
     pub(crate) started_at: f32,
     pub(crate) world: usize,
 }
@@ -221,13 +223,18 @@ impl EffectRuntime {
                         self.states.insert(key, state);
                     }
                 }
-                EffectCommand::Play { template, position } => {
+                EffectCommand::Play {
+                    template,
+                    position,
+                    travel_to,
+                } => {
                     if self.instances.len() >= MAX_EFFECT_INSTANCES {
                         self.instances.pop_front();
                     }
                     self.instances.push_back(EffectInstance {
                         template,
                         position,
+                        travel_to,
                         started_at: elapsed,
                         world,
                     });

@@ -212,10 +212,18 @@ impl Engine {
                         hash.string(target);
                         hash.string(state);
                     }
-                    crate::effects::EffectCommand::Play { template, position } => {
+                    crate::effects::EffectCommand::Play {
+                        template,
+                        position,
+                        travel_to,
+                    } => {
                         hash.u8(1);
                         hash.string(template);
                         hash.array3(*position);
+                        hash.bool(travel_to.is_some());
+                        if let Some(travel_to) = travel_to {
+                            hash.array3(*travel_to);
+                        }
                     }
                 }
             }
