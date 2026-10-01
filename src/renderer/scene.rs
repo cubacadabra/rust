@@ -6,6 +6,8 @@ use crate::engine::Engine;
 use crate::game_package::{
     AvatarDefinition, DaylightDefinition, GamePackageDefinition, WorldDefinition,
 };
+#[cfg(feature = "studio-ui")]
+use crate::types::CharacterEntityKey;
 use crate::types::{CharacterEntityKind, CharacterMotionSample};
 #[cfg(target_os = "ios")]
 use crate::ui::UiFrame;
@@ -218,14 +220,12 @@ impl Renderer {
             };
             #[cfg(feature = "studio-ui")]
             if let Some(slots) = &self.studio_preview_shirt_slots {
-                let slot = match sample.key.kind {
-                    CharacterEntityKind::LocalPlayer => self.studio_preview_local_slot,
-                    CharacterEntityKind::RemotePlayer => engine
-                        .remote_players
-                        .get(sample.key.slot)
-                        .and_then(|player| slots.get(&player.stable_id).copied()),
-                    _ => None,
-                };
+                let slot = studio_preview_player_slot(
+                    engine,
+                    sample.key,
+                    self.studio_preview_local_slot,
+                    slots,
+                );
                 if let Some(slot) = slot {
                     style.shirt = crate::character::definition::vibrant_hoodie_color(slot);
                 }
@@ -386,6 +386,28 @@ impl Renderer {
         self.scene.effect_instances.clear();
         self.scene.build_blocks.clear();
         self.rebuild_static_vertices();
+    }
+}
+
+#[cfg(feature = "studio-ui")]
+fn studio_preview_player_slot(
+    engine: &Engine,
+    key: CharacterEntityKey,
+    local_slot: Option<usize>,
+    slots: &std::collections::BTreeMap<String, usize>,
+) -> Option<usize> {
+    match key.kind {
+        CharacterEntityKind::LocalPlayer => local_slot,
+        CharacterEntityKind::RemotePlayer => engine
+            .remote_players
+            .iter()
+            .find(|player| {
+                player.identity != 0
+                    && player.identity == key.identity
+                    && player.generation == key.generation
+            })
+            .and_then(|player| slots.get(&player.stable_id).copied()),
+        _ => None,
     }
 }
 
@@ -868,6 +890,59 @@ mod tests {
     use crate::character::definition::{EquipmentItem, EquipmentSlot};
     use crate::character::{BodyId, FacePreset};
     use crate::game_package::DaylightDefinition;
+
+    #[cfg(feature = "studio-ui")]
+    #[test]
+    fn preview_shirt_slots_follow_remote_identity_after_roster_reorder() {
+        let mut engine = Engine::new();
+        let slots = std::collections::BTreeMap::from([
+            ("account:alice".to_owned(), 1),
+            ("account:bob".to_owned(), 8),
+        ]);
+        for (sequence, players) in [
+            (
+                1,
+                r#"[{"id":"account:alice","generation":7,"position":[1,0,0],"yaw":0},{"id":"account:bob","generation":9,"position":[2,0,0],"yaw":0}]"#,
+            ),
+            (
+                2,
+                r#"[{"id":"account:bob","generation":9,"position":[2,0,0],"yaw":0},{"id":"account:alice","generation":7,"position":[1,0,0],"yaw":0}]"#,
+            ),
+        ] {
+            let update = format!(r#"{{"version":1,"sequence":{sequence},"players":{players}}}"#);
+            assert!(engine.apply_remote_update_json(&update));
+            let samples: Vec<_> = engine.character_motion_samples().collect();
+            assert_eq!(
+                samples
+                    .iter()
+                    .filter(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+                    .count(),
+                2
+            );
+            let local = samples
+                .iter()
+                .find(|sample| sample.key.kind == CharacterEntityKind::LocalPlayer)
+                .unwrap();
+            assert_eq!(
+                studio_preview_player_slot(&engine, local.key, Some(0), &slots),
+                Some(0)
+            );
+            for sample in samples
+                .iter()
+                .filter(|sample| sample.key.kind == CharacterEntityKind::RemotePlayer)
+            {
+                let expected_slot = if sample.position[0] == 1.0 { 1 } else { 8 };
+                assert_eq!(
+                    studio_preview_player_slot(&engine, sample.key, Some(0), &slots),
+                    Some(expected_slot)
+                );
+                assert_eq!(
+                    studio_preview_player_slot(&engine, sample.key, Some(8), &slots),
+                    Some(expected_slot)
+                );
+            }
+        }
+    }
 
     #[test]
     fn appearance_keeps_multiple_registered_equipment_assets() {
