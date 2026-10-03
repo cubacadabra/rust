@@ -1,11 +1,11 @@
 # cubacadabra Rust workspace
 
 This workspace is the platform-neutral runtime shared by Studio, iOS,
-Android, and the browser. It owns simulation, movement, collision, world and
+Android, Desktop, and the browser. It owns simulation, movement, collision, world and
 launch-pad behavior, Luau, rendering, and the engine-facing multiplayer client
 session and native-presented application state.
 
-It has three crates:
+It has four crates:
 
 - `cubacadabra-engine` (the root package) owns deterministic game/runtime state.
 - `cubacadabra-client` (`crates/client`) owns package startup, multiplayer
@@ -15,6 +15,8 @@ It has three crates:
 - `cubacadabra-app` (`crates/app`) owns semantic product state outside active
   gameplay. Its first slice centralizes account username validation and save
   state while SwiftUI, Compose, and the DOM remain native.
+- `cubacadabra-morphs` (`crates/morphs`) owns portable character definitions,
+  MorphPack validation, and character composition.
 
 The repositories are separate by responsibility:
 
@@ -22,8 +24,9 @@ The repositories are separate by responsibility:
 game packages -> declarative world manifests and portable Luau rules
 rust          -> engine + shared client/app state + C/WASM adapters
 studio        -> direct Rust host and native socket/window integration
-ios_app       -> Swift UI, Apple services, socket, and C adapter
-android_app   -> Kotlin UI, Android services, socket, and JNI adapter
+ios           -> Swift UI, Apple services, socket, and C adapter
+android       -> Kotlin UI, Android services, socket, and JNI adapter
+desktop       -> native player UI, window, socket, and direct Rust adapter
 web           -> JavaScript UI, browser services, socket, and WASM adapter
 backend       -> multiplayer Worker and world WebSockets
 ```
@@ -31,13 +34,13 @@ backend       -> multiplayer Worker and world WebSockets
 Rust deliberately does not fetch packages or open sockets. Each host provides
 manifest/script text and transports the `SetWorld` and `SendText` actions
 returned by `ClientSession`; every received socket text frame is passed back to
-that session. See the canonical [client runtime](https://github.com/cubacadabra/docs/blob/main/architecture/client-runtime.md) for the
+that session. See the canonical [client runtime](https://github.com/cubacadabra/docs/blob/main/systems/runtime/client-runtime.md) for the
 boundary and integration contract.
 
 The app crate follows the same host-driven boundary for product features: a
 host dispatches typed actions, renders a serializable snapshot, performs queued
 effects with its native services, and returns typed results. See
-[app runtime](https://github.com/cubacadabra/docs/blob/main/architecture/app-runtime.md) for the current username/profile
+[app runtime](https://github.com/cubacadabra/docs/blob/main/systems/runtime/app-runtime.md) for the current username/profile
 slice and migration order.
 
 ## Build the browser renderer
@@ -46,9 +49,9 @@ The browser build is driven from `web/`. Install the one-time binding tool,
 then run the web script:
 
 ```sh
-cargo install wasm-bindgen-cli
+cargo install wasm-bindgen-cli --version 0.2.127 --locked
 cd ../web
-npm install
+npm ci
 npm run build:renderer
 ```
 
@@ -102,7 +105,7 @@ with separate unstaged changes must be staged or discarded before committing.
 
 ## Build for iOS
 
-Xcode invokes `ios_app/scripts/build_rust_engine.sh` as a build phase. It
+Xcode invokes `ios/scripts/build_rust_engine.sh` as a build phase. It
 compiles `cubacadabra-client` and `cubacadabra-app` for the selected device or
 simulator architecture and produces native static libraries under Xcode's
 derived data. The Swift app creates a client session through
@@ -120,14 +123,14 @@ the client and must not be destroyed separately.
 Rust has no standalone LAN or production server. The browser client selects
 the backend with `VITE_BACKEND_WS_URL`, and the iOS client selects its package
 and backend with Xcode environment variables. For a complete local or LAN
-session, follow [web/README.md](../web/README.md) and
-[backend/README.md](../backend/README.md); for an iOS session, follow
-[ios_app/README.md](../ios_app/README.md). Production clients use the same
+session, follow [web/README.md](https://github.com/cubacadabra/web/blob/main/README.md) and
+[backend/README.md](https://github.com/cubacadabra/backend/blob/main/README.md); for an iOS session, follow
+[ios/README.md](https://github.com/cubacadabra/ios/blob/main/README.md). Production clients use the same
 engine binaries but load the deployed package and connect to the deployed
 Worker.
 
 For a screenless simulation proof, use the canonical
-[headless procedure](https://github.com/cubacadabra/docs/blob/main/verification/headless.md)
+[headless procedure](https://github.com/cubacadabra/docs/blob/main/quality/verification/headless.md)
 and fixture in `tests/fixtures/headless/`. It compiles without the optional
 renderer/GPU path, loads a manifest and Luau script, advances a deterministic
 input trace twice, and compares the state hash.
@@ -180,6 +183,7 @@ spells, treasures, doors, and checkpoints remain entirely in Luau.
 - `engine.rs` — simulation lifecycle, camera state, and frame snapshot
 - `crates/client` — shared package/session/protocol facade and C/WASM adapters
 - `crates/app` — shared non-game application state, snapshots, and host effects
+- `crates/morphs` — portable character assets and composition
 - `renderer.rs` — shared `wgpu` primitive renderer
 - `player.rs` — locomotion, gravity, and collision resolution
 - `npc.rs` — agent spawning, roaming, separation, and assembly behavior
@@ -192,27 +196,12 @@ spells, treasures, doors, and checkpoints remain entirely in Luau.
 - `ffi.rs` — C/WASM engine entry points
 - `web_renderer.rs` — `wasm-bindgen` wrapper used by the browser
 
-## Game categories
-
-  1. Obby / precision platformer — jumps, ladders, checkpoints, falling.
-  2. Survival / crafting / base defense — gather, manage resources, return to safety, improve the base.
-  3. Exploration / adventure — discover areas, quests, secrets, NPCs.
-  4. Co-op puzzle / escape room — synchronized switches, logic, shared objectives.
-  5. Combat / PvE / PvP — enemies, weapons, abilities, arenas.
-  6. Racing / time trial — laps, checkpoints, timers, ghosts.
-  7. Tycoon / management — production, upgrades, automation.
-  8. Social sandbox / roleplay — shared spaces, identity, emotes, player-driven activities.
-  9. Collection / pets / creature raising — collect, upgrade, care for, trade.
-  10. Round-based party games — short competitive or cooperative mini-games.
-  11. Builder / creative sandbox — place, modify, and collaboratively build.
-  12. RPG / progression adventure — quests, stats, inventory, unlocks.
-
 ## Where to look next
 
-- [web/README.md](../web/README.md) — generated WASM binding, browser shell,
+- [web/README.md](https://github.com/cubacadabra/web/blob/main/README.md) — generated WASM binding, browser shell,
   and package loading
-- [ios_app/README.md](../ios_app/README.md) — C ABI integration and Xcode build
-- [first-game/README.md](../first-game/README.md) — the content and Luau rules
+- [ios/README.md](https://github.com/cubacadabra/ios/blob/main/README.md) — C ABI integration and Xcode build
+- [Cuboom](https://github.com/cubacadabra/examples/blob/main/cuboom/README.md) — featured content, Luau rules, and contribution priorities
 
 ### Licensing
 

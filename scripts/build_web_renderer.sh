@@ -8,6 +8,11 @@ target_dir="$crate_dir/target"
 output_dir="$web_dir/public/wasm/renderer"
 profile=debug
 cargo_profile_args=
+wasm_bindgen_version=$(awk '/^name = "wasm-bindgen"$/ { found = 1; next } found && /^version = / { gsub(/"/, "", $3); print $3; exit }' "$crate_dir/Cargo.lock")
+if [ -z "$wasm_bindgen_version" ]; then
+  echo "Could not read the wasm-bindgen version from the shared Rust lockfile." >&2
+  exit 1
+fi
 
 for argument in "$@"; do
   case "$argument" in
@@ -32,7 +37,12 @@ if [ -z "$wasm_bindgen_command" ] && [ -x "${CARGO_HOME:-$HOME/.cargo}/bin/wasm-
 fi
 if [ -z "$wasm_bindgen_command" ]; then
   echo "wasm-bindgen is required to build the browser Rust renderer." >&2
-  echo "Install it with: cargo install wasm-bindgen-cli" >&2
+  echo "Install it with: cargo install wasm-bindgen-cli --version $wasm_bindgen_version --locked" >&2
+  exit 1
+fi
+if [ "$("$wasm_bindgen_command" --version)" != "wasm-bindgen $wasm_bindgen_version" ]; then
+  echo "wasm-bindgen-cli must match the shared Rust lockfile ($wasm_bindgen_version)." >&2
+  echo "Install it with: cargo install wasm-bindgen-cli --version $wasm_bindgen_version --locked" >&2
   exit 1
 fi
 

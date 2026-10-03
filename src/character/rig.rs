@@ -162,6 +162,7 @@ impl Pose {
         Self { transforms }
     }
 
+    #[cfg(any(test, feature = "dev-showcase"))]
     pub(crate) fn locomotion(
         rig: &RigDefinition,
         phase: f32,
@@ -183,6 +184,7 @@ impl Pose {
         pose
     }
 
+    #[cfg(any(test, feature = "dev-showcase"))]
     fn rotate(&mut self, joint: JointId, angle: f32) {
         self.transforms[joint.index()].rotation = Quat::from_rotation_x(angle);
     }

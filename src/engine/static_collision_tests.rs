@@ -142,7 +142,7 @@ fn triangle_ceiling_stops_a_jump_and_floor_reports_landing() {
 }
 
 #[test]
-fn vegas_chair_collision_provides_seat_and_upper_support() {
+fn vegas_chair_collision_supports_the_authored_seat_and_leaves_surrounding_space_clear() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../examples/vegas-101/assets/models/vegas-chair-2.collision.json");
     let collision: Value = serde_json::from_str(
@@ -168,19 +168,21 @@ fn vegas_chair_collision_provides_seat_and_upper_support() {
         seat.step(1.0 / 60.0);
     }
     assert!(seat.player.grounded);
-    assert!((seat.player.position[1] - 1.093).abs() < 0.01);
+    // The current export contains only the seat slab. Visual upholstery and
+    // the back are not part of this authored collision sidecar.
+    assert!((seat.player.position[1] - -0.41703582).abs() < 0.001);
 
-    let mut upper = collision_engine(
-        [0.0, 5.0, 1.65],
+    let mut outside = collision_engine(
+        [0.0, 1.0, 2.6],
         json!({"groundCollision": false, "deathY": -50}),
         triangles,
     );
-    upper.player.grounded = false;
-    for _ in 0..120 {
-        upper.step(1.0 / 60.0);
+    outside.player.grounded = false;
+    for _ in 0..30 {
+        outside.step(1.0 / 60.0);
     }
-    assert!(upper.player.grounded);
-    assert!((upper.player.position[1] - 1.948).abs() < 0.01);
+    assert!(!outside.player.grounded);
+    assert!(outside.player.position[1] < -1.0);
 }
 
 #[test]
@@ -260,15 +262,23 @@ fn package_rejects_unsupported_collision_version_and_invalid_bounds() {
 }
 
 #[test]
-#[ignore = "requires the maze-101 source-derived hub collision fixture"]
+#[ignore = "requires CUBACADABRA_TEST_MAZE_PACKAGE_DIR pointing to a built maze-101 package"]
 fn source_hub_collision_walks_from_main_island_across_very_easy_bridge() {
-    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../examples/maze-101/reference/hub-collision.json");
-    let collision: Value = serde_json::from_str(
+    let fixture = std::path::PathBuf::from(
+        std::env::var_os("CUBACADABRA_TEST_MAZE_PACKAGE_DIR")
+            .expect("build maze-101 and set CUBACADABRA_TEST_MAZE_PACKAGE_DIR"),
+    )
+    .join("manifest.json");
+    let package: Value = serde_json::from_str(
         &std::fs::read_to_string(&fixture)
             .unwrap_or_else(|error| panic!("read {}: {error}", fixture.display())),
     )
-    .expect("hub collision fixture should be valid JSON");
+    .expect("built maze manifest should be valid JSON");
+    let collision = package["worlds"]["maze-world"]["collision"].clone();
+    assert!(
+        collision["triangles"].is_array(),
+        "built package must inline hub collision"
+    );
     let manifest = json!({
         "sdkVersion": "0.5.0",
         "lobby": false,

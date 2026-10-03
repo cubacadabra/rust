@@ -687,6 +687,7 @@ impl Renderer {
         self.studio_camera = Default::default();
     }
 
+    #[cfg(all(target_arch = "wasm32", feature = "web-renderer"))]
     pub(crate) fn set_package_image(
         &mut self,
         id: &str,

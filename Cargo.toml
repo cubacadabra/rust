@@ -3,6 +3,7 @@ members = [".", "crates/app", "crates/client", "crates/morphs"]
 resolver = "3"
 
 [package]
+license = "GPL-3.0-or-later"
 name = "cubacadabra-engine"
 version = "0.3.0"
 edition = "2024"

@@ -140,6 +140,7 @@ fn execute_with_budget<T>(
 }
 
 impl GameScript {
+    #[cfg(test)]
     pub(crate) fn load(source: &str, ui: Rc<RefCell<UiRuntime>>) -> Result<Self, String> {
         Self::load_with_worlds(source, ui, "", Vec::new())
     }

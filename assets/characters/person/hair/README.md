@@ -36,7 +36,7 @@ Registering another hairstyle currently requires adding an asset and mapping
 it in the finite catalog; independent hairstyle selection can later replace
 the body-to-style mapping without duplicating the rig or mesh generator.
 
-This follows the proposed [fast visual iteration principle](https://github.com/cubacadabra/docs/blob/main/product/principles.md#fast-visual-iteration), which separates art parameters from
+This follows the proposed [fast visual iteration principle](https://github.com/cubacadabra/docs/blob/main/products/principles.md#fast-visual-iteration), which separates art parameters from
 algorithms. JSON uses the existing serde_json dependency; RON would add a
 parser without changing the iteration workflow. Crate separation and a live
 reload tool are deferred until they have a concrete consumer.
